@@ -12,6 +12,11 @@
 
   services.dbus.enable = lib.mkDefault true;
   programs.gnupg.agent.enable = lib.mkDefault true;
+
+  # Graphical environment basics
+  fonts.fontDir.enable = lib.mkDefault true;
+  gtk.iconCache.enable = lib.mkDefault true;
+  services.libinput.enable = lib.mkDefault true;
   environment.systemPackages = with pkgs; [
     lsof
     file
