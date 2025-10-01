@@ -11,6 +11,7 @@
   ];
 
   services.dbus.enable = lib.mkDefault true;
+  programs.gnupg.agent.enable = lib.mkDefault true;
   environment.systemPackages = with pkgs; [
     lsof
     file
