@@ -101,6 +101,7 @@
             ./components
             ./config
             ./hardware
+            ./home
             ./services
             ./solutions
             ./profiles
