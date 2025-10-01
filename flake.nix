@@ -8,6 +8,10 @@
     let
       lib = nixpkgs.lib;
       forAllSystems = nixpkgs.lib.genAttrs nixpkgs.lib.systems.flakeExposed;
+      defaultSpecialArgs = {
+        foundrix = self;
+        foundrixModules = self.nixosModules;
+      };
 
       # Create a function that partially applies special args to a module
       providePartialArgs =
@@ -32,10 +36,6 @@
         directory: extraArgs:
         let
           lib = nixpkgs.lib;
-          defaultSpecialArgs = {
-            foundrix = self;
-            foundrixModules = self.nixosModules;
-          };
           specialArgs = defaultSpecialArgs // (extraArgs.specialArgs or { });
 
           processDir =
@@ -103,8 +103,9 @@
             ./hardware
             ./services
             ./solutions
+            ./profiles
           ]
-      );
+      ) // { foundrixSpecialArgs = defaultSpecialArgs; };
       checks = forAllSystems (
         system:
         let
