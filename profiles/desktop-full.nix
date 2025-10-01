@@ -8,10 +8,12 @@
   imports = with foundrixModules; [
     config.security.pam-login-limits
     config.appimage
+    config.oomd
   ];
 
   services.dbus.enable = lib.mkDefault true;
   programs.gnupg.agent.enable = lib.mkDefault true;
+  services.bpftune.enable = lib.mkDefault true;
 
   # Graphical environment basics
   fonts.fontDir.enable = lib.mkDefault true;
