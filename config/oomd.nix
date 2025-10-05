@@ -1,5 +1,4 @@
-{ lib, config, ... }:
-
+{ lib, ... }:
 {
   systemd.oomd = {
     enable = lib.mkDefault true;
