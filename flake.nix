@@ -1,6 +1,11 @@
 {
   inputs = {
+    # Typically this one is used in conjunction with inputs.nixpkgs.follow
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    # These two would usually not be overridden as their purpose
+    # is to deviate from the main one
+    nixpkgs-unstable.url = "github:NixOS/nixpkgs/nixos-unstable";
+    nixpkgs-master.url = "github:NixOS/nixpkgs/master";
   };
 
   outputs =
@@ -63,7 +68,10 @@
                     "${baseName}" =
                       { ... }:
                       {
-                        imports = [ path ];
+                        imports = [
+                          ./common.nix
+                          path
+                        ];
                         config._module.specialArgs = specialArgs;
                       };
                   }
