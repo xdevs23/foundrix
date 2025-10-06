@@ -22,7 +22,7 @@
       isSupported = lib.mkOption {
         type = lib.types.bool;
         default = true;
-        readonly = true;
+        readOnly = true;
         description = "Whether AMD GPU hardware is supported";
       };
       rocmPackages = lib.mkOption {
