@@ -3,12 +3,10 @@
 }:
 
 let
-  cfg = config.systemd.repartConfig;
-
   format = pkgs.formats.ini { listsAsDuplicateKeys = true; };
 
   makeDefinitionsDirectory = name: partitions:
-    utils.systemUtils.lib.definitions "${name}-repart.d" format (
+    utils.systemdUtils.lib.definitions "${name}-repart.d" format (
       lib.mapAttrs (_: v: { Partition = v; }) partitions
     );
 
@@ -39,25 +37,21 @@ in
               attrsOf (attrsOf (oneOf [ str int bool (listOf str)]));
             default = { };
             example = {
-              "10-root" = rec {
-                Type = "root";
-                Label = "main";
+              "50-backups" = {
+                Type = "linux-generic";
+                UUID = "00000000-0000-4000-9000-000000000160";
                 Format = "btrfs";
-                Subvolumes = "/@store /@nix-var /@var /@home";
-                MakeDirectories =  Subvolumes;
+                Label = "backups";
                 Minimize = "off";
-                Encrypt = "tpm2";
+                Encrypt = "off";
+                SizeMinBytes = "64G";
                 SplitName = "-";
-                FactoryReset = "yes";
+                GrowFileSystem = "on";
               };
             };
             description = ''
               Specify partitions according to the regular systemd.repart configuration. See {manpage}`repart.d(t)`.
             '';
-          };
-          confDir = lib.mkOption {
-            type = lib.types.str;
-            description = "Where the configuration will be located at runtime";
           };
         };
       });
@@ -66,22 +60,34 @@ in
         systemd-repart configuration sets. Each attribute name becomes the repart configuration name.
       '';
     };
+    systemd.repartConfigDirs = lib.mkOption {
+      type = lib.types.attrsOf lib.types.path;
+      description = ''
+        Mapping from repart configuration name to the generated directory
+        containing the corresponding `*.conf` files.
+        Derived from `systemd.repartConfig` during evaluation.
+      '';
+    };
   };
 
-  config = lib.mkMerge (lib.mapAttrsToList (name: repartCfg:
-    let
-      definitionsDirectory = makeDefinitionsDirectory name repartCfg.partitions;
-      partitionAssertions = makePartitionAssertions name repartCfg.partitions;
-      repartDir = "${name}-repart.d";
-    in
-    {
-      assertions = partitionAssertions;
+  config = {
+    assertions = lib.concatLists (lib.mapAttrsToList
+      (name: cfg: makePartitionAssertions name cfg.partitions)
+      config.systemd.repartConfig);
 
-      systemd.repartConfig.${name}.confDir = "${definitionsDirectory}";
+    system.build.repartConfigs = lib.mapAttrs' (name: cfg: {
+      name = name;
+      value = makeDefinitionsDirectory name cfg.partitions;
+    }) config.systemd.repartConfig;
 
-      environment.etc.${repartDir}.source = definitionsDirectory;
+    environment.etc = lib.mapAttrs' (name: cfg: {
+      name = "${name}-repart.d";
+      value.source = config.system.build.repartConfigs.${name};
+    }) config.systemd.repartConfig;
 
-      system.build.repartConfigs.${name} = definitionsDirectory;
-    }
-  ) cfg);
+    systemd.repartConfigDirs =
+      lib.mapAttrs'
+        (name: _: lib.nameValuePair name config.system.build.repartConfigs.${name})
+        config.system.build.repartConfigs;
+  };
 }
