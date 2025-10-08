@@ -1,4 +1,5 @@
-{ pkgs, ... }: pkgs.symlinkJoin {
+{ pkgs, ... }:
+pkgs.symlinkJoin {
   name = "git-aliases";
   paths = [
     (pkgs.writeShellScriptBin "gpick" ''

@@ -100,21 +100,25 @@
           directory = ./packages;
         }
       );
-      nixosModules = lib.attrsets.mergeAttrsList (
-        map
-          (path: {
-            ${baseNameOf path} = if builtins.pathExists path then modulesFromDirectoryRecursive path else { };
-          })
-          [
-            ./components
-            ./config
-            ./hardware
-            ./home
-            ./services
-            ./solutions
-            ./profiles
-          ]
-      ) // { foundrixSpecialArgs = defaultSpecialArgs; };
+      nixosModules =
+        lib.attrsets.mergeAttrsList (
+          map
+            (path: {
+              ${baseNameOf path} = if builtins.pathExists path then modulesFromDirectoryRecursive path else { };
+            })
+            [
+              ./components
+              ./config
+              ./hardware
+              ./home
+              ./services
+              ./solutions
+              ./profiles
+            ]
+        )
+        // {
+          foundrixSpecialArgs = defaultSpecialArgs;
+        };
       checks = forAllSystems (
         system:
         let

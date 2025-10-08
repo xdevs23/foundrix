@@ -1,4 +1,5 @@
-{ pkgs, ... }: {
+{ pkgs, ... }:
+{
   home.packages = with pkgs; [ qt6Packages.qtdeclarative ];
   programs.vscode.profiles.default.userSettings = {
     "qt-qml.qmlls.useQmlImportPathEnvVar" = true;

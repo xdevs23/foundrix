@@ -27,10 +27,11 @@
       };
       rocmPackages = lib.mkOption {
         type = with lib.types; listOf package;
-        default = if config.foundrix.hardware.gpu.amd.useUnstablePackages then
-          pkgsUnstable.rocmPackages
-        else
-          pkgs.rocmPackages;
+        default =
+          if config.foundrix.hardware.gpu.amd.useUnstablePackages then
+            pkgsUnstable.rocmPackages
+          else
+            pkgs.rocmPackages;
       };
     };
   };
@@ -54,18 +55,17 @@
       };
     in
     {
-      boot.kernelParams =
-        lib.optional cfg.graphics.amd.overclocking.unlock "amdgpu.ppfeaturemask=0xfff7ffff";
+      boot.kernelParams = lib.optional cfg.graphics.amd.overclocking.unlock "amdgpu.ppfeaturemask=0xfff7ffff";
 
-      environment.systemPackages = with (
-        if config.customization.hardware.graphics.useUnstablePackages
-        then pkgs.unstable else pkgs
-      ); [
-        opencl-headers
-        clinfo
-        amdgpu_top
-        vulkan-tools
-      ] ++ (if cfg.overclocking.unlock then [ amdgpuClocks ] else [ ]);
+      environment.systemPackages =
+        with (if config.customization.hardware.graphics.useUnstablePackages then pkgs.unstable else pkgs);
+        [
+          opencl-headers
+          clinfo
+          amdgpu_top
+          vulkan-tools
+        ]
+        ++ (if cfg.overclocking.unlock then [ amdgpuClocks ] else [ ]);
 
       hardware.amdgpu.amdvlk = {
         enable = false;

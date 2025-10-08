@@ -1,4 +1,5 @@
-{ pkgs, ... }: pkgs.symlinkJoin {
+{ pkgs, ... }:
+pkgs.symlinkJoin {
   name = "pickrange";
   paths = [
     (pkgs.writeShellScriptBin "pickrange" ''

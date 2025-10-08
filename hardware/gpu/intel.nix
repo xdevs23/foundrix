@@ -22,24 +22,25 @@
       };
       xpuPackages = lib.mkOption {
         type = with lib.types; listOf package;
-        default = with (if config.foundrix.hardware.gpu.intel.useUnstablePackages then pkgs.unstable else pkgs); [
-          level-zero
-          intel-compute-runtime
-          intel-media-driver
-          vpl-gpu-rt
-          libva-vdpau-driver
-          libvdpau-va-gl
-          mesa
-          ocl-icd
-          oneDNN
-        ];
+        default =
+          with (if config.foundrix.hardware.gpu.intel.useUnstablePackages then pkgs.unstable else pkgs); [
+            level-zero
+            intel-compute-runtime
+            intel-media-driver
+            vpl-gpu-rt
+            libva-vdpau-driver
+            libvdpau-va-gl
+            mesa
+            ocl-icd
+            oneDNN
+          ];
       };
     };
   };
   config =
     let
       cfg = config.foundrix.hardware.gpu.intel;
-      hasLinuxNitrous = builtins.hasAttr "linux-nitrous" (options.customization or {});
+      hasLinuxNitrous = builtins.hasAttr "linux-nitrous" (options.customization or { });
       intelRgbFix = pkgs.writeShellScript "intel-rgb-fix" ''
         while ! ${lib.getExe' pkgs.libdrm "proptest"} -M xe -D /dev/dri/card* 2>/dev/null | grep -q "Broadcast RGB"; do
           sleep 0.5
@@ -57,76 +58,74 @@
         done
       '';
     in
-    lib.mkMerge [ rec {
-      customization.hardware.gpu.intelSupport = true;
-      customization.hardware.gpu.xpuPackages = cfg.xpuPackages;
+    lib.mkMerge [
+      rec {
+        customization.hardware.gpu.intelSupport = true;
+        customization.hardware.gpu.xpuPackages = cfg.xpuPackages;
 
-      boot.initrd.kernelModules = [ "xe" ];
-      environment.variables = {
-        VDPAU_DRIVER = "va_gl";
-        LIBVA_DRIVER_NAME = "iHD";
-        ZES_ENABLE_SYSMAN=1;
-        SYCL_DEVICE_FILTER="level_zero:gpu";
-      };
-      environment.systemPackages = with (
-        if cfg.useUnstablePackages
-        then pkgs.unstable else pkgs
-      ); [
-        intel-gmmlib
-        opencl-headers
-        sycl-info
-        oneDNN
-        intel-graphics-compiler
-        intel-gpu-tools
-        clinfo
-        libva-utils
-        vulkan-tools
-      ];
-      hardware.enableRedistributableFirmware = true;
-      hardware.graphics = {
-        enable = true;
-        extraPackages = cfg.xpuPackages;
-      };
-
-      services.udev = lib.optionalAttrs cfg.rgbFix {
-        extraRules = ''
-          ACTION=="add", SUBSYSTEM=="drm", KERNEL=="card[0-9]", DRIVERS=="xe", TAG+="systemd", ENV{SYSTEMD_WANTS}+="intel-rgb-fix.service"
-          ACTION=="change", SUBSYSTEM=="drm", ENV{HOTPLUG}=="1", TAG+="systemd", ENV{SYSTEMD_WANTS}+="intel-rgb-fix.service"
-        '';
-      };
-
-      systemd.services =
-        (lib.optionalAttrs cfg.rgbFix {
-          intel-rgb-fix = {
-            description = "Fix Intel RGB Range";
-
-            serviceConfig = {
-              Type = "oneshot";
-              ExecStart = "-${intelRgbFix}";
-              RemainAfterExit = false;
-              StandardOutput = "journal";
-              StandardError = "journal";
-              PrivateDevices = false;
-              ProtectKernelTunables = false;
-              ProtectControlGroups = false;
-              ProtectHome = false;
-              PrivateTmp = false;
-            };
-          };
-        })
-        // {
-          jellyfin.environment.LIBVA_DRIVER_NAME = "iHD";
+        boot.initrd.kernelModules = [ "xe" ];
+        environment.variables = {
+          VDPAU_DRIVER = "va_gl";
+          LIBVA_DRIVER_NAME = "iHD";
+          ZES_ENABLE_SYSMAN = 1;
+          SYCL_DEVICE_FILTER = "level_zero:gpu";
+        };
+        environment.systemPackages = with (if cfg.useUnstablePackages then pkgs.unstable else pkgs); [
+          intel-gmmlib
+          opencl-headers
+          sycl-info
+          oneDNN
+          intel-graphics-compiler
+          intel-gpu-tools
+          clinfo
+          libva-utils
+          vulkan-tools
+        ];
+        hardware.enableRedistributableFirmware = true;
+        hardware.graphics = {
+          enable = true;
+          extraPackages = cfg.xpuPackages;
         };
 
-      boot.initrd.systemd.services.intel-rgb-fix = lib.mkIf (
-        systemd.services ? intel-rgb-fix
-      ) systemd.services.intel-rgb-fix;
+        services.udev = lib.optionalAttrs cfg.rgbFix {
+          extraRules = ''
+            ACTION=="add", SUBSYSTEM=="drm", KERNEL=="card[0-9]", DRIVERS=="xe", TAG+="systemd", ENV{SYSTEMD_WANTS}+="intel-rgb-fix.service"
+            ACTION=="change", SUBSYSTEM=="drm", ENV{HOTPLUG}=="1", TAG+="systemd", ENV{SYSTEMD_WANTS}+="intel-rgb-fix.service"
+          '';
+        };
 
-      boot.initrd.services.udev.rules =
-        lib.mkIf cfg.rgbFix services.udev.extraRules;
+        systemd.services =
+          (lib.optionalAttrs cfg.rgbFix {
+            intel-rgb-fix = {
+              description = "Fix Intel RGB Range";
 
-    }
-    (lib.optionalAttrs hasLinuxNitrous {
-      customization.linux-nitrous.enableDrmXe = true;
-    })];
+              serviceConfig = {
+                Type = "oneshot";
+                ExecStart = "-${intelRgbFix}";
+                RemainAfterExit = false;
+                StandardOutput = "journal";
+                StandardError = "journal";
+                PrivateDevices = false;
+                ProtectKernelTunables = false;
+                ProtectControlGroups = false;
+                ProtectHome = false;
+                PrivateTmp = false;
+              };
+            };
+          })
+          // {
+            jellyfin.environment.LIBVA_DRIVER_NAME = "iHD";
+          };
+
+        boot.initrd.systemd.services.intel-rgb-fix = lib.mkIf (
+          systemd.services ? intel-rgb-fix
+        ) systemd.services.intel-rgb-fix;
+
+        boot.initrd.services.udev.rules = lib.mkIf cfg.rgbFix services.udev.extraRules;
+
+      }
+      (lib.optionalAttrs hasLinuxNitrous {
+        customization.linux-nitrous.enableDrmXe = true;
+      })
+    ];
 }
