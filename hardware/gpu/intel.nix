@@ -40,7 +40,7 @@
   config =
     let
       cfg = config.foundrix.hardware.gpu.intel;
-      hasLinuxNitrous = builtins.hasAttr "linux-nitrous" (options.customization or { });
+      hasLinuxNitrous = builtins.hasAttr "linux-nitrous" options;
       intelRgbFix = pkgs.writeShellScript "intel-rgb-fix" ''
         while ! ${lib.getExe' pkgs.libdrm "proptest"} -M xe -D /dev/dri/card* 2>/dev/null | grep -q "Broadcast RGB"; do
           sleep 0.5
@@ -60,9 +60,6 @@
     in
     lib.mkMerge [
       rec {
-        customization.hardware.gpu.intelSupport = true;
-        customization.hardware.gpu.xpuPackages = cfg.xpuPackages;
-
         boot.initrd.kernelModules = [ "xe" ];
         environment.variables = {
           VDPAU_DRIVER = "va_gl";
@@ -125,7 +122,7 @@
 
       }
       (lib.optionalAttrs hasLinuxNitrous {
-        customization.linux-nitrous.enableDrmXe = true;
+        linux-nitrous.enableDrmXe = true;
       })
     ];
 }

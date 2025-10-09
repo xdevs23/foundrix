@@ -55,10 +55,10 @@
       };
     in
     {
-      boot.kernelParams = lib.optional cfg.graphics.amd.overclocking.unlock "amdgpu.ppfeaturemask=0xfff7ffff";
+      boot.kernelParams = lib.optional cfg.overclocking.unlock "amdgpu.ppfeaturemask=0xfff7ffff";
 
       environment.systemPackages =
-        with (if config.customization.hardware.graphics.useUnstablePackages then pkgs.unstable else pkgs);
+        with (if cfg.useUnstablePackages then pkgs.unstable else pkgs);
         [
           opencl-headers
           clinfo
