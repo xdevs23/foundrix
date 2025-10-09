@@ -8,6 +8,8 @@
 {
   services.dbus.enable = lib.mkDefault true;
 
+  users.mutableUsers = false;
+
   environment.systemPackages = with pkgs; [
     lsof
     file
