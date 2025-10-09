@@ -1,6 +1,8 @@
 {
   pkgs,
   lib,
+  mkMaybeDefault,
+  config,
   ...
 }:
 {
@@ -18,6 +20,11 @@
       configurationLimit = lib.mkDefault 5;
       consoleMode = lib.mkDefault "max";
     };
+  };
+
+  console = {
+    keyMap = mkMaybeDefault config.foundrix.general.keymap;
+    earlySetup = true;
   };
 
 }

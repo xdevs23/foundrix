@@ -69,7 +69,7 @@
                       { ... }:
                       {
                         imports = [
-                          ./common.nix
+                          ./common
                           path
                         ];
                         config._module.specialArgs = specialArgs;

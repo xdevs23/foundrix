@@ -6,6 +6,10 @@
   ...
 }:
 {
+  imports = [
+    ./general.nix
+  ];
+
   config = {
     _module.args.pkgsUnstable = import inputs.nixpkgs-unstable {
       inherit (pkgs) system;
@@ -17,6 +21,7 @@
     };
     _module.args.maybeOr = value: default: if value == null then default else value;
     _module.args.mkMaybe = value: lib.mkIf (value != null) value;
+    _module.args.mkMaybeDefault = value: lib.mkIf (value != null) (lib.mkDefault value);
     _module.args.mkConfigurableUsersOption = {
       description ? ""
     }: lib.mkOption {

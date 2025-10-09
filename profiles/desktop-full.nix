@@ -2,13 +2,15 @@
   pkgs,
   lib,
   foundrixModules,
+  mkMaybeDefault,
+  config,
   ...
 }:
 {
-  imports = with foundrixModules; [
-    config.security.pam-login-limits
-    config.appimage
-    config.oomd
+  imports = [
+    foundrixModules.config.security.pam-login-limits
+    foundrixModules.config.appimage
+    foundrixModules.config.oomd
   ];
 
   services.dbus.enable = lib.mkDefault true;
@@ -19,6 +21,12 @@
     enable = lib.mkDefault true;
     configurationLimit = lib.mkDefault 5;
     consoleMode = lib.mkDefault "max";
+  };
+
+  console = {
+    font = lib.mkDefault "Lat2-Terminus16";
+    keyMap = mkMaybeDefault config.foundrix.general.keymap;
+    earlySetup = true;
   };
 
   # Graphical environment basics
