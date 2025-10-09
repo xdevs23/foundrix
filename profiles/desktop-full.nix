@@ -15,6 +15,12 @@
   programs.gnupg.agent.enable = lib.mkDefault true;
   services.bpftune.enable = lib.mkDefault true;
 
+  boot.loader.systemd-boot = {
+    enable = lib.mkDefault true;
+    configurationLimit = lib.mkDefault 5;
+    consoleMode = lib.mkDefault "max";
+  };
+
   # Graphical environment basics
   fonts.fontDir.enable = lib.mkDefault true;
   gtk.iconCache.enable = lib.mkDefault true;
