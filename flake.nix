@@ -90,6 +90,13 @@
         };
     in
     {
+      nixosConfigurations = {
+        default = lib.nixosSystem {
+          system = "x86_64-linux";
+          specialArgs = defaultSpecialArgs;
+          modules = [ ./profiles/all-modules.nix ];
+        };
+      };
       packages = forAllSystems (
         system:
         let

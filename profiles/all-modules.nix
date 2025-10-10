@@ -1,5 +1,6 @@
 {
   foundrixModules,
+  lib,
   ...
 }:
 {
@@ -11,4 +12,7 @@
     config.oomd
     config.repart-config
   ];
+  networking.hostName = builtins.head (
+    lib.strings.splitString "." (builtins.baseNameOf __curPos.file)
+  );
 }
