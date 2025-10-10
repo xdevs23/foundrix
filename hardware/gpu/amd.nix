@@ -26,7 +26,7 @@
         description = "Whether AMD GPU hardware is supported";
       };
       rocmPackages = lib.mkOption {
-        type = with lib.types; listOf package;
+        type = with lib.types; lazyAttrsOf package;
         default =
           if config.foundrix.hardware.gpu.amd.useUnstablePackages then
             pkgsUnstable.rocmPackages
@@ -58,7 +58,7 @@
       boot.kernelParams = lib.optional cfg.overclocking.unlock "amdgpu.ppfeaturemask=0xfff7ffff";
 
       environment.systemPackages =
-        with (if cfg.useUnstablePackages then pkgs.unstable else pkgs);
+        with (if cfg.useUnstablePackages then pkgsUnstable else pkgs);
         [
           opencl-headers
           clinfo
@@ -78,7 +78,7 @@
       hardware.graphics = {
         enable = true;
         enable32Bit = true;
-        extraPackages = with (if cfg.useUnstablePackages then pkgs.unstable else pkgs); [
+        extraPackages = with (if cfg.useUnstablePackages then pkgsUnstable else pkgs); [
           rocmPackages.clr
           rocmPackages.clr.icd
         ];
