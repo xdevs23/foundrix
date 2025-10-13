@@ -26,7 +26,7 @@
         description = "Whether AMD GPU hardware is supported";
       };
       rocmPackages = lib.mkOption {
-        type = with lib.types; lazyAttrsOf package;
+        type = with lib.types; lazyAttrsOf anything;
         default =
           if config.foundrix.hardware.gpu.amd.useUnstablePackages then
             pkgsUnstable.rocmPackages
