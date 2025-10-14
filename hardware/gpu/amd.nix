@@ -54,6 +54,7 @@
         '';
       };
     in
+    lib.mkMerge [
     {
       boot.kernelParams = lib.optional cfg.overclocking.unlock "amdgpu.ppfeaturemask=0xfff7ffff";
 
@@ -67,10 +68,6 @@
         ]
         ++ (if cfg.overclocking.unlock then [ amdgpuClocks ] else [ ]);
 
-      hardware.amdgpu.amdvlk = {
-        enable = false;
-        support32Bit.enable = false;
-      };
       hardware.amdgpu.initrd.enable = true;
       # Do not set this to true because the code after it already does the same
       hardware.amdgpu.opencl.enable = lib.mkForce false;
@@ -83,11 +80,18 @@
           rocmPackages.clr.icd
         ];
       };
+    }
+    (lib.mkIf (lib.versionOlder pkgs.lib.version "25.10") {
+      # amdvlk is removed from 25.11 and this part is for pre-25.11
+      # to enable RADV
+      hardware.amdgpu.amdvlk = {
+        enable = false;
+        support32Bit.enable = false;
+      };
 
       environment.variables = {
-        # We're simplifying this here on purpose since RADV generally is more correct
-        # If you'd like to use a different one, please create a PR that implements an option for it.
         AMD_VULKAN_ICD = "RADV";
       };
-    };
+    })
+  ];
 }
