@@ -16,7 +16,7 @@
       defaultSpecialArgs = {
         foundrix = self;
         foundrixModules = self.nixosModules;
-      };
+      } // (import ./special.nix { inherit lib; });
 
       # Create a function that partially applies special args to a module
       providePartialArgs =
@@ -29,7 +29,7 @@
             combinedArgs = originalArgs // (lib.mapAttrs (name: value: true) specialArgs);
 
             # Create a wrapper function that applies the special args
-            wrapper = args@{ ... }: module (args // specialArgs);
+            wrapper = args@{ ... }: (module (args // specialArgs)) // { imports = [ ./common ]; };
           in
           # Set the function args to include both original and special args
           lib.setFunctionArgs wrapper combinedArgs
@@ -60,12 +60,12 @@
                 if extraArgs ? transformModule then
                   # For tests: transform the module with special args and apply custom function
                   {
-                    "${baseName}" = extraArgs.transformModule baseName (providePartialArgs originalModule specialArgs);
+                    ${baseName} = extraArgs.transformModule baseName (providePartialArgs originalModule specialArgs);
                   }
                 else
                   # For regular module loading: wrap with special args
                   {
-                    "${baseName}" =
+                    ${baseName} =
                       { ... }:
                       {
                         imports = [
@@ -94,7 +94,7 @@
         default = lib.nixosSystem {
           system = "x86_64-linux";
           specialArgs = defaultSpecialArgs;
-          modules = [ ./profiles/all-modules.nix ];
+          modules = [ ./common ./profiles/all-modules.nix ];
         };
       };
       packages = forAllSystems (
