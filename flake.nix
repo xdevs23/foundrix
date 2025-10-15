@@ -22,6 +22,13 @@
         foundrix = self;
       });
 
+      customLib = import ./lib (
+        defaultSpecialArgs
+        // {
+          inherit lib;
+        }
+      );
+
       # Create a function that partially applies special args to a module
       providePartialArgs =
         module: specialArgs:
@@ -104,16 +111,20 @@
           ];
         };
       };
-      packages = forAllSystems (
+      packages = (forAllSystems (
         system:
         let
           pkgs = import nixpkgs { inherit system; };
         in
-        pkgs.lib.filesystem.packagesFromDirectoryRecursive {
+        (pkgs.lib.filesystem.packagesFromDirectoryRecursive {
           inherit (pkgs) callPackage;
           directory = ./packages;
-        }
-      );
+        }) // (customLib.images.mkTargetOutputs {
+          name = "foundrix";
+          deviceName = "generic";
+          nixosConfiguration = self.nixosConfigurations.default;
+        })
+      ));
       nixosModules =
         lib.attrsets.mergeAttrsList (
           map

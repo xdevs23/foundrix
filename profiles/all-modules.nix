@@ -14,6 +14,7 @@
     config.repart-config
     config.filesystem.esp
     config.filesystem.root-tmpfs
+    framework.disk-image
   ];
   networking.hostName = builtins.head (
     lib.strings.splitString "." (builtins.baseNameOf __curPos.file)
