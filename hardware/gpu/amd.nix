@@ -54,43 +54,43 @@
       };
     in
     lib.mkMerge [
-    {
-      boot.kernelParams = lib.optional cfg.overclocking.unlock "amdgpu.ppfeaturemask=0xfff7ffff";
+      {
+        boot.kernelParams = lib.optional cfg.overclocking.unlock "amdgpu.ppfeaturemask=0xfff7ffff";
 
-      environment.systemPackages =
-        with (if cfg.useUnstablePackages then pkgsUnstable else pkgs);
-        [
-          opencl-headers
-          clinfo
-          amdgpu_top
-          vulkan-tools
-        ]
-        ++ (if cfg.overclocking.unlock then [ amdgpuClocks ] else [ ]);
+        environment.systemPackages =
+          with (if cfg.useUnstablePackages then pkgsUnstable else pkgs);
+          [
+            opencl-headers
+            clinfo
+            amdgpu_top
+            vulkan-tools
+          ]
+          ++ (if cfg.overclocking.unlock then [ amdgpuClocks ] else [ ]);
 
-      hardware.amdgpu.initrd.enable = true;
-      # Do not set this to true because the code after it already does the same
-      hardware.amdgpu.opencl.enable = lib.mkForce false;
-      hardware.enableRedistributableFirmware = lib.mkDefault true;
-      hardware.graphics = {
-        enable = true;
-        enable32Bit = true;
-        extraPackages = with (if cfg.useUnstablePackages then pkgsUnstable else pkgs); [
-          rocmPackages.clr
-          rocmPackages.clr.icd
-        ];
-      };
-    }
-    (lib.mkIf (lib.versionOlder pkgs.lib.version "25.10") {
-      # amdvlk is removed from 25.11 and this part is for pre-25.11
-      # to enable RADV
-      hardware.amdgpu.amdvlk = {
-        enable = false;
-        support32Bit.enable = false;
-      };
+        hardware.amdgpu.initrd.enable = true;
+        # Do not set this to true because the code after it already does the same
+        hardware.amdgpu.opencl.enable = lib.mkForce false;
+        hardware.enableRedistributableFirmware = lib.mkDefault true;
+        hardware.graphics = {
+          enable = true;
+          enable32Bit = true;
+          extraPackages = with (if cfg.useUnstablePackages then pkgsUnstable else pkgs); [
+            rocmPackages.clr
+            rocmPackages.clr.icd
+          ];
+        };
+      }
+      (lib.mkIf (lib.versionOlder pkgs.lib.version "25.10") {
+        # amdvlk is removed from 25.11 and this part is for pre-25.11
+        # to enable RADV
+        hardware.amdgpu.amdvlk = {
+          enable = false;
+          support32Bit.enable = false;
+        };
 
-      environment.variables = {
-        AMD_VULKAN_ICD = "RADV";
-      };
-    })
-  ];
+        environment.variables = {
+          AMD_VULKAN_ICD = "RADV";
+        };
+      })
+    ];
 }

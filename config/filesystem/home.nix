@@ -20,9 +20,12 @@
       type = lib.types.listOf lib.types.str;
       default =
         if (namespacedCfg __curPos).fsType == "btrfs" then
-          ["subvol=@home" "compress=lzo"]
+          [
+            "subvol=@home"
+            "compress=lzo"
+          ]
         else
-          [];
+          [ ];
       description = "Mount options for /home";
     };
   };
@@ -35,7 +38,7 @@
       fileSystems."/home" = {
         device = cfg.device;
         fsType = cfg.fsType;
-        options = cfg.fsOptions ++ ["noatime"];
+        options = cfg.fsOptions ++ [ "noatime" ];
       };
     };
 }

@@ -21,9 +21,12 @@
       type = lib.types.listOf lib.types.str;
       default =
         if (namespacedCfg __curPos).fsType == "btrfs" then
-          ["subvol=@nixos" "compress=lzo"]
+          [
+            "subvol=@nixos"
+            "compress=lzo"
+          ]
         else
-          [];
+          [ ];
       description = "Mount options for /nix";
     };
   };
@@ -36,7 +39,7 @@
       fileSystems."/nix" = {
         device = cfg.device;
         fsType = cfg.fsType;
-        options = cfg.fsOptions ++ ["noatime"];
+        options = cfg.fsOptions ++ [ "noatime" ];
       };
     };
 }

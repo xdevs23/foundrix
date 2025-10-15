@@ -1,4 +1,5 @@
-{ lib, options, ... }: {
+{ lib, options, ... }:
+{
   options = {
     foundrix.general = {
       keymap = lib.mkOption {

@@ -22,18 +22,17 @@
     };
     xpuPackages = lib.mkOption {
       type = with lib.types; listOf package;
-      default =
-        with (if (namespacedCfg __curPos).useUnstablePackages then pkgs.unstable else pkgs); [
-          level-zero
-          intel-compute-runtime
-          intel-media-driver
-          vpl-gpu-rt
-          libva-vdpau-driver
-          libvdpau-va-gl
-          mesa
-          ocl-icd
-          oneDNN
-        ];
+      default = with (if (namespacedCfg __curPos).useUnstablePackages then pkgs.unstable else pkgs); [
+        level-zero
+        intel-compute-runtime
+        intel-media-driver
+        vpl-gpu-rt
+        libva-vdpau-driver
+        libvdpau-va-gl
+        mesa
+        ocl-icd
+        oneDNN
+      ];
     };
   };
 

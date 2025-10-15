@@ -16,7 +16,11 @@
       defaultSpecialArgs = {
         foundrix = self;
         foundrixModules = self.nixosModules;
-      } // (import ./special.nix { inherit lib; foundrix = self; });
+      }
+      // (import ./special.nix {
+        inherit lib;
+        foundrix = self;
+      });
 
       # Create a function that partially applies special args to a module
       providePartialArgs =
@@ -94,7 +98,10 @@
         default = lib.nixosSystem {
           system = "x86_64-linux";
           specialArgs = defaultSpecialArgs;
-          modules = [ ./common ./profiles/all-modules.nix ];
+          modules = [
+            ./common
+            ./profiles/all-modules.nix
+          ];
         };
       };
       packages = forAllSystems (

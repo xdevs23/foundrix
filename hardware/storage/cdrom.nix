@@ -1,4 +1,9 @@
-{ mkConfigurableUsersOption, namespaced, namespacedCfg, ... }:
+{
+  mkConfigurableUsersOption,
+  namespaced,
+  namespacedCfg,
+  ...
+}:
 {
   options = namespaced __curPos {
     users = mkConfigurableUsersOption {
