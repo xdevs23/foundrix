@@ -1,44 +1,43 @@
 {
-  config,
   lib,
   pkgs,
   pkgsUnstable,
+  namespaced,
+  namespacedCfg,
   ...
 }:
 {
 
-  options = {
-    foundrix.hardware.gpu.amd = {
-      overclocking.unlock = lib.mkOption {
-        type = lib.types.bool;
-        default = false;
-        description = "Whether to unlock the graphics card to support OC/UC/OV/UV features";
-      };
-      useUnstablePackages = lib.mkOption {
-        type = lib.types.bool;
-        default = false;
-        description = "Whether to use the latest packages of Mesa and ROCm from nixpkgs-unstable";
-      };
-      isSupported = lib.mkOption {
-        type = lib.types.bool;
-        default = true;
-        readOnly = true;
-        description = "Whether AMD GPU hardware is supported";
-      };
-      rocmPackages = lib.mkOption {
-        type = with lib.types; lazyAttrsOf anything;
-        default =
-          if config.foundrix.hardware.gpu.amd.useUnstablePackages then
-            pkgsUnstable.rocmPackages
-          else
-            pkgs.rocmPackages;
-      };
+  options = namespaced __curPos {
+    overclocking.unlock = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = "Whether to unlock the graphics card to support OC/UC/OV/UV features";
+    };
+    useUnstablePackages = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = "Whether to use the latest packages of Mesa and ROCm from nixpkgs-unstable";
+    };
+    isSupported = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      readOnly = true;
+      description = "Whether AMD GPU hardware is supported";
+    };
+    rocmPackages = lib.mkOption {
+      type = with lib.types; lazyAttrsOf anything;
+      default =
+        if (namespacedCfg __curPos).useUnstablePackages then
+          pkgsUnstable.rocmPackages
+        else
+          pkgs.rocmPackages;
     };
   };
 
   config =
     let
-      cfg = config.foundrix.hardware.gpu.amd;
+      cfg = namespacedCfg __curPos;
       amdgpuClocks = pkgs.stdenv.mkDerivation rec {
         name = "amdgpu-clocks";
         src = pkgs.fetchFromGitHub {

@@ -1,13 +1,17 @@
-{ config, mkConfigurableUsersOption, ... }:
+{ mkConfigurableUsersOption, namespaced, namespacedCfg, ... }:
 {
-  options = {
-    foundrix.hardware.storage.cdrom.users = mkConfigurableUsersOption {
+  options = namespaced __curPos {
+    users = mkConfigurableUsersOption {
       description = "Users to add to the cdrom group";
     };
   };
 
-  config = {
-    users.groups.cdrom.members = config.foundrix.hardware.storage.cdrom.users;
-    boot.kernelModules = [ "sg" ];
-  };
+  config =
+    let
+      cfg = namespacedCfg __curPos;
+    in
+    {
+      users.groups.cdrom.members = cfg.users;
+      boot.kernelModules = [ "sg" ];
+    };
 }

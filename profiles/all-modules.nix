@@ -1,5 +1,6 @@
 {
   foundrixModules,
+  foundrix,
   lib,
   ...
 }:
@@ -22,4 +23,6 @@
     configurationLimit = lib.mkDefault 5;
     consoleMode = lib.mkDefault "max";
   };
+  system.build.curPos = __curPos;
+  system.build.foundrixPath = "${foundrix}";
 }

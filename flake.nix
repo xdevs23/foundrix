@@ -16,7 +16,7 @@
       defaultSpecialArgs = {
         foundrix = self;
         foundrixModules = self.nixosModules;
-      } // (import ./special.nix { inherit lib; });
+      } // (import ./special.nix { inherit lib; foundrix = self; });
 
       # Create a function that partially applies special args to a module
       providePartialArgs =

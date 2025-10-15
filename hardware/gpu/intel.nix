@@ -1,45 +1,45 @@
 {
-  config,
   options,
   lib,
   pkgs,
+  namespaced,
+  namespacedCfg,
   ...
 }:
 {
-  options = {
-    foundrix.hardware.gpu.intel = {
-      rgbFix = lib.mkEnableOption "full range RGB fix for non-compliant monitors";
-      useUnstablePackages = lib.mkOption {
-        type = lib.types.bool;
-        default = false;
-        description = "Whether to use the latest packages of Mesa and XPU from nixpkgs-unstable";
-      };
-      isSupported = lib.mkOption {
-        type = lib.types.bool;
-        default = true;
-        readOnly = true;
-        description = "Whether Intel GPU hardware is supported";
-      };
-      xpuPackages = lib.mkOption {
-        type = with lib.types; listOf package;
-        default =
-          with (if config.foundrix.hardware.gpu.intel.useUnstablePackages then pkgs.unstable else pkgs); [
-            level-zero
-            intel-compute-runtime
-            intel-media-driver
-            vpl-gpu-rt
-            libva-vdpau-driver
-            libvdpau-va-gl
-            mesa
-            ocl-icd
-            oneDNN
-          ];
-      };
+  options = namespaced __curPos {
+    rgbFix = lib.mkEnableOption "full range RGB fix for non-compliant monitors";
+    useUnstablePackages = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = "Whether to use the latest packages of Mesa and XPU from nixpkgs-unstable";
+    };
+    isSupported = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      readOnly = true;
+      description = "Whether Intel GPU hardware is supported";
+    };
+    xpuPackages = lib.mkOption {
+      type = with lib.types; listOf package;
+      default =
+        with (if (namespacedCfg __curPos).useUnstablePackages then pkgs.unstable else pkgs); [
+          level-zero
+          intel-compute-runtime
+          intel-media-driver
+          vpl-gpu-rt
+          libva-vdpau-driver
+          libvdpau-va-gl
+          mesa
+          ocl-icd
+          oneDNN
+        ];
     };
   };
+
   config =
     let
-      cfg = config.foundrix.hardware.gpu.intel;
+      cfg = namespacedCfg __curPos;
       hasLinuxNitrous = builtins.hasAttr "linux-nitrous" options;
       intelRgbFix = pkgs.writeShellScript "intel-rgb-fix" ''
         while ! ${lib.getExe' pkgs.libdrm "proptest"} -M xe -D /dev/dri/card* 2>/dev/null | grep -q "Broadcast RGB"; do
