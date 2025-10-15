@@ -116,11 +116,11 @@
             [
               ./components
               ./config
+              ./framework
               ./hardware
               ./home
-              ./services
-              ./solutions
               ./profiles
+              ./services
             ]
         )
         // {
