@@ -1,4 +1,4 @@
-{ lib, ... }:
+{ lib, customLib, ... }:
 {
   mkTargetOutputs =
     {
@@ -7,12 +7,19 @@
       nixosConfiguration,
     }:
     let
-      cfg = nixosConfiguration.config.system.build;
+      buildCfg = nixosConfiguration.config.system.build;
       maybeOutputs = {
-        image = cfg.image or null;
-        update = cfg.otaUpdate or null;
-        "update@compressed" = cfg.compressedOtaUpdate or null;
-        toplevel = cfg.toplevel or null;
+        image = buildCfg.image or null;
+        update = buildCfg.otaUpdate or null;
+        "update@compressed" = buildCfg.compressedOtaUpdate or null;
+        toplevel = buildCfg.toplevel or null;
+        qemu-launch =
+          if (buildCfg.image or null) == null then
+            null
+          else
+            customLib.qemu-launch.${nixosConfiguration.pkgs.hostPlatform.qemuArch} {
+              systemDisk = "${buildCfg.image}/${nixosConfiguration.config.image.fileName}";
+            };
       };
       outputs = lib.filterAttrs (_: value: value != null) maybeOutputs;
     in

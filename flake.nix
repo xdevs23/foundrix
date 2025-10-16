@@ -22,12 +22,15 @@
         foundrix = self;
       });
 
-      customLib = import ./lib (
-        defaultSpecialArgs
-        // {
-          inherit lib;
-        }
-      );
+      customLib =
+        system:
+        import ./lib (
+          defaultSpecialArgs
+          // {
+            inherit lib;
+            pkgs = import nixpkgs { inherit system; };
+          }
+        );
 
       # Create a function that partially applies special args to a module
       providePartialArgs =
@@ -40,7 +43,7 @@
             combinedArgs = originalArgs // (lib.mapAttrs (name: value: true) specialArgs);
 
             # Create a wrapper function that applies the special args
-            wrapper = args@{ ... }: (module (args // specialArgs)) // { imports = [ ./common ]; };
+            wrapper = args: (module (args // specialArgs)) // { imports = [ ./common ]; };
           in
           # Set the function args to include both original and special args
           lib.setFunctionArgs wrapper combinedArgs
@@ -107,24 +110,32 @@
           specialArgs = defaultSpecialArgs;
           modules = [
             ./common
-            ./profiles/all-modules.nix
+            self.nixosModules.profiles.all-modules
+            self.nixosModules.profiles.minimal-image
+            self.nixosModules.config.debug
+            {
+              system.forbiddenDependenciesRegexes = lib.mkForce [ ];
+            }
           ];
         };
       };
-      packages = (forAllSystems (
-        system:
-        let
-          pkgs = import nixpkgs { inherit system; };
-        in
-        (pkgs.lib.filesystem.packagesFromDirectoryRecursive {
-          inherit (pkgs) callPackage;
-          directory = ./packages;
-        }) // (customLib.images.mkTargetOutputs {
-          name = "foundrix";
-          deviceName = "generic";
-          nixosConfiguration = self.nixosConfigurations.default;
-        })
-      ));
+      packages = (
+        forAllSystems (
+          system:
+          let
+            pkgs = import nixpkgs { inherit system; };
+          in
+          (pkgs.lib.filesystem.packagesFromDirectoryRecursive {
+            inherit (pkgs) callPackage;
+            directory = ./packages;
+          })
+          // ((customLib system).images.mkTargetOutputs {
+            name = "foundrix";
+            deviceName = "generic";
+            nixosConfiguration = self.nixosConfigurations.default;
+          })
+        )
+      );
       nixosModules =
         lib.attrsets.mergeAttrsList (
           map

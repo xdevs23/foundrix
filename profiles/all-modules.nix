@@ -24,6 +24,7 @@
     configurationLimit = lib.mkDefault 5;
     consoleMode = lib.mkDefault "max";
   };
+  boot.initrd.systemd.enable = true;
   system.build.curPos = __curPos;
   system.build.foundrixPath = "${foundrix}";
 }

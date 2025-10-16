@@ -43,6 +43,9 @@
     kernelPackages = lib.mkOverride 101 pkgs.linuxPackages_latest;
     tmp.useTmpfs = lib.mkDefault true;
     kernelParams = [ "boot.shell_on_fail" ];
+    initrd = {
+      systemd.enable = true;
+    };
   };
 
 }
