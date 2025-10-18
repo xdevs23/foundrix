@@ -97,6 +97,7 @@
             ./common
             self.nixosModules.profiles.all-modules
             self.nixosModules.profiles.minimal-image
+            self.nixosModules.profiles.minimal-image-ota
             self.nixosModules.config.debug
             {
               system.forbiddenDependenciesRegexes = lib.mkForce [ ];

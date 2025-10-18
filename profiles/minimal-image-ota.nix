@@ -4,7 +4,8 @@
     "${modulesPath}/profiles/image-based-appliance.nix"
     "${modulesPath}/profiles/perlless.nix"
     config.filesystem.root-tmpfs
+    framework.ota
   ];
   boot.initrd.systemd.enable = true;
-  boot.loader.timeout = 0;
+  foundrix.framework.ota.updateServer = "http://127.0.0.1";
 }
