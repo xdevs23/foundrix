@@ -32,31 +32,40 @@
           }
         );
 
-      # Create a function that partially applies special args to a module
-      providePartialArgs =
-        module: specialArgs:
-        if lib.isFunction module then
-          let
-            # Get the original function's argument pattern
-            originalArgs = lib.functionArgs module;
-            # Combine with our special args
-            combinedArgs = originalArgs // (lib.mapAttrs (name: value: true) specialArgs);
-
-            # Create a wrapper function that applies the special args
-            wrapper = args: (module (args // specialArgs)) // { imports = [ ./common ]; };
-          in
-          # Set the function args to include both original and special args
-          lib.setFunctionArgs wrapper combinedArgs
-        else
-          module;
-
-      # Process directory recursively, can be used for both module loading and testing
-      processDirectoryRecursive =
-        directory: extraArgs:
+      # Collect all .nix files from a directory recursively (except default.nix)
+      collectNixFiles =
+        dir:
         let
-          lib = nixpkgs.lib;
-          specialArgs = defaultSpecialArgs // (extraArgs.specialArgs or { });
+          entries = builtins.readDir dir;
+          processEntry = name: type:
+            let
+              path = dir + "/${name}";
+            in
+            if type == "directory" then
+              collectNixFiles path
+            else if type == "regular" && lib.hasSuffix ".nix" name && name != "default.nix" then
+              [ { inherit path name; } ]
+            else
+              [ ];
+        in
+        lib.concatLists (lib.mapAttrsToList processEntry entries);
 
+      # Convert a single nix file path to a module with special args
+      pathToModule =
+        path:
+        { ... }:
+        {
+          imports = [
+            ./common
+            path
+          ];
+          config._module.specialArgs = defaultSpecialArgs;
+        };
+
+      # Process directory recursively to create nested attribute set of modules
+      processDirectoryRecursive =
+        directory:
+        let
           processDir =
             dir:
             lib.concatMapAttrs (
@@ -69,39 +78,15 @@
               else if type == "regular" && lib.hasSuffix ".nix" name && name != "default.nix" then
                 let
                   baseName = lib.removeSuffix ".nix" name;
-                  originalModule = import path;
                 in
-                if extraArgs ? transformModule then
-                  # For tests: transform the module with special args and apply custom function
-                  {
-                    ${baseName} = extraArgs.transformModule baseName (providePartialArgs originalModule specialArgs);
-                  }
-                else
-                  # For regular module loading: wrap with special args
-                  {
-                    ${baseName} =
-                      { ... }:
-                      {
-                        imports = [
-                          ./common
-                          path
-                        ];
-                        config._module.specialArgs = specialArgs;
-                      };
-                  }
+                { ${baseName} = pathToModule path; }
               else
                 { }
             ) (builtins.readDir dir);
-
         in
         processDir directory;
 
-      modulesFromDirectoryRecursive = directory: processDirectoryRecursive directory { };
-      forEachProfileRecursive =
-        directory: f:
-        processDirectoryRecursive directory {
-          transformModule = f;
-        };
+      modulesFromDirectoryRecursive = directory: processDirectoryRecursive directory;
     in
     {
       nixosConfigurations = {
@@ -159,16 +144,31 @@
         system:
         let
           pkgs = import nixpkgs { inherit system; };
+          profileFiles = collectNixFiles ./profiles;
         in
-        forEachProfileRecursive ./profiles (
-          profileName: profile:
-          pkgs.testers.runNixOSTest {
-            name = "${profileName}-basic";
-            nodes.machine = profile;
-            testScript = ''
-              machine.wait_for_unit("default.target")
-            '';
-          }
+        lib.listToAttrs (
+          map (
+            { path, name }:
+            let
+              profileName = lib.removeSuffix ".nix" name;
+            in
+            {
+              name = "${profileName}-basic";
+              value = pkgs.testers.runNixOSTest {
+                name = "${profileName}-basic";
+                node.specialArgs = defaultSpecialArgs;
+                nodes.machine = {
+                  imports = [
+                    ./common
+                    path
+                  ];
+                };
+                testScript = ''
+                  machine.wait_for_unit("default.target")
+                '';
+              };
+            }
+          ) profileFiles
         )
       );
       formatter = forAllSystems (system: nixpkgs.legacyPackages.${system}.nixfmt-rfc-style);
