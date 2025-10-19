@@ -4,6 +4,7 @@
   pkgs,
   lib,
   foundrix,
+  options,
   ...
 }:
 {
@@ -11,14 +12,21 @@
     ./general.nix
   ];
 
+  options = {
+    nixpkgs-unstable = options.nixpkgs;
+    nixpkgs-master = options.nixpkgs;
+  };
+
   config = {
     _module.args.pkgsUnstable = import inputs.nixpkgs-unstable {
       inherit (pkgs) system;
       config = config.nixpkgs.config;
+      overlays = config.nixpkgs-unstable.overlays;
     };
     _module.args.pkgsMaster = import inputs.nixpkgs-master {
       inherit (pkgs) system;
       config = config.nixpkgs.config;
+      overlays = config.nixpkgs-master.overlays;
     };
     _module.args.mkConfigurableUsersOption =
       {
