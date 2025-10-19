@@ -15,71 +15,72 @@
   };
 
   config =
-  let cfg = namespacedCfg __curPos;
-  in
-  {
-    systemd.sysupdate = {
-      enable = true;
+    let
+      cfg = namespacedCfg __curPos;
+    in
+    {
+      systemd.sysupdate = {
+        enable = true;
 
-      transfers = {
-        "10-uki-remote" = {
-          Source = {
-            MatchPattern = [
-              "${config.boot.uki.name}_@v.efi.xz"
-              "${config.boot.uki.name}_@v.efi.gz"
-              "${config.boot.uki.name}_@v.efi"
-            ];
+        transfers = {
+          "10-uki-remote" = {
+            Source = {
+              MatchPattern = [
+                "${config.boot.uki.name}_@v.efi.xz"
+                "${config.boot.uki.name}_@v.efi.gz"
+                "${config.boot.uki.name}_@v.efi"
+              ];
 
-            Path = cfg.updateServer;
-            Type = "url-file";
+              Path = cfg.updateServer;
+              Type = "url-file";
+            };
+
+            Target = {
+              MatchPattern = [
+                "${config.boot.uki.name}_@v.efi"
+              ];
+
+              Path = "/EFI/Linux";
+              PathRelativeTo = "boot";
+
+              Type = "regular-file";
+            };
+
+            Transfer = {
+              ProtectVersion = "%A";
+            };
           };
 
-          Target = {
-            MatchPattern = [
-              "${config.boot.uki.name}_@v.efi"
-            ];
+          "20-store-remote" = {
+            Source = {
+              MatchPattern = [
+                "store_@v.img.xz"
+                "store_@v.img.gz"
+                "store_@v.img"
+              ];
 
-            Path = "/EFI/Linux";
-            PathRelativeTo = "boot";
+              Path = cfg.updateServer;
+              Type = "url-file";
+            };
 
-            Type = "regular-file";
-          };
+            Target = {
+              Path = "auto";
+              MatchPattern = "store_@v";
+              Type = "partition";
+            };
 
-          Transfer = {
-            ProtectVersion = "%A";
-          };
-        };
-
-        "20-store-remote" = {
-          Source = {
-            MatchPattern = [
-              "store_@v.img.xz"
-              "store_@v.img.gz"
-              "store_@v.img"
-            ];
-
-            Path = cfg.updateServer;
-            Type = "url-file";
-          };
-
-          Target = {
-            Path = "auto";
-            MatchPattern = "store_@v";
-            Type = "partition";
-          };
-
-          Transfer = {
-            ProtectVersion = "%A";
+            Transfer = {
+              ProtectVersion = "%A";
+            };
           };
         };
       };
-    };
 
-    environment.systemPackages = [
-      (pkgs.runCommand "systemd-sysupdate" { } ''
-        mkdir -p $out/bin
-        ln -s ${config.systemd.package}/lib/systemd/systemd-sysupdate $out/bin
-      '')
-    ];
-  };
+      environment.systemPackages = [
+        (pkgs.runCommand "systemd-sysupdate" { } ''
+          mkdir -p $out/bin
+          ln -s ${config.systemd.package}/lib/systemd/systemd-sysupdate $out/bin
+        '')
+      ];
+    };
 }

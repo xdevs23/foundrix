@@ -37,7 +37,8 @@
         dir:
         let
           entries = builtins.readDir dir;
-          processEntry = name: type:
+          processEntry =
+            name: type:
             let
               path = dir + "/${name}";
             in
@@ -79,7 +80,9 @@
                 let
                   baseName = lib.removeSuffix ".nix" name;
                 in
-                { ${baseName} = pathToModule path; }
+                {
+                  ${baseName} = pathToModule path;
+                }
               else
                 { }
             ) (builtins.readDir dir);

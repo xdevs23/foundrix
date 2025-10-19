@@ -13,7 +13,10 @@ let
     if intelGpuSupport then
       pkgs.unstable.llama-cpp-vulkan
     else if amdGpuSupport then
-      pkgs.unstable.llama-cpp.override { inherit rocmPackages; rocmSupport = true; }
+      pkgs.unstable.llama-cpp.override {
+        inherit rocmPackages;
+        rocmSupport = true;
+      }
     else
       pkgs.unstable.llama-cpp;
 
@@ -38,7 +41,8 @@ in
     (pkgs.writeShellScriptBin "llama-intel" ''
       exec ${lib.getExe' llamaPackage "llama-server"} -ngl 99 "$@"
     '')
-  ]) ++ [
+  ])
+  ++ [
     (pkgs.writeShellScriptBin "llama-vulkan" ''
       exec ${lib.getExe' llamaPackage "llama-cli"} -ngl 99 "$@"
     '')
