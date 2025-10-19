@@ -77,15 +77,13 @@ in
         in
         pkgs.runCommandLocal "secureboot-ms-db-esl" { } ''
           mkdir -p $out
-          ${lib.concatStringsSep "\n" (
-            builtins.map (file: ''
-              ${sbsiglist} \
-                --owner "${msUUID}" \
-                --type x509 \
-                --output "$out/${builtins.baseNameOf file}.esl" \
-                "${file}"
-            '') msKeys.dbInstallList
-          )}
+          ${lib.concatMapStringsSep "\n" (file: ''
+            ${sbsiglist} \
+              --owner "${msUUID}" \
+              --type x509 \
+              --output "$out/${builtins.baseNameOf file}.esl" \
+              "${file}"
+          '') msKeys.dbInstallList}
         '';
       msKekEsl =
         let
@@ -93,15 +91,13 @@ in
         in
         pkgs.runCommandLocal "secureboot-ms-kek-esl" { } ''
           mkdir -p $out
-          ${lib.concatStringsSep "\n" (
-            builtins.map (file: ''
-              ${sbsiglist} \
-                --owner "${msUUID}" \
-                --type x509 \
-                --output "$out/${builtins.baseNameOf file}.esl" \
-                "${file}"
-            '') msKeys.kekInstallList
-          )}
+          ${lib.concatMapStringsSep "\n" (file: ''
+            ${sbsiglist} \
+              --owner "${msUUID}" \
+              --type x509 \
+              --output "$out/${builtins.baseNameOf file}.esl" \
+              "${file}"
+          '') msKeys.kekInstallList}
         '';
     };
   };
