@@ -25,7 +25,7 @@
       readOnly = true;
       description = "Whether AMD GPU hardware is supported";
     };
-    rocmPackages = lib.mkOption {
+    upstreamRocmPackages = lib.mkOption {
       type = with lib.types; lazyAttrsOf anything;
       default =
         if (namespacedCfg __curPos).useUnstablePackages then
@@ -33,9 +33,18 @@
         else
           pkgs.rocmPackages;
     };
-    rocmScript = {
-      name = "Generate a shell script package that prepares your script for proper ROCm usage";
-      type = lib.types.package;
+    rocmPackages = lib.mkOption {
+      type = with lib.types; lazyAttrsOf anything;
+      default =
+        let
+          cfg = (namespacedCfg __curPos);
+          upstream = cfg.upstreamRocmPackages;
+        in
+        upstream;
+    };
+    rocmScript = lib.mkOption {
+      description = "Generate a shell script package that prepares your script for proper ROCm usage";
+      type = with lib.types; functionTo (functionTo package);
       readOnly = true;
       default =
         name: script:
@@ -61,11 +70,19 @@
           ${script}
         '';
     };
+    gpuTargets = lib.mkOption {
+      description = "Which GPU targets to support. Defaults to rocmPackages.clr.gpuTargets (all)";
+      type = with lib.types; nullOr (listOf str);
+      default = null;
+    };
   };
 
   config =
     let
       cfg = namespacedCfg __curPos;
+      # certain packages don't have support for newer targets – thus let's add something to fix errors
+      minGpuTargets = [ "gfx1030" ];
+      effectiveGpuTargets = if cfg.gpuTargets == null then null else (minGpuTargets ++ cfg.gpuTargets);
       amdgpuClocks = pkgs.stdenv.mkDerivation rec {
         name = "amdgpu-clocks";
         src = pkgs.fetchFromGitHub {
@@ -85,6 +102,38 @@
       {
         nixpkgs.config.rocmSupport = cfg.isSupported;
         nixpkgs.config.rocmPackages = cfg.rocmPackages;
+        nixpkgs.overlays = [
+          (
+            self: super:
+            if (cfg.gpuTargets != null) then
+              {
+                rocmPackages = super.rocmPackages // {
+                  clr = super.rocmPackages.clr // {
+                    gpuTargets = effectiveGpuTargets;
+                    localGpuTargets = effectiveGpuTargets;
+                  };
+                };
+              }
+            else
+              { }
+          )
+        ];
+        nixpkgs-unstable.overlays = [
+          (
+            self: super:
+            if (cfg.gpuTargets != null) then
+              {
+                rocmPackages = super.rocmPackages // {
+                  clr = super.rocmPackages.clr // {
+                    gpuTargets = effectiveGpuTargets;
+                    localGpuTargets = effectiveGpuTargets;
+                  };
+                };
+              }
+            else
+              { }
+          )
+        ];
         boot.kernelParams = lib.optional cfg.overclocking.unlock "amdgpu.ppfeaturemask=0xfff7ffff";
 
         environment.systemPackages =
