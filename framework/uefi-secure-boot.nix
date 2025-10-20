@@ -70,7 +70,7 @@ in
   };
 
   config = {
-    system.build.secureBoot.keys = {
+    system.build.secureBoot.keys = rec {
       msDbEsl =
         let
           sbsiglist = lib.getExe' pkgs.sbsigntool "sbsiglist";
@@ -99,6 +99,12 @@ in
               "${file}"
           '') msKeys.kekInstallList}
         '';
+      msCombinedDbEsl = pkgs.runCommandLocal "secureboot-ms-db-combined.esl" { } ''
+        cat ${msDbEsl}/*.esl > $out
+      '';
+      msCombinedKekEsl = pkgs.runCommandLocal "secureboot-ms-kek-combined.esl" { } ''
+        cat ${msKekEsl}/*.esl > $out
+      '';
     };
   };
 }
