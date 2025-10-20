@@ -107,12 +107,12 @@
             self: super:
             if (cfg.gpuTargets != null) then
               {
-                rocmPackages = super.rocmPackages // {
+                rocmPackages = super.rocmPackages.overrideScope (final: prev: {
                   clr = super.rocmPackages.clr // {
                     gpuTargets = effectiveGpuTargets;
                     localGpuTargets = effectiveGpuTargets;
                   };
-                };
+                });
               }
             else
               { }
@@ -123,12 +123,12 @@
             self: super:
             if (cfg.gpuTargets != null) then
               {
-                rocmPackages = super.rocmPackages // {
+                rocmPackages = super.rocmPackages.overrideScope (final: prev: {
                   clr = super.rocmPackages.clr // {
                     gpuTargets = effectiveGpuTargets;
                     localGpuTargets = effectiveGpuTargets;
                   };
-                };
+                });
               }
             else
               { }
