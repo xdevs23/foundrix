@@ -70,41 +70,88 @@ in
   };
 
   config = {
-    system.build.secureBoot.keys = rec {
-      msDbEsl =
-        let
-          sbsiglist = lib.getExe' pkgs.sbsigntool "sbsiglist";
-        in
-        pkgs.runCommandLocal "secureboot-ms-db-esl" { } ''
-          mkdir -p $out
-          ${lib.concatMapStringsSep "\n" (file: ''
-            ${sbsiglist} \
-              --owner "${msUUID}" \
-              --type x509 \
-              --output "$out/${builtins.baseNameOf file}.esl" \
-              "${file}"
-          '') msKeys.dbInstallList}
+    system.build.secureBoot = {
+      keys = rec {
+        msDbEsl =
+          let
+            sbsiglist = lib.getExe' pkgs.sbsigntool "sbsiglist";
+          in
+          pkgs.runCommandLocal "secureboot-ms-db-esl" { } ''
+            mkdir -p $out
+            ${lib.concatMapStringsSep "\n" (file: ''
+              ${sbsiglist} \
+                --owner "${msUUID}" \
+                --type x509 \
+                --output "$out/${builtins.baseNameOf file}.esl" \
+                "${file}"
+            '') msKeys.dbInstallList}
+          '';
+        msKekEsl =
+          let
+            sbsiglist = lib.getExe' pkgs.sbsigntool "sbsiglist";
+          in
+          pkgs.runCommandLocal "secureboot-ms-kek-esl" { } ''
+            mkdir -p $out
+            ${lib.concatMapStringsSep "\n" (file: ''
+              ${sbsiglist} \
+                --owner "${msUUID}" \
+                --type x509 \
+                --output "$out/${builtins.baseNameOf file}.esl" \
+                "${file}"
+            '') msKeys.kekInstallList}
+          '';
+        msCombinedDbEsl = pkgs.runCommandLocal "secureboot-ms-db-combined.esl" { } ''
+          cat ${msDbEsl}/*.esl > $out
         '';
-      msKekEsl =
-        let
-          sbsiglist = lib.getExe' pkgs.sbsigntool "sbsiglist";
-        in
-        pkgs.runCommandLocal "secureboot-ms-kek-esl" { } ''
-          mkdir -p $out
-          ${lib.concatMapStringsSep "\n" (file: ''
-            ${sbsiglist} \
-              --owner "${msUUID}" \
-              --type x509 \
-              --output "$out/${builtins.baseNameOf file}.esl" \
-              "${file}"
-          '') msKeys.kekInstallList}
+        msCombinedKekEsl = pkgs.runCommandLocal "secureboot-ms-kek-combined.esl" { } ''
+          cat ${msKekEsl}/*.esl > $out
         '';
-      msCombinedDbEsl = pkgs.runCommandLocal "secureboot-ms-db-combined.esl" { } ''
-        cat ${msDbEsl}/*.esl > $out
-      '';
-      msCombinedKekEsl = pkgs.runCommandLocal "secureboot-ms-kek-combined.esl" { } ''
-        cat ${msKekEsl}/*.esl > $out
-      '';
+      };
+      rhUefiShim =
+        let
+          shimSources =
+            {
+              "x86_64-linux" = {
+                url = "https://kojipkgs.fedoraproject.org/packages/shim/15.8/5/x86_64/shim-x64-15.8-5.x86_64.rpm";
+                sha256 = "sha256-JneTMBluKq+EFZ05yXUxDNCV5zw+skqCtcOpX2wNJ5E=";
+                shimFile = "shimx64.efi";
+                mmFile = "mmx64.efi";
+              };
+              "aarch64-linux" = {
+                url = "https://kojipkgs.fedoraproject.org/packages/shim/15.8/5/aarch64/shim-aa64-15.8-5.aarch64.rpm";
+                sha256 = "sha256-ygKJmwFx8F1gQMWHc32KeWISetubACGrD99/21y5BuE=";
+                shimFile = "shimaa64.efi";
+                mmFile = "mmaa64.efi";
+              };
+            }
+            .${pkgs.stdenv.hostPlatform.system};
+        in
+        pkgs.stdenv.mkDerivation rec {
+          pname = "shim";
+          version = "15.8-5";
+          src = pkgs.fetchurl {
+            url = shimSources.url;
+            sha256 = shimSources.sha256;
+          };
+          nativeBuildInputs = [ pkgs.rpmextract ];
+          unpackPhase = ''
+            rpmextract $src
+          '';
+          installPhase = ''
+            mkdir -p $out
+            cp usr/lib/efi/shim/${version}/EFI/fedora/${shimSources.shimFile} $out/${shimSources.shimFile}
+            cp usr/lib/efi/shim/${version}/EFI/fedora/${shimSources.mmFile} $out/${shimSources.mmFile}
+          '';
+          meta = with pkgs.lib; {
+            description = "Microsoft-signed Fedora shim binary";
+            homepage = "https://github.com/rhboot/shim";
+            license = licenses.gpl3;
+            platforms = [
+              "x86_64-linux"
+              "aarch64-linux"
+            ];
+          };
+        };
     };
   };
 }
