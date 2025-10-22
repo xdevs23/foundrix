@@ -1,6 +1,5 @@
 {
   config,
-  inputs,
   pkgs,
   lib,
   foundrix,
@@ -13,17 +12,17 @@
   ];
 
   options = {
-    nixpkgs-unstable = options.nixpkgs;
-    nixpkgs-master = options.nixpkgs;
+    nixpkgs-unstable = lib.recursiveUpdate options.nixpkgs { overlays.default = [ ]; };
+    nixpkgs-master = lib.recursiveUpdate options.nixpkgs { overlays.default = [ ]; };
   };
 
   config = {
-    _module.args.pkgsUnstable = import inputs.nixpkgs-unstable {
+    _module.args.pkgsUnstable = import foundrix.inputs.nixpkgs-unstable {
       inherit (pkgs) system;
       config = config.nixpkgs.config;
       overlays = config.nixpkgs-unstable.overlays;
     };
-    _module.args.pkgsMaster = import inputs.nixpkgs-master {
+    _module.args.pkgsMaster = import foundrix.inputs.nixpkgs-master {
       inherit (pkgs) system;
       config = config.nixpkgs.config;
       overlays = config.nixpkgs-master.overlays;

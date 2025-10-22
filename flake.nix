@@ -13,9 +13,14 @@
     let
       lib = nixpkgs.lib;
       forAllSystems = nixpkgs.lib.genAttrs nixpkgs.lib.systems.flakeExposed;
+      foundrixPackages = pkgs: (lib.filesystem.packagesFromDirectoryRecursive {
+        inherit (pkgs) callPackage;
+        directory = ./packages;
+      });
       defaultSpecialArgs = {
         foundrix = self;
         foundrixModules = self.nixosModules;
+        inherit foundrixPackages;
       }
       // (import ./special.nix {
         inherit lib;
@@ -114,10 +119,7 @@
           let
             pkgs = import nixpkgs { inherit system; };
           in
-          (pkgs.lib.filesystem.packagesFromDirectoryRecursive {
-            inherit (pkgs) callPackage;
-            directory = ./packages;
-          })
+          (foundrixPackages pkgs)
           // ((customLib system).images.mkTargetOutputs {
             name = "foundrix";
             deviceName = "generic";

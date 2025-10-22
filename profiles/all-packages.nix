@@ -1,8 +1,8 @@
 {
-  foundrix,
+  foundrixPackages,
   pkgs,
   ...
 }:
 {
-  environment.systemPackages = builtins.attrValues foundrix.packages.${pkgs.system};
+  environment.systemPackages = builtins.attrValues (foundrixPackages pkgs);
 }

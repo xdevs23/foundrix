@@ -10,10 +10,12 @@
     config.appimage
     config.compat
     config.mdraid
+    config.networking.network-discovery
     config.oomd
     config.repart-config
     config.filesystem.esp
     config.filesystem.root-tmpfs
+    profiles.all-packages
     framework.disk-image
     framework.uefi-secure-boot
   ];
