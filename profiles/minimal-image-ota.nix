@@ -4,6 +4,7 @@
     "${modulesPath}/profiles/image-based-appliance.nix"
     "${modulesPath}/profiles/perlless.nix"
     config.filesystem.root-tmpfs
+    framework.disk-image
     framework.ota
   ];
   boot.initrd.systemd.enable = true;
