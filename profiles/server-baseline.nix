@@ -29,4 +29,5 @@
     earlySetup = true;
   };
 
+  system.stateVersion = lib.mkDefault (builtins.substring 0 5 lib.version);
 }

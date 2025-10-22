@@ -1,4 +1,4 @@
-{ modulesPath, foundrixModules, ... }:
+{ modulesPath, foundrixModules, lib, ... }:
 {
   imports = with foundrixModules; [
     "${modulesPath}/profiles/image-based-appliance.nix"
@@ -9,4 +9,5 @@
   ];
   boot.initrd.systemd.enable = true;
   foundrix.framework.ota.updateServer = "http://127.0.0.1";
+  system.stateVersion = lib.mkDefault (builtins.substring 0 5 lib.version);
 }
