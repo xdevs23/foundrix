@@ -23,6 +23,7 @@
     efi.enable = (lib.mkEnableOption "EFI suppport") // {
       default = pkgs.hostPlatform.is64bit;
     };
+    readOnlyNixStore = lib.mkEnableOption "read-only nix store";
     bootloader.extraConfig = lib.mkOption {
       type = with lib.types; listOf str;
       default = [ ];
@@ -91,9 +92,9 @@
                   in
                   "${SplitName}${if version != null then "_${version}" else ""}";
                 UUID = lib.toLower "00000000-0000-4000-9000-000000000200";
-                Format = "erofs";
+                Format = if cfg.readOnlyNixStore then "erofs" else "btrfs";
                 Compression = "lz4";
-                ReadOnly = "yes";
+                ReadOnly = if cfg.readOnlyNixStore then "yes" else "no";
                 SizeMinBytes = "16G";
               };
             };
