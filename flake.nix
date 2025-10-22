@@ -98,7 +98,7 @@
     in
     {
       nixosConfigurations = {
-        default = lib.nixosSystem {
+        smoke-test = lib.nixosSystem {
           system = "x86_64-linux";
           specialArgs = defaultSpecialArgs;
           modules = [
@@ -107,9 +107,16 @@
             self.nixosModules.profiles.minimal-image
             self.nixosModules.profiles.minimal-image-ota
             self.nixosModules.config.debug
-            {
-              system.forbiddenDependenciesRegexes = lib.mkForce [ ];
-            }
+          ];
+        };
+        htpc = lib.nixosSystem {
+          system = "x86_64-linux";
+          specialArgs = defaultSpecialArgs;
+          modules = [
+            ./common
+            self.nixosModules.profiles.htpc
+            self.nixosModules.profiles.minimal-image
+            self.nixosModules.config.debug
           ];
         };
       };
@@ -123,7 +130,12 @@
           // ((customLib system).images.mkTargetOutputs {
             name = "foundrix";
             deviceName = "generic";
-            nixosConfiguration = self.nixosConfigurations.default;
+            nixosConfiguration = self.nixosConfigurations.smoke-test;
+          })
+          // ((customLib system).images.mkTargetOutputs {
+            name = "htpc";
+            deviceName = "generic";
+            nixosConfiguration = self.nixosConfigurations.htpc;
           })
         )
       );
