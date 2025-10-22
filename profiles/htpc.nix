@@ -1,4 +1,11 @@
-{ foundrixModules, pkgs, lib, config, ... }: {
+{
+  foundrixModules,
+  pkgs,
+  lib,
+  config,
+  ...
+}:
+{
   imports = [
     foundrixModules.profiles.desktop-full # todo: separate profile
     foundrixModules.config.kodi-gbm

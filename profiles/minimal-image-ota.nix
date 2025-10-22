@@ -1,4 +1,9 @@
-{ modulesPath, foundrixModules, lib, ... }:
+{
+  modulesPath,
+  foundrixModules,
+  lib,
+  ...
+}:
 {
   imports = with foundrixModules; [
     "${modulesPath}/profiles/image-based-appliance.nix"

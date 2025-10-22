@@ -13,10 +13,12 @@
     let
       lib = nixpkgs.lib;
       forAllSystems = nixpkgs.lib.genAttrs nixpkgs.lib.systems.flakeExposed;
-      foundrixPackages = pkgs: (lib.filesystem.packagesFromDirectoryRecursive {
-        inherit (pkgs) callPackage;
-        directory = ./packages;
-      });
+      foundrixPackages =
+        pkgs:
+        (lib.filesystem.packagesFromDirectoryRecursive {
+          inherit (pkgs) callPackage;
+          directory = ./packages;
+        });
       defaultSpecialArgs = {
         foundrix = self;
         foundrixModules = self.nixosModules;

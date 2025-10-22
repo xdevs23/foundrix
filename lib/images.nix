@@ -17,16 +17,22 @@
           if (buildCfg.image or null) == null then
             null
           else
-            let qemuCfg = nixosConfiguration.extendModules {
-              modules = [
-                 ({ modulesPath, foundrixModules, ... }: {
-                  imports = [
-                    "${modulesPath}/profiles/qemu-guest.nix"
-                    foundrixModules.hardware.gpu.vga
-                  ];
-                 })
-              ];
-            }; qemuBuildCfg = qemuCfg.config.system.build; in
+            let
+              qemuCfg = nixosConfiguration.extendModules {
+                modules = [
+                  (
+                    { modulesPath, foundrixModules, ... }:
+                    {
+                      imports = [
+                        "${modulesPath}/profiles/qemu-guest.nix"
+                        foundrixModules.hardware.gpu.vga
+                      ];
+                    }
+                  )
+                ];
+              };
+              qemuBuildCfg = qemuCfg.config.system.build;
+            in
             customLib.qemu-launch.${qemuCfg.pkgs.hostPlatform.qemuArch} {
               systemDisk = "${qemuBuildCfg.image}/${qemuCfg.config.image.fileName}";
             };

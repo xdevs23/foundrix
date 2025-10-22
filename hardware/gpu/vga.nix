@@ -16,12 +16,11 @@
   };
 
   config = {
-    environment.systemPackages =
-      with pkgs; [
-        opencl-headers
-        clinfo
-        vulkan-tools
-      ];
+    environment.systemPackages = with pkgs; [
+      opencl-headers
+      clinfo
+      vulkan-tools
+    ];
     hardware.graphics = {
       enable = true;
       enable32Bit = true;
