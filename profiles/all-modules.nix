@@ -37,4 +37,5 @@
   };
   system.build.curPos = __curPos;
   system.build.foundrixPath = "${foundrix}";
+  system.stateVersion = lib.mkDefault (builtins.substring 0 5 lib.version);
 }

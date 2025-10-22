@@ -48,4 +48,5 @@
     };
   };
 
+  system.stateVersion = lib.mkDefault (builtins.substring 0 5 pkgs.lib.version);
 }
