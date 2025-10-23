@@ -96,12 +96,16 @@
                 ReadOnly = if cfg.readOnlyNixStore then "yes" else "no";
                 SizeMinBytes = "16G";
               };
-            } // (
-              if lib.versionAtLeast lib.version "25.10" then {
-                nixStorePrefix = "/";
-              } else {
-                stripNixStorePrefix = true;
-              }
+            }
+            // (
+              if lib.versionAtLeast lib.version "25.10" then
+                {
+                  nixStorePrefix = "/";
+                }
+              else
+                {
+                  stripNixStorePrefix = true;
+                }
             );
           };
         };
