@@ -3,9 +3,15 @@
   lib,
   mkMaybeDefault,
   config,
+  foundrixModules,
   ...
 }:
 {
+  imports = [
+    foundrixModules.config.oomd
+    foundrixModules.config.networking.network-discovery
+  ];
+
   services.dbus.enable = lib.mkDefault true;
 
   users.mutableUsers = false;

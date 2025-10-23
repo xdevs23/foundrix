@@ -9,6 +9,7 @@
     foundrixModules.profiles.desktop-base
     foundrixModules.config.appimage
     foundrixModules.config.media.pipewire
+    foundrixModules.config.compat
   ];
 
   programs.gnupg.agent.enable = lib.mkDefault true;

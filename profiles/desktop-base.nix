@@ -10,6 +10,8 @@
   imports = [
     foundrixModules.config.security.pam-login-limits
     foundrixModules.config.oomd
+    foundrixModules.config.networking.network-manager
+    foundrixModules.config.networking.network-discovery
   ];
 
   services.dbus.enable = lib.mkDefault true;
