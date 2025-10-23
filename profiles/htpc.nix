@@ -14,7 +14,7 @@
   ];
 
   foundrix.config.kodi-gbm = {
-    user = "kodi";
+    user = lib.mkDefault "kodi";
   };
 
   users.users.${config.foundrix.config.kodi-gbm.user} = {
