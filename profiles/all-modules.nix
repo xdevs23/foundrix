@@ -15,6 +15,7 @@
     config.repart-config
     config.filesystem.esp
     config.filesystem.root-tmpfs
+    config.media.pipewire
     profiles.all-packages
     framework.disk-image
     framework.uefi-secure-boot

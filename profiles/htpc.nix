@@ -7,7 +7,7 @@
 }:
 {
   imports = [
-    foundrixModules.profiles.desktop-full # todo: separate profile
+    foundrixModules.profiles.desktop-base
     foundrixModules.config.kodi-gbm
     foundrixModules.config.oomd
     foundrixModules.config.networking.network-discovery
