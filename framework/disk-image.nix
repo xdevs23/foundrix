@@ -82,7 +82,6 @@
             };
             ${partitionIds.store} = {
               storePaths = [ config.system.build.toplevel ];
-              stripNixStorePrefix = true;
               repartConfig = rec {
                 Type = "root";
                 SplitName = "store";
@@ -97,7 +96,13 @@
                 ReadOnly = if cfg.readOnlyNixStore then "yes" else "no";
                 SizeMinBytes = "16G";
               };
-            };
+            } // (
+              if lib.versionAtLeast lib.version "25.10" then {
+                nixStorePrefix = "/";
+              } else {
+                stripNixStorePrefix = true;
+              }
+            );
           };
         };
 
