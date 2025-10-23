@@ -20,5 +20,8 @@
   services.libinput.enable = lib.mkDefault true;
   xdg.icons.enable = lib.mkDefault true;
 
+  services.gvfs.enable = true;
+  programs.dconf.enable = true;
+
   system.stateVersion = lib.mkDefault (builtins.substring 0 5 pkgs.lib.version);
 }
