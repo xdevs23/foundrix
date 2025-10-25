@@ -8,6 +8,8 @@
   imports = with foundrixModules; [
     config.security.pam-login-limits
     config.appimage
+    config.basic-fonts
+    config.basic-user-system
     config.compat
     config.mdraid
     config.networking.network-discovery

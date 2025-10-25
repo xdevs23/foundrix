@@ -13,6 +13,7 @@
     foundrixModules.config.networking.network-manager
     foundrixModules.config.networking.network-discovery
     foundrixModules.config.basic-fonts
+    foundrixModules.config.basic-user-system
   ];
 
   services.dbus.enable = lib.mkDefault true;
