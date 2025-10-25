@@ -36,7 +36,6 @@
 
   networking.hostName = lib.mkOverride 1100 "htpc";
 
-  services.timesyncd.enable = lib.mkDefault true;
   services.bpftune.enable = true;
   services.gvfs.enable = true;
   programs.dconf.enable = true;

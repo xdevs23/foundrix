@@ -29,6 +29,7 @@
     earlySetup = true;
   };
 
+  services.timesyncd.enable = lib.mkDefault true;
   users.mutableUsers = false;
 
   environment.systemPackages = with pkgs; [
