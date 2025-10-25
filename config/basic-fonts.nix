@@ -1,4 +1,5 @@
-{ pkgs, lib, ... }: {
+{ pkgs, lib, ... }:
+{
   fonts = {
     packages = with pkgs; [
       noto-fonts
