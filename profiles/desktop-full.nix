@@ -10,6 +10,7 @@
     foundrixModules.config.appimage
     foundrixModules.config.media.pipewire
     foundrixModules.config.compat
+    foundrixModules.config.gstreamer
   ];
 
   programs.gnupg.agent.enable = lib.mkDefault true;

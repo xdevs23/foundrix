@@ -12,6 +12,7 @@
     config.basic-fonts
     config.basic-user-system
     config.compat
+    config.gstreamer
     config.mdraid
     config.networking.network-discovery
     config.oomd
