@@ -7,6 +7,7 @@
 {
   imports = with foundrixModules; [
     config.security.pam-login-limits
+    config.adb
     config.appimage
     config.basic-fonts
     config.basic-user-system
