@@ -5,6 +5,7 @@
       bash coreutils jq pv socat git dig unzip file tree e2fsprogs
       bc rsync inetutils zip openssh ddrescue gawk less
     ];
+    defaultPackages = [ ];
     variables = {
       EDITOR = "vim";
       VISUAL = "vim";
