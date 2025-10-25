@@ -15,7 +15,7 @@
   ];
 
   services.dbus.enable = lib.mkDefault true;
-  services.bpftune.enable = lib.mkDefault true;
+  services.bpftune.enable = lib.mkDefault pkgs.hostPlatform.isx86_64;
 
   boot.loader.systemd-boot = {
     enable = lib.mkDefault true;
