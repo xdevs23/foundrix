@@ -1,4 +1,9 @@
-{ lib, options, ... }:
+{
+  pkgs,
+  lib,
+  options,
+  ...
+}:
 {
   options = {
     foundrix.general = {

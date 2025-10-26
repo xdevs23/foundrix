@@ -156,7 +156,7 @@
         hardware.enableRedistributableFirmware = lib.mkDefault true;
         hardware.graphics = {
           enable = true;
-          enable32Bit = true;
+          enable32Bit = pkgs.hostPlatform.isx86_64;
           extraPackages = with (if cfg.useUnstablePackages then pkgsUnstable else pkgs); [
             rocmPackages.clr
             rocmPackages.clr.icd

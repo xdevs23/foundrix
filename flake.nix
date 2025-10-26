@@ -101,7 +101,6 @@
     {
       nixosConfigurations = {
         smoke-test = lib.nixosSystem {
-          system = "x86_64-linux";
           specialArgs = defaultSpecialArgs;
           modules = [
             ./common
@@ -109,16 +108,17 @@
             self.nixosModules.profiles.minimal-image
             self.nixosModules.profiles.minimal-image-ota
             self.nixosModules.config.debug
+            { foundrix.framework.disk-image.readOnlyNixStore = true; }
           ];
         };
         htpc = lib.nixosSystem {
-          system = "x86_64-linux";
           specialArgs = defaultSpecialArgs;
           modules = [
             ./common
             self.nixosModules.profiles.htpc
             self.nixosModules.profiles.minimal-image
             self.nixosModules.config.debug
+            { foundrix.framework.disk-image.readOnlyNixStore = true; }
           ];
         };
       };
@@ -126,19 +126,21 @@
         forAllSystems (
           system:
           let
-            pkgs = import nixpkgs { inherit system; };
+            hostPlatformPkgs = import nixpkgs { inherit system; };
           in
-          (foundrixPackages pkgs)
-          // ((customLib system).images.mkTargetOutputs {
-            name = "foundrix";
-            deviceName = "generic";
-            nixosConfiguration = self.nixosConfigurations.smoke-test;
-          })
-          // ((customLib system).images.mkTargetOutputs {
-            name = "htpc";
-            deviceName = "generic";
-            nixosConfiguration = self.nixosConfigurations.htpc;
-          })
+          builtins.addErrorContext "while constructing packages for system ${system}" (
+            (foundrixPackages hostPlatformPkgs)
+            // ((customLib system).images.mkTargetOutputs {
+              name = "foundrix";
+              deviceConfiguration = ./devices/generic.nix;
+              nixosConfiguration = self.nixosConfigurations.smoke-test;
+            })
+            // ((customLib system).images.mkTargetOutputs {
+              name = "htpc";
+              deviceConfiguration = ./devices/generic.nix;
+              nixosConfiguration = self.nixosConfigurations.htpc;
+            })
+          )
         )
       );
       nixosModules =
@@ -192,5 +194,6 @@
         )
       );
       formatter = forAllSystems (system: nixpkgs.legacyPackages.${system}.nixfmt-rfc-style);
+      inherit customLib;
     };
 }

@@ -9,6 +9,7 @@
 {
   imports = [
     ./general.nix
+    ./upstream-fixes.nix
   ];
 
   options = {
