@@ -1,6 +1,7 @@
 { pkgs, ... }:
 pkgs.symlinkJoin {
-  name = "pickrange";
+  pname = "pickrange";
+  version = "0.1.0";
   paths = [
     (pkgs.writeShellScriptBin "pickrange" ''
       git rev-list --reverse --topo-order $1^..$2 | while read rev
