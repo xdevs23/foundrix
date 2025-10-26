@@ -11,6 +11,7 @@
     config.appimage
     config.basic-fonts
     config.basic-user-system
+    config.clamav
     config.compat
     config.gstreamer
     config.mdraid
