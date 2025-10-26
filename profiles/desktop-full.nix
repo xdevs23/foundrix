@@ -24,5 +24,8 @@
   services.gvfs.enable = true;
   programs.dconf.enable = true;
 
+  services.printing.enable = lib.mkDefault true;
+  hardware.sane.enable = lib.mkDefault true;
+
   system.stateVersion = lib.mkDefault (builtins.substring 0 5 pkgs.lib.version);
 }
