@@ -194,6 +194,5 @@
         )
       );
       formatter = forAllSystems (system: nixpkgs.legacyPackages.${system}.nixfmt-rfc-style);
-      inherit customLib;
     };
 }
