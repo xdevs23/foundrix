@@ -67,7 +67,7 @@
                   ) devices
                 )
               )
-            ) self.nixosConfigurations
+            ) (self.nixosConfigurations or { })
           );
         in
         builtins.addErrorContext "while constructing packages for system ${system}" mergedPackages
