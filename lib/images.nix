@@ -52,7 +52,7 @@ rec {
             inherit arch finalConfiguration;
             qemuCfg = nixosConfiguration.extendModules {
               modules = (mkDeviceFrameworkModules targetPlatformConfiguration) ++ [
-                ../devices/qemu.nix
+                ../device-parts/qemu.nix
               ];
             };
             outputs = {

@@ -92,16 +92,12 @@
             self.nixosModules.profiles.minimal-image-ota
             self.nixosModules.config.debug
             { foundrix.framework.disk-image.readOnlyNixStore = true; }
-          ];
-        };
-        htpc = lib.nixosSystem {
-          specialArgs = defaultSpecialArgs;
-          modules = [
-            ./common
-            self.nixosModules.profiles.htpc
-            self.nixosModules.profiles.minimal-image
-            self.nixosModules.config.debug
-            { foundrix.framework.disk-image.readOnlyNixStore = true; }
+            {
+              # Let's just set some default to make nix flake check happy
+              # This will be overridden by the platform-specific module
+              # in all cases so this can stay here as a no-op
+              nixpkgs.hostPlatform = lib.mkOverride 1200 "aarch64-linux";
+            }
           ];
         };
       };
@@ -152,6 +148,7 @@
               name = "${profileName}-basic";
               value = pkgs.testers.runNixOSTest {
                 name = "${profileName}-basic";
+                node.pkgsReadOnly = false;
                 node.specialArgs = defaultSpecialArgs;
                 nodes.machine = {
                   imports = [
