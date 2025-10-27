@@ -34,10 +34,13 @@
 
       collectDeviceConfigs =
         dir:
-        traverseDirectory {
-          directory = dir;
-          includeDirectories = true;
-        };
+        if builtins.pathExists dir then
+          traverseDirectory {
+            directory = dir;
+            includeDirectories = true;
+          }
+        else
+          { };
 
     in
     {
