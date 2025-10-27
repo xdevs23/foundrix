@@ -9,190 +9,162 @@
   };
 
   outputs =
-    { self, nixpkgs, ... }:
-    let
-      lib = nixpkgs.lib;
-      forAllSystems = nixpkgs.lib.genAttrs nixpkgs.lib.systems.flakeExposed;
-      foundrixPackages =
-        pkgs:
-        (lib.filesystem.packagesFromDirectoryRecursive {
-          inherit (pkgs) callPackage;
-          directory = ./packages;
+    { self, nixpkgs, ... }@flakeArgs:
+    nixpkgs.lib.recursiveUpdate (
+      let
+        lib = nixpkgs.lib;
+        forAllSystems = nixpkgs.lib.genAttrs nixpkgs.lib.systems.flakeExposed;
+        foundrixPackages =
+          pkgs:
+          (lib.filesystem.packagesFromDirectoryRecursive {
+            inherit (pkgs) callPackage;
+            directory = ./packages;
+          });
+        defaultSpecialArgs = {
+          foundrix = self;
+          foundrixModules = self.nixosModules;
+          inherit foundrixPackages;
+        }
+        // (import ./special.nix {
+          inherit lib;
+          foundrix = self;
         });
-      defaultSpecialArgs = {
-        foundrix = self;
-        foundrixModules = self.nixosModules;
-        inherit foundrixPackages;
-      }
-      // (import ./special.nix {
-        inherit lib;
-        foundrix = self;
-      });
 
-      customLib =
-        system:
-        import ./lib (
-          defaultSpecialArgs
-          // {
-            inherit lib;
-            pkgs = import nixpkgs { inherit system; };
-          }
-        );
+        traverseDirectory = import ./lib/traverse-directory.nix { inherit lib; };
 
-      # Collect all .nix files from a directory recursively (except default.nix)
-      collectNixFiles =
-        dir:
-        let
-          entries = builtins.readDir dir;
-          processEntry =
-            name: type:
-            let
-              path = dir + "/${name}";
-            in
-            if type == "directory" then
-              collectNixFiles path
-            else if type == "regular" && lib.hasSuffix ".nix" name && name != "default.nix" then
-              [ { inherit path name; } ]
-            else
-              [ ];
-        in
-        lib.concatLists (lib.mapAttrsToList processEntry entries);
+        collectNixFiles =
+          dir:
+          traverseDirectory {
+            directory = dir;
+            format = "list";
+          };
 
-      # Convert a single nix file path to a module with special args
-      pathToModule =
-        path:
-        { ... }:
-        {
-          imports = [
-            ./common
-            path
-          ];
-          config._module.specialArgs = defaultSpecialArgs;
-        };
+        # Convert a single nix file path to a module with special args
+        pathToModule =
+          path:
+          { ... }:
+          {
+            imports = [
+              ./common
+              path
+            ];
+            config._module.specialArgs = defaultSpecialArgs;
+          };
 
-      # Process directory recursively to create nested attribute set of modules
-      processDirectoryRecursive =
-        directory:
-        let
-          processDir =
-            dir:
-            lib.concatMapAttrs (
-              name: type:
-              let
-                path = dir + "/${name}";
-              in
-              if type == "directory" then
-                { "${name}" = processDir path; }
-              else if type == "regular" && lib.hasSuffix ".nix" name && name != "default.nix" then
+        # Process directory recursively to create nested attribute set of modules
+        processDirectoryRecursive =
+          directory:
+          let
+            processDir =
+              dir:
+              lib.concatMapAttrs (
+                name: type:
                 let
-                  baseName = lib.removeSuffix ".nix" name;
+                  path = dir + "/${name}";
                 in
-                {
-                  ${baseName} = pathToModule path;
-                }
-              else
-                { }
-            ) (builtins.readDir dir);
-        in
-        processDir directory;
+                if type == "directory" then
+                  { "${name}" = processDir path; }
+                else if type == "regular" && lib.hasSuffix ".nix" name && name != "default.nix" then
+                  let
+                    baseName = lib.removeSuffix ".nix" name;
+                  in
+                  {
+                    ${baseName} = pathToModule path;
+                  }
+                else
+                  { }
+              ) (builtins.readDir dir);
+          in
+          processDir directory;
 
-      modulesFromDirectoryRecursive = directory: processDirectoryRecursive directory;
-    in
-    {
-      nixosConfigurations = {
-        smoke-test = lib.nixosSystem {
-          specialArgs = defaultSpecialArgs;
-          modules = [
-            ./common
-            self.nixosModules.profiles.all-modules
-            self.nixosModules.profiles.minimal-image
-            self.nixosModules.profiles.minimal-image-ota
-            self.nixosModules.config.debug
-            { foundrix.framework.disk-image.readOnlyNixStore = true; }
-          ];
+        modulesFromDirectoryRecursive = directory: processDirectoryRecursive directory;
+      in
+      {
+        nixosConfigurations = {
+          smoke-test = lib.nixosSystem {
+            specialArgs = defaultSpecialArgs;
+            modules = [
+              ./common
+              self.nixosModules.profiles.all-modules
+              self.nixosModules.profiles.minimal-image
+              self.nixosModules.profiles.minimal-image-ota
+              self.nixosModules.config.debug
+              { foundrix.framework.disk-image.readOnlyNixStore = true; }
+            ];
+          };
+          htpc = lib.nixosSystem {
+            specialArgs = defaultSpecialArgs;
+            modules = [
+              ./common
+              self.nixosModules.profiles.htpc
+              self.nixosModules.profiles.minimal-image
+              self.nixosModules.config.debug
+              { foundrix.framework.disk-image.readOnlyNixStore = true; }
+            ];
+          };
         };
-        htpc = lib.nixosSystem {
-          specialArgs = defaultSpecialArgs;
-          modules = [
-            ./common
-            self.nixosModules.profiles.htpc
-            self.nixosModules.profiles.minimal-image
-            self.nixosModules.config.debug
-            { foundrix.framework.disk-image.readOnlyNixStore = true; }
-          ];
-        };
-      };
-      packages = (
-        forAllSystems (
+        packages = (
+          forAllSystems (
+            system:
+            let
+              hostPlatformPkgs = import nixpkgs { inherit system; };
+            in
+            builtins.addErrorContext "while constructing packages for system ${system}" (
+              foundrixPackages hostPlatformPkgs
+            )
+          )
+        );
+        nixosModules =
+          lib.attrsets.mergeAttrsList (
+            map
+              (path: {
+                ${baseNameOf path} = if builtins.pathExists path then modulesFromDirectoryRecursive path else { };
+              })
+              [
+                ./components
+                ./config
+                ./framework
+                ./hardware
+                ./home
+                ./profiles
+                ./services
+              ]
+          )
+          // {
+            foundrixSpecialArgs = defaultSpecialArgs;
+          };
+        checks = forAllSystems (
           system:
           let
-            hostPlatformPkgs = import nixpkgs { inherit system; };
+            pkgs = import nixpkgs { inherit system; };
+            profileFiles = collectNixFiles ./profiles;
           in
-          builtins.addErrorContext "while constructing packages for system ${system}" (
-            (foundrixPackages hostPlatformPkgs)
-            // ((customLib system).images.mkTargetOutputs {
-              name = "foundrix";
-              deviceConfiguration = ./devices/generic.nix;
-              nixosConfiguration = self.nixosConfigurations.smoke-test;
-            })
-            // ((customLib system).images.mkTargetOutputs {
-              name = "htpc";
-              deviceConfiguration = ./devices/generic.nix;
-              nixosConfiguration = self.nixosConfigurations.htpc;
-            })
-          )
-        )
-      );
-      nixosModules =
-        lib.attrsets.mergeAttrsList (
-          map
-            (path: {
-              ${baseNameOf path} = if builtins.pathExists path then modulesFromDirectoryRecursive path else { };
-            })
-            [
-              ./components
-              ./config
-              ./framework
-              ./hardware
-              ./home
-              ./profiles
-              ./services
-            ]
-        )
-        // {
-          foundrixSpecialArgs = defaultSpecialArgs;
-        };
-      checks = forAllSystems (
-        system:
-        let
-          pkgs = import nixpkgs { inherit system; };
-          profileFiles = collectNixFiles ./profiles;
-        in
-        lib.listToAttrs (
-          map (
-            { path, name }:
-            let
-              profileName = lib.removeSuffix ".nix" name;
-            in
-            {
-              name = "${profileName}-basic";
-              value = pkgs.testers.runNixOSTest {
+          lib.listToAttrs (
+            map (
+              { path, name, ... }:
+              let
+                profileName = lib.removeSuffix ".nix" name;
+              in
+              {
                 name = "${profileName}-basic";
-                node.specialArgs = defaultSpecialArgs;
-                nodes.machine = {
-                  imports = [
-                    ./common
-                    path
-                  ];
+                value = pkgs.testers.runNixOSTest {
+                  name = "${profileName}-basic";
+                  node.specialArgs = defaultSpecialArgs;
+                  nodes.machine = {
+                    imports = [
+                      ./common
+                      path
+                    ];
+                  };
+                  testScript = ''
+                    machine.wait_for_unit("default.target")
+                  '';
                 };
-                testScript = ''
-                  machine.wait_for_unit("default.target")
-                '';
-              };
-            }
-          ) profileFiles
-        )
-      );
-      formatter = forAllSystems (system: nixpkgs.legacyPackages.${system}.nixfmt-rfc-style);
-    };
+              }
+            ) profileFiles
+          )
+        );
+        formatter = forAllSystems (system: nixpkgs.legacyPackages.${system}.nixfmt-rfc-style);
+      }
+    ) ((import ./plugin.nix).outputs flakeArgs);
 }

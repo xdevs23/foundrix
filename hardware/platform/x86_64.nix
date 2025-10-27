@@ -8,9 +8,11 @@
     lib.mkIf (!pkgs.buildPlatform.isx86 || !pkgs.buildPlatform.isLinux)
       (
         lib.mkForce (
+          let
+            buildSystem = pkgs.buildPlatform.system;
+          in
           lib.info ''
-            Forcing hardware.graphics.enable32Bit to false because cross-building i686 \
-            is not supported on ${pkgs.buildPlatform.system}
+            Forcing hardware.graphics.enable32Bit = false due to unsupported cross-building i686 on ${buildSystem}
           '' false
         )
       );
