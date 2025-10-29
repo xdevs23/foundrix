@@ -44,6 +44,13 @@
     9090
   ];
 
+  boot.extraModprobeConfig = lib.mkIf (config.foundrix.hardware.gpu.intel.isSupported or false) ''
+    options snd slots=snd-hda-intel
+  '';
+
+  systemd.network.wait-online.anyInterface = true;
+  systemd.services.NetworkManager-wait-online.enable = false;
+
   boot.uki.name = lib.mkDefault "htos";
   system.nixos.distroId = lib.mkDefault "htos";
   system.nixos.distroName = lib.mkDefault "Home Theater OS";
