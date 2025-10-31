@@ -30,7 +30,6 @@
         foundrix = self;
         foundrixModules = self.nixosModules;
         inherit foundrixPackages;
-        inputs = builtins.removeAttrs flakeArgs [ "self" ];
       }
       // (import ./special.nix {
         inherit lib;
