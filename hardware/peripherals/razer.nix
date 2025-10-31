@@ -3,6 +3,7 @@
   mkConfigurableUsersOption,
   namespaced,
   namespacedCfg,
+  usersOrAll,
   ...
 }:
 {
@@ -18,7 +19,7 @@
     in
     {
       hardware.openrazer.enable = true;
-      hardware.openrazer.users = cfg.users;
+      hardware.openrazer.users = usersOrAll cfg.users;
       environment.systemPackages = with pkgs.unstable; [
         openrazer-daemon
         polychromatic

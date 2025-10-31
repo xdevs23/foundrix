@@ -2,6 +2,7 @@
   mkConfigurableUsersOption,
   namespaced,
   namespacedCfg,
+  usersOrAll,
   ...
 }:
 {
@@ -16,7 +17,7 @@
       cfg = namespacedCfg __curPos;
     in
     {
-      users.groups.cdrom.members = cfg.users;
+      users.groups.cdrom.members = usersOrAll cfg.users;
       boot.kernelModules = [ "sg" ];
     };
 }

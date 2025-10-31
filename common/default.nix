@@ -33,12 +33,28 @@
         description ? "",
       }:
       lib.mkOption {
-        type = with lib.types; listOf str;
-        default = builtins.filter (name: config.users.users.${name}.isNormalUser) (
-          builtins.attrNames config.users.users
-        );
+        type = with lib.types; nullOr (listOf str);
+        default = null;
         inherit description;
       };
+    _module.args.applyHomeManagerUsers =
+      users: cfg:
+      if users == null then
+        {
+          home-manager.sharedModules = [ cfg ];
+        }
+      else
+        {
+          home-manager.users = lib.genAttrs users (username: cfg);
+        };
+    _module.args.usersOrAll =
+      users:
+      if users == null then
+        builtins.filter (name: config.users.users.${name}.isNormalUser) (
+          builtins.attrNames config.users.users
+        )
+      else
+        users;
     _module.args.namespacedCfg =
       curPos:
       let
