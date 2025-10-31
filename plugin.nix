@@ -1,6 +1,6 @@
 {
   outputs =
-    { self, nixpkgs, ... }:
+    { self, nixpkgs, ... }@flakeArgs:
     let
       lib = nixpkgs.lib;
       forAllSystems = nixpkgs.lib.genAttrs nixpkgs.lib.systems.flakeExposed;
@@ -18,6 +18,7 @@
       // (import ./special.nix {
         inherit lib;
         foundrix = self;
+        inputs = builtins.removeAttrs flakeArgs [ "self" ];
       });
 
       customLib =

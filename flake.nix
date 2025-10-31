@@ -6,6 +6,10 @@
     # is to deviate from the main one
     nixpkgs-unstable.url = "github:NixOS/nixpkgs/nixos-unstable";
     nixpkgs-master.url = "github:NixOS/nixpkgs/master";
+    home-manager = {
+      url = "github:nix-community/home-manager/master";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs = (
@@ -26,6 +30,7 @@
         foundrix = self;
         foundrixModules = self.nixosModules;
         inherit foundrixPackages;
+        inputs = builtins.removeAttrs flakeArgs [ "self" ];
       }
       // (import ./special.nix {
         inherit lib;

@@ -14,6 +14,7 @@
     config.clamav
     config.compat
     config.gstreamer
+    config.home-manager
     config.mdraid
     config.networking.network-discovery
     config.oomd
