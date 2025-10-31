@@ -14,11 +14,11 @@
         foundrix = self;
         foundrixModules = self.nixosModules;
         inherit foundrixPackages;
+        inputs = builtins.removeAttrs flakeArgs [ "self" ];
       }
       // (import ./special.nix {
         inherit lib;
         foundrix = self;
-        inputs = builtins.removeAttrs flakeArgs [ "self" ];
       });
 
       customLib =
