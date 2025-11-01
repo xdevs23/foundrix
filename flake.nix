@@ -124,6 +124,7 @@
         )
         // {
           inherit pluggedInTo;
+          foundrixInputs = builtins.removeAttrs flakeArgs [ "self" ];
         };
       checks = forAllSystems (
         system:

@@ -2,11 +2,12 @@
   inputs,
   foundrixModules,
   foundrixPackages,
+  foundrixInputs,
   ...
 }:
 {
   imports = [
-    inputs.home-manager.nixosModules.home-manager
+    foundrixInputs.home-manager.nixosModules.home-manager
   ];
   home-manager = {
     useGlobalPkgs = true;
