@@ -8,6 +8,10 @@ let
   platformDir = ../hardware/platform;
   platformFiles = builtins.attrNames (builtins.readDir platformDir);
   platformModules = builtins.filter (f: lib.hasSuffix ".nix" f) platformFiles;
+  mkPlatformName =
+    path:
+    lib.strings.join "." (lib.lists.dropEnd 1 (lib.strings.splitString "." (builtins.baseNameOf path)));
+  platformNames = builtins.map mkPlatformName platformModules;
 
   mkDeviceFrameworkModules = targetPlatformConfiguration: [
     ./device-specific.nix
@@ -46,7 +50,17 @@ rec {
               nixpkgs.buildPlatform = pkgs.system;
             };
             finalConfiguration = mkFinalConfiguration (args // { inherit targetPlatformConfiguration; });
-            buildCfg = finalConfiguration.config.system.build;
+            buildCfg =
+              if
+                finalConfiguration.config.device.platforms == null
+                || (
+                  ((lib.lists.intersectLists platformNames finalConfiguration.config.device.platforms) != [ ])
+                  && builtins.elem (mkPlatformName platformFile) finalConfiguration.config.device.platforms
+                )
+              then
+                finalConfiguration.config.system.build
+              else
+                null;
           in
           rec {
             inherit arch finalConfiguration;

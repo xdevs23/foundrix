@@ -13,6 +13,11 @@
           default = 1;
         };
       };
+      platforms = lib.mkOption {
+        type = with lib.types; nullOr (listOf str);
+        description = "Platforms to support. If not specified, all platforms are supported";
+        default = null;
+      };
     };
   };
 }
