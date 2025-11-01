@@ -1,6 +1,11 @@
 {
   outputs =
-    { self, nixpkgs, ... }@flakeArgs:
+    {
+      self,
+      nixpkgs,
+      foundrix,
+      ...
+    }@flakeArgs:
     let
       lib = nixpkgs.lib;
       forAllSystems = nixpkgs.lib.genAttrs nixpkgs.lib.systems.flakeExposed;
@@ -11,9 +16,8 @@
           directory = ./packages;
         });
       defaultSpecialArgs = {
-        foundrix = self;
-        foundrixModules = self.nixosModules;
-        inherit foundrixPackages;
+        foundrixModules = foundrix.nixosModules;
+        inherit foundrix foundrixPackages;
         inputs = builtins.removeAttrs flakeArgs [ "self" ];
       }
       // (import ./special.nix {
