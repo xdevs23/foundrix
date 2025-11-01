@@ -11,7 +11,7 @@
 }:
 {
   options = namespaced __curPos {
-    configure.users = mkConfigurableUsersOption {
+    users = mkConfigurableUsersOption {
       description = "Which users to apply hyprland configuration to. Defaults to all users.";
     };
     monitors = lib.mkOption {
