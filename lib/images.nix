@@ -10,7 +10,7 @@ let
   platformModules = builtins.filter (f: lib.hasSuffix ".nix" f) platformFiles;
   mkPlatformName =
     path:
-    lib.strings.join "." (lib.lists.dropEnd 1 (lib.strings.splitString "." (builtins.baseNameOf path)));
+    lib.concatStringsSep "." (lib.lists.dropEnd 1 (lib.strings.splitString "." (builtins.baseNameOf path)));
   platformNames = builtins.map mkPlatformName platformModules;
 
   mkDeviceFrameworkModules = targetPlatformConfiguration: [
