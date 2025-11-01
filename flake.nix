@@ -26,19 +26,6 @@
           inherit (pkgs) callPackage;
           directory = ./packages;
         });
-      defaultSpecialArgs = {
-        foundrix = self;
-        foundrixModules = self.nixosModules;
-        inherit foundrixPackages;
-      }
-      // (import ./special.nix {
-        inherit lib;
-        foundrix = self;
-      });
-      internalSpecialArgs = {
-        inputs = builtins.removeAttrs flakeArgs [ "self" ];
-      };
-
       traverseDirectory = import ./lib/traverse-directory.nix { inherit lib; };
 
       collectNixFiles =
@@ -57,7 +44,7 @@
             ./common
             path
           ];
-          config._module.specialArgs = defaultSpecialArgs;
+          config._module.specialArgs = self.nixosModules.foundrixSpecialArgs;
         };
 
       # Process directory recursively to create nested attribute set of modules
@@ -91,7 +78,7 @@
     pluggedInTo flakeArgs {
       nixosConfigurations = {
         smoke-test = lib.nixosSystem {
-          specialArgs = defaultSpecialArgs // internalSpecialArgs;
+          specialArgs = self.nixosModules.foundrixSpecialArgs;
           modules = [
             ./common
             self.nixosModules.profiles.all-modules
@@ -136,7 +123,6 @@
             ]
         )
         // {
-          foundrixSpecialArgs = defaultSpecialArgs;
           inherit pluggedInTo;
         };
       checks = forAllSystems (
@@ -156,7 +142,7 @@
               value = pkgs.testers.runNixOSTest {
                 name = "${profileName}-basic";
                 node.pkgsReadOnly = false;
-                node.specialArgs = defaultSpecialArgs // internalSpecialArgs;
+                node.specialArgs = self.nixosModules.defaultSpecialArgs;
                 nodes.machine = {
                   imports = [
                     ./common

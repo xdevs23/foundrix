@@ -45,6 +45,9 @@
 
     in
     {
+      nixosModules = {
+        foundrixSpecialArgs = defaultSpecialArgs;
+      };
       packages = forAllSystems (
         system:
         let
