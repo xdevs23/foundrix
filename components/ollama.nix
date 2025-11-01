@@ -1,5 +1,6 @@
 {
   pkgs,
+  pkgsUnstable,
   lib,
   config,
   ...
@@ -11,11 +12,11 @@ let
 
   ollamaPackage =
     if intelGpuSupport then
-      pkgs.unstable.ollama
+      pkgsUnstable.ollama
     else if amdGpuSupport then
-      pkgs.unstable.ollama-rocm.override { inherit rocmPackages; }
+      pkgsUnstable.ollama-rocm.override { inherit rocmPackages; }
     else
-      pkgs.unstable.ollama;
+      pkgsUnstable.ollama;
 
   rocmScript = config.foundrix.hardware.gpu.amd.rocmScript;
 in

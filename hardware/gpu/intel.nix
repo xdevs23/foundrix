@@ -2,6 +2,7 @@
   options,
   lib,
   pkgs,
+  pkgsUnstable,
   namespaced,
   namespacedCfg,
   ...
@@ -22,7 +23,7 @@
     };
     xpuPackages = lib.mkOption {
       type = with lib.types; listOf package;
-      default = with (if (namespacedCfg __curPos).useUnstablePackages then pkgs.unstable else pkgs); [
+      default = with (if (namespacedCfg __curPos).useUnstablePackages then pkgsUnstable else pkgs); [
         level-zero
         intel-compute-runtime
         intel-media-driver
@@ -66,7 +67,7 @@
           ZES_ENABLE_SYSMAN = 1;
           SYCL_DEVICE_FILTER = "level_zero:gpu";
         };
-        environment.systemPackages = with (if cfg.useUnstablePackages then pkgs.unstable else pkgs); [
+        environment.systemPackages = with (if cfg.useUnstablePackages then pkgsUnstable else pkgs); [
           intel-gmmlib
           opencl-headers
           sycl-info

@@ -1,5 +1,6 @@
 {
   pkgs,
+  pkgsUnstable,
   lib,
   config,
   ...
@@ -11,14 +12,14 @@ let
 
   llamaPackage =
     if intelGpuSupport then
-      pkgs.unstable.llama-cpp-vulkan
+      pkgsUnstable.llama-cpp-vulkan
     else if amdGpuSupport then
-      pkgs.unstable.llama-cpp.override {
+      pkgsUnstable.llama-cpp.override {
         inherit rocmPackages;
         rocmSupport = true;
       }
     else
-      pkgs.unstable.llama-cpp;
+      pkgsUnstable.llama-cpp;
 
   rocmScript = config.foundrix.hardware.gpu.amd.rocmScript;
 in
