@@ -3,6 +3,7 @@
   directory,
   includeDirectories ? false, # Whether to include directories themselves as entries
   includeDefaultNix ? false, # Whether to exclude default.nix files
+  recurse ? true,
   format ? "attrset", # "attrset" or "list"
 }:
 let
@@ -23,7 +24,7 @@ let
               lib.replaceStrings [ "/" ] [ "-" ] (lib.removeSuffix ".nix" newRelativePath);
         in
         if type == "directory" then
-          (processDir path newRelativePath)
+          (if recurse then processDir path newRelativePath else [ ])
           ++ (
             if includeDirectories then
               [

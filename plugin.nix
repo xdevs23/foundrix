@@ -44,6 +44,7 @@
           traverseDirectory {
             directory = dir;
             includeDirectories = true;
+            recurse = false;
           }
         else
           { };
