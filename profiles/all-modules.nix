@@ -6,8 +6,14 @@
 }:
 {
   imports = with foundrixModules; [
-    config.security.pam-login-limits
-    config.adb
+    config.filesystem.esp
+    config.filesystem.root-tmpfs
+    config.linux.sysrq
+    config.media.pipewire
+    config.networking.network-discovery
+    config.security.all-strong
+    config.shell.zsh.lite
+    config.virtualisation.docker
     config.appimage
     config.basic-fonts
     config.basic-user-system
@@ -16,12 +22,10 @@
     config.gstreamer
     config.home-manager
     config.mdraid
-    config.networking.network-discovery
+    config.nix
     config.oomd
     config.repart-config
-    config.filesystem.esp
-    config.filesystem.root-tmpfs
-    config.media.pipewire
+    config.virtd
     profiles.all-packages
     framework.disk-image
     framework.uefi-secure-boot

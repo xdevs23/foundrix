@@ -35,6 +35,9 @@
         inherit lib;
         foundrix = self;
       });
+      internalSpecialArgs = {
+        inputs = builtins.removeAttrs flakeArgs [ "self" ];
+      };
 
       traverseDirectory = import ./lib/traverse-directory.nix { inherit lib; };
 
@@ -88,7 +91,7 @@
     pluggedInTo flakeArgs {
       nixosConfigurations = {
         smoke-test = lib.nixosSystem {
-          specialArgs = defaultSpecialArgs;
+          specialArgs = defaultSpecialArgs // internalSpecialArgs;
           modules = [
             ./common
             self.nixosModules.profiles.all-modules
@@ -153,7 +156,7 @@
               value = pkgs.testers.runNixOSTest {
                 name = "${profileName}-basic";
                 node.pkgsReadOnly = false;
-                node.specialArgs = defaultSpecialArgs;
+                node.specialArgs = defaultSpecialArgs // internalSpecialArgs;
                 nodes.machine = {
                   imports = [
                     ./common

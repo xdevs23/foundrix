@@ -47,6 +47,18 @@
     kernelParams = [ "boot.shell_on_fail" ];
     initrd = {
       systemd.enable = true;
+      availableKernelModules =
+        # Typically, modern desktop-like systems will have NVMe and USB
+        lib.optionals
+          (pkgs.hostPlatform.isx86_64 || pkgs.hostPlatform.isAarch64 || pkgs.hostPlatform.isRiscV64)
+          [
+            "nvme"
+            "usb_storage"
+            "usbhid"
+            "xhci_pci"
+            "sd_mod"
+            "uas"
+          ];
     };
   };
 

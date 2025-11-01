@@ -37,16 +37,6 @@
         default = null;
         inherit description;
       };
-    _module.args.applyHomeManagerUsers =
-      users: cfg:
-      if users == null then
-        {
-          home-manager.sharedModules = [ cfg ];
-        }
-      else
-        {
-          home-manager.users = lib.genAttrs users (username: cfg);
-        };
     _module.args.usersOrAll =
       users:
       if users == null then

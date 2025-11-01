@@ -33,4 +33,14 @@
         if parts == [ ] then value else { ${builtins.head parts} = mkNested (builtins.tail parts) value; };
     in
     mkNested allParts options;
+  applyHomeManagerUsers =
+    users: cfg:
+    if users == null then
+      {
+        sharedModules = [ cfg ];
+      }
+    else
+      {
+        users = lib.genAttrs users (username: cfg);
+      };
 }

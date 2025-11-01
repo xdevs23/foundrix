@@ -1,7 +1,10 @@
 { lib, pkgs, ... }:
 {
   boot.initrd.availableKernelModules = [ "ahci" ];
-  boot.kernelParams = [ "elevator=bfq" ];
+  boot.kernelParams = [
+    "elevator=bfq"
+    "add_efi_memmap"
+  ];
   nixpkgs.hostPlatform = lib.mkDefault "x86_64-linux";
   boot.loader.efi.canTouchEfiVariables = lib.mkDefault true;
   hardware.graphics.enable32Bit =
