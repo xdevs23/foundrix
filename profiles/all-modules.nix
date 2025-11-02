@@ -6,8 +6,6 @@
 }:
 {
   imports = with foundrixModules; [
-    config.filesystem.esp
-    config.filesystem.root-tmpfs
     config.linux.sysrq
     config.media.pipewire
     config.networking.network-discovery
@@ -27,7 +25,6 @@
     config.repart-config
     config.virtd
     profiles.all-packages
-    framework.disk-image
     framework.uefi-secure-boot
   ];
   networking.hostName = builtins.head (

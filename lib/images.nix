@@ -75,15 +75,19 @@ rec {
               "update@compressed" = buildCfg.compressedOtaUpdate or null;
               toplevel = buildCfg.toplevel or null;
               qemu-launch =
-                if (buildCfg.image or null) == null then
-                  null
-                else
+                if (qemuCfg.config.system.build.toplevelClosure or null) != null then
+                  customLib.qemu-launch-closure {
+                    closure = qemuCfg.config.system.build.toplevelClosure;
+                    uki = "${qemuCfg.config.system.build.uki}/${qemuCfg.config.system.boot.loader.ukiFile}";
+                  }
+                else if (buildCfg.image or null) != null then
                   let
                     qemuBuildCfg = qemuCfg.config.system.build;
                   in
                   customLib.qemu-launch {
                     systemDisk = "${qemuBuildCfg.image}/${qemuCfg.config.image.fileName}";
-                  };
+                  }
+                else null;
             };
           }
         ) platformModules

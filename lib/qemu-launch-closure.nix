@@ -1,0 +1,61 @@
+{ pkgs, lib, ... }:
+{
+  closure,
+  uki,
+  additionalDisks ? [ ],
+  serialShellPath ? null,
+  journalShellPath ? null,
+  hostForwards ? [ ],
+  ...
+}:
+pkgs.writeShellScriptBin "launch-qemu-closure-${pkgs.hostPlatform.qemuArch}" ''
+  ${lib.getExe' pkgs.qemu_kvm "qemu-system-${pkgs.hostPlatform.qemuArch}"} \
+    ${lib.optionalString pkgs.hostPlatform.isx86_64 ''
+      -M q35,nvdimm=on \
+      -M accel=kvm:tcg \
+      -bios ${pkgs.OVMF.fd}/FV/OVMF.fd \
+    ''} \
+    ${lib.optionalString (pkgs.buildPlatform.system == pkgs.hostPlatform.system) ''-cpu host \''}
+    -m 8G,slots=2,maxmem=16G \
+    -smp sockets=1,dies=1,cores=4,threads=1 \
+    -device qemu-xhci,id=xhci \
+    -drive file=fat:ro:${pkgs.runCommandLocal "" {} ''
+      mkdir -p $out/EFI/BOOT
+      cp --reflink=auto ${uki} $out/EFI/BOOT/BOOTX64.efi
+    ''},format=raw \
+    -virtfs local,path=${closure},mount_tag=store,security_model=none \
+    ${lib.concatMapStringsSep " " (disk: "-drive ${lib.escapeShellArg disk}") additionalDisks} \
+    -chardev stdio,id=stdio0 \
+    -serial chardev:stdio0 \
+    ${
+      if serialShellPath == null then
+        ""
+      else
+        ''
+          -chardev socket,id=serialshell,path=${serialShellPath},server=on,wait=off \
+          -serial chardev:serialshell \
+        ''
+    } \
+    ${
+      if journalShellPath == null then
+        ""
+      else
+        ''
+          -chardev socket,id=journalshell,path=${journalShellPath},server=on,wait=off \
+          -serial chardev:journalshell \
+        ''
+    } \
+    -parallel none \
+    -display gtk,gl=on,show-cursor=off \
+    -device virtio-gpu-pci,edid=on,yres=720,xres=1280 \
+    ${
+      lib.concatStringsSep "," (
+        [
+          "-nic user,model=virtio-net-pci"
+        ]
+        ++ (lib.map (fwd: "hostfwd=${fwd}") hostForwards)
+      )
+    } \
+    -boot c \
+    -snapshot
+''
