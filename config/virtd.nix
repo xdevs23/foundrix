@@ -1,6 +1,7 @@
 {
   pkgs,
   mkConfigurableUsersOption,
+  applyHomeManagerUsers,
   usersOrAll,
   lib,
   namespaced,
@@ -38,6 +39,11 @@
             }).fd
           ];
         };
+      };
+    };
+    home-manager = applyHomeManagerUsers (namespacedCfg __curPos).users {
+      home.sessionVariables = {
+        LIBVIRT_DEFAULT_URI = "qemu:///system";
       };
     };
   };
