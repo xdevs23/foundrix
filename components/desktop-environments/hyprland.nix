@@ -412,7 +412,6 @@
                   text = "$TIME";
                   color = "rgba(255, 255, 255, 0.8)";
                   font_size = 64;
-                  font_family = "Adwaita Sans";
                   rotate = 0;
                   position = "0, 200";
                   halign = "center";
@@ -492,6 +491,11 @@
               '';
             };
           };
+          home.sessionVariables = {
+            MOZ_ENABLE_WAYLAND = "1";
+            NIXOS_OZONE_WL = "1";
+          };
+          services.gnome-keyring.enable = true;
         };
       };
 }
