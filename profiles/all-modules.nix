@@ -7,6 +7,7 @@
 {
   imports = with foundrixModules; [
     config.linux.sysrq
+    config.graphics.cursors.breezex-rosepine
     config.media.pipewire
     config.networking.network-discovery
     config.security.all-strong

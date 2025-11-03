@@ -1,5 +1,5 @@
 { lib, foundrix, ... }:
-{
+rec {
   maybeOr = value: default: if value == null then default else value;
   mkMaybe = value: lib.mkIf (value != null) value;
   mkMaybeDefault = value: lib.mkIf (value != null) (lib.mkDefault value);
@@ -33,6 +33,7 @@
         if parts == [ ] then value else { ${builtins.head parts} = mkNested (builtins.tail parts) value; };
     in
     mkNested allParts options;
+  applyHomeManagerShared = applyHomeManagerUsers null;
   applyHomeManagerUsers =
     users: cfg:
     if users == null then
@@ -43,4 +44,29 @@
       {
         users = lib.genAttrs users (username: cfg);
       };
+  mkPerUserHomeManagerModule =
+    curPos: config:
+    {
+      mkConfigurableUsersOption,
+      applyHomeManagerUsers,
+      namespaced,
+      namespacedCfg,
+      ...
+    }:
+    {
+      options = namespaced curPos {
+        users = mkConfigurableUsersOption {
+          description = "Which users to apply hyprland configuration to. Defaults to all users.";
+        };
+      };
+
+      config =
+        let
+          cfg = namespacedCfg curPos;
+        in
+        {
+          home-manager = applyHomeManagerUsers cfg.users config;
+        };
+    };
+
 }
