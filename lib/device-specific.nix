@@ -18,6 +18,11 @@
         description = "Platforms to support. If not specified, all platforms are supported";
         default = null;
       };
+      crossCompile = lib.mkOption {
+        type = lib.types.bool;
+        description = "Whether to allow cross-compilation";
+        default = true;
+      };
     };
   };
 }

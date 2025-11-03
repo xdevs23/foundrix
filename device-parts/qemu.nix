@@ -1,4 +1,9 @@
-{ modulesPath, foundrixModules, lib, ... }:
+{
+  modulesPath,
+  foundrixModules,
+  lib,
+  ...
+}:
 {
   imports = [
     "${modulesPath}/profiles/qemu-guest.nix"

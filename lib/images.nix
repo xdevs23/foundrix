@@ -10,7 +10,9 @@ let
   platformModules = builtins.filter (f: lib.hasSuffix ".nix" f) platformFiles;
   mkPlatformName =
     path:
-    lib.concatStringsSep "." (lib.lists.dropEnd 1 (lib.strings.splitString "." (builtins.baseNameOf path)));
+    lib.concatStringsSep "." (
+      lib.lists.dropEnd 1 (lib.strings.splitString "." (builtins.baseNameOf path))
+    );
   platformNames = builtins.map mkPlatformName platformModules;
 
   mkDeviceFrameworkModules = targetPlatformConfiguration: [
@@ -38,7 +40,6 @@ rec {
         # And some architectures have broken packages
         pkgs.stdenv.buildPlatform.isLinux
         && (pkgs.stdenv.buildPlatform.isx86_64 || pkgs.stdenv.buildPlatform.isAarch64)
-        && (pkgs.stdenv.hostPlatform.isx86_64 || pkgs.stdenv.hostPlatform.isAarch64)
       )
       (
         map (
@@ -52,17 +53,25 @@ rec {
             finalConfiguration = mkFinalConfiguration (args // { inherit targetPlatformConfiguration; });
             buildCfg =
               if
-                finalConfiguration.config.device.platforms == null
-                || (
-                  ((lib.lists.intersectLists platformNames finalConfiguration.config.device.platforms) != [ ])
-                  && builtins.elem (mkPlatformName platformFile) finalConfiguration.config.device.platforms
+                # Again, just avoiding broken packages
+                (finalConfiguration.pkgs.hostPlatform.isx86_64 || finalConfiguration.pkgs.hostPlatform.isAarch64)
+                && (
+                  finalConfiguration.config.device.crossCompile
+                  || finalConfiguration.pkgs.hostPlatform == finalConfiguration.pkgs.buildPlatform
+                )
+                && (
+                  finalConfiguration.config.device.platforms == null
+                  || (
+                    ((lib.lists.intersectLists platformNames finalConfiguration.config.device.platforms) != [ ])
+                    && builtins.elem (mkPlatformName platformFile) finalConfiguration.config.device.platforms
+                  )
                 )
               then
                 finalConfiguration.config.system.build
               else
                 null;
           in
-          rec {
+          builtins.addErrorContext "while constructing outputs for ${arch}" rec {
             inherit arch finalConfiguration;
             qemuCfg = nixosConfiguration.extendModules {
               modules = (mkDeviceFrameworkModules targetPlatformConfiguration) ++ [
@@ -87,7 +96,8 @@ rec {
                   customLib.qemu-launch {
                     systemDisk = "${qemuBuildCfg.image}/${qemuCfg.config.image.fileName}";
                   }
-                else null;
+                else
+                  null;
             };
           }
         ) platformModules

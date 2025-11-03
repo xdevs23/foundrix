@@ -19,10 +19,12 @@ pkgs.writeShellScriptBin "launch-qemu-closure-${pkgs.hostPlatform.qemuArch}" ''
     -m 8G,slots=2,maxmem=16G \
     -smp sockets=1,dies=1,cores=4,threads=1 \
     -device qemu-xhci,id=xhci \
-    -drive file=fat:ro:${pkgs.runCommandLocal "" {} ''
-      mkdir -p $out/EFI/BOOT
-      cp --reflink=auto ${uki} $out/EFI/BOOT/BOOTX64.efi
-    ''},format=raw \
+    -drive file=fat:ro:${
+      pkgs.runCommandLocal "" { } ''
+        mkdir -p $out/EFI/BOOT
+        cp --reflink=auto ${uki} $out/EFI/BOOT/BOOTX64.efi
+      ''
+    },format=raw \
     -virtfs local,path=${closure},mount_tag=store,security_model=none \
     ${lib.concatMapStringsSep " " (disk: "-drive ${lib.escapeShellArg disk}") additionalDisks} \
     -chardev stdio,id=stdio0 \
