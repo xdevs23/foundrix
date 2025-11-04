@@ -19,6 +19,7 @@ pkgs.writeShellScriptBin "launch-qemu-closure-${pkgs.hostPlatform.qemuArch}" ''
     -m 8G,slots=2,maxmem=16G \
     -smp sockets=1,dies=1,cores=4,threads=1 \
     -device qemu-xhci,id=xhci \
+    -device usb-tablet,bus=xhci.0 \
     -drive file=fat:ro:${
       pkgs.runCommandLocal "" { } ''
         mkdir -p $out/EFI/BOOT
@@ -50,6 +51,7 @@ pkgs.writeShellScriptBin "launch-qemu-closure-${pkgs.hostPlatform.qemuArch}" ''
     -parallel none \
     -display gtk,gl=on,show-cursor=off \
     -device virtio-gpu-pci,edid=on,yres=720,xres=1280 \
+    -vga none \
     ${
       lib.concatStringsSep "," (
         [
