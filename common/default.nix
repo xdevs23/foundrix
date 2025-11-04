@@ -10,6 +10,7 @@
   imports = [
     ./general.nix
     ./upstream-fixes.nix
+    ./hardware.nix
   ];
 
   options = {

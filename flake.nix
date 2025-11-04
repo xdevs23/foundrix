@@ -143,7 +143,7 @@
               value = pkgs.testers.runNixOSTest {
                 name = "${profileName}-basic";
                 node.pkgsReadOnly = false;
-                node.specialArgs = self.nixosModules.defaultSpecialArgs;
+                node.specialArgs = self.nixosModules.foundrixSpecialArgs;
                 nodes.machine = {
                   imports = [
                     ./common

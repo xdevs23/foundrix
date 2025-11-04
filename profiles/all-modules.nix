@@ -25,6 +25,7 @@
     config.oomd
     config.repart-config
     config.virtd
+    config.vscode-opinionated
     profiles.all-packages
     framework.uefi-secure-boot
   ];
