@@ -11,6 +11,7 @@
 {
   imports = [
     foundrixModules.config.graphics.fonts.adwaita-sans
+    foundrixModules.config.graphics.gtk
   ];
 
   options = namespaced __curPos {
