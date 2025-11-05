@@ -18,6 +18,12 @@ let
   mkDeviceFrameworkModules = targetPlatformConfiguration: [
     ./device-specific.nix
     targetPlatformConfiguration
+    (
+      { foundrixModules, ... }:
+      {
+        imports = [ foundrixModules.config.home-manager-prebuilt ];
+      }
+    )
   ];
   mkFinalConfiguration =
     {
