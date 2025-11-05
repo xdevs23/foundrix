@@ -15,4 +15,5 @@
     backupFileExtension = "bak";
     extraSpecialArgs = { inherit inputs foundrixModules foundrixPackages; };
   };
+  _module.args.libHm = foundrixInputs.home-manager.lib;
 }

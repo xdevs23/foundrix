@@ -14,7 +14,7 @@
         lib.types.submodule {
           options = {
             configPath = lib.mkOption {
-              type = lib.types.str;
+              type = with lib.types; either str path;
             };
             additionalArgs = lib.mkOption {
               type = lib.types.str;

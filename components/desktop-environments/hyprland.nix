@@ -362,137 +362,140 @@
                 ]
                 ++ cfg.additionalBinde;
               };
-            services.hypridle = {
-              enable = true;
-              settings =
-                let
-                  brightnessctl = lib.getExe pkgs.brightnessctl;
-                in
-                {
-                  general = {
-                    after_sleep_cmd = "hyprctl dispatch dpms on";
-                    ignore_dbus_inhibit = false;
-                    lock_cmd = "pidof hyprlock || hyprlock";
-                  };
-
-                  listener = [
-                    {
-                      timeout = 120;
-                      on-timeout = "${brightnessctl} -s set 10";
-                      on-resume = "${brightnessctl} -r";
-                    }
-                    {
-                      timeout = 10;
-                      on-timeout = "${brightnessctl} -sd rgb:kbd_backlight set 0";
-                      on-resume = "${brightnessctl} -rd rgb:kbd_backlight";
-                    }
-                    {
-                      timeout = 300;
-                      on-timeout = "loginctl lock-session";
-                    }
-                  ];
-                };
-            };
-            programs.hyprlock = {
-              enable = true;
-              settings = {
-                background = {
-                  monitor = "";
-                  blur_passes = 3;
-                  blur_size = 7;
-                  noise = 0.01;
-                  contrast = 0.96;
-                  brightness = 0.6;
-                  vibrancy = 0.1;
-                  vibrancy_darkness = 0.1;
+          };
+          services.hypridle = {
+            enable = true;
+            settings =
+              let
+                brightnessctl = lib.getExe pkgs.brightnessctl;
+              in
+              {
+                general = {
+                  after_sleep_cmd = "hyprctl dispatch dpms on";
+                  ignore_dbus_inhibit = false;
+                  lock_cmd = "pidof hyprlock || hyprlock";
                 };
 
-                label = {
-                  monitor = "";
-                  text = "$TIME";
-                  color = "rgba(255, 255, 255, 0.8)";
-                  font_size = 64;
-                  rotate = 0;
-                  position = "0, 200";
-                  halign = "center";
-                  valign = "center";
-                };
+                listener = [
+                  {
+                    timeout = 120;
+                    on-timeout = "${brightnessctl} -s set 10";
+                    on-resume = "${brightnessctl} -r";
+                  }
+                  {
+                    timeout = 10;
+                    on-timeout = "${brightnessctl} -sd rgb:kbd_backlight set 0";
+                    on-resume = "${brightnessctl} -rd rgb:kbd_backlight";
+                  }
+                  {
+                    timeout = 300;
+                    on-timeout = "loginctl lock-session";
+                  }
+                ];
+              };
+          };
+          programs.hyprlock = {
+            enable = true;
+            settings = {
+              background = {
+                monitor = "";
+                blur_passes = 3;
+                blur_size = 7;
+                noise = 0.01;
+                contrast = 0.96;
+                brightness = 0.6;
+                vibrancy = 0.1;
+                vibrancy_darkness = 0.1;
+              };
 
-                input-field = {
-                  monitor = "";
-                  size = "200, 48";
-                  dots_size = "0.2"; # Scale of input-field height, 0.2 - 0.8
-                  dots_spacing = "0.1"; # Scale of dots' absolute size, 0.0 - 1.0
-                  dots_center = false;
-                  dots_rounding = -1; # -1 default circle, -2 follow input-field rounding
-                  inner_color = "rgb(200, 200, 200)";
-                  font_color = "rgb(10, 10, 10)";
-                  fade_on_empty = true;
-                  fade_timeout = 1000; # Milliseconds before fade_on_empty is triggered.
-                  placeholder_text = "<i>Input Password...</i>"; # Text rendered in the input box when it's empty.
-                  hide_input = false;
-                  rounding = -1; # -1 means complete rounding (circle/oval)
-                  check_color = "rgb(204, 136, 34)";
-                  fail_color = "rgb(204, 34, 34)"; # if authentication failed, changes outer_color and fail message color
-                  fail_text = "<i>$FAIL <b>($ATTEMPTS)</b></i>"; # can be set to empty
-                  fail_transition = 300; # transition time in ms between normal outer_color and fail_color
-                  capslock_color = -1;
-                  numlock_color = -1;
-                  bothlock_color = -1; # when both locks are active. -1 means don't change outer color (same for above)
-                  invert_numlock = false; # change color if numlock is off
-                  swap_font_color = false; # see below
+              label = {
+                monitor = "";
+                text = "$TIME";
+                color = "rgba(255, 255, 255, 0.8)";
+                font_size = 64;
+                rotate = 0;
+                position = "0, 200";
+                halign = "center";
+                valign = "center";
+              };
 
-                  position = "0, -20";
-                  halign = "center";
-                  valign = "center";
-                };
+              input-field = {
+                monitor = "";
+                size = "200, 48";
+                dots_size = "0.2"; # Scale of input-field height, 0.2 - 0.8
+                dots_spacing = "0.1"; # Scale of dots' absolute size, 0.0 - 1.0
+                dots_center = false;
+                dots_rounding = -1; # -1 default circle, -2 follow input-field rounding
+                inner_color = "rgb(200, 200, 200)";
+                font_color = "rgb(10, 10, 10)";
+                fade_on_empty = true;
+                fade_timeout = 1000; # Milliseconds before fade_on_empty is triggered.
+                placeholder_text = "<i>Input Password...</i>"; # Text rendered in the input box when it's empty.
+                hide_input = false;
+                rounding = -1; # -1 means complete rounding (circle/oval)
+                check_color = "rgb(204, 136, 34)";
+                fail_color = "rgb(204, 34, 34)"; # if authentication failed, changes outer_color and fail message color
+                fail_text = "<i>$FAIL <b>($ATTEMPTS)</b></i>"; # can be set to empty
+                fail_transition = 300; # transition time in ms between normal outer_color and fail_color
+                capslock_color = -1;
+                numlock_color = -1;
+                bothlock_color = -1; # when both locks are active. -1 means don't change outer color (same for above)
+                invert_numlock = false; # change color if numlock is off
+                swap_font_color = false; # see below
+
+                position = "0, -20";
+                halign = "center";
+                valign = "center";
               };
             };
-            programs.wofi = {
-              enable = true;
-              package = pkgsUnstable.wofi;
-              style = ''
-                #outer-box {
-                  background-color: rgba(0, 0, 0, 0.32);
-                  padding: 8px;
-                }
+          };
+          programs.wofi = {
+            enable = true;
+            package = pkgsUnstable.wofi;
+            style = ''
+              #outer-box {
+                background-color: rgba(0, 0, 0, 0.32);
+                padding: 8px;
+              }
 
-                window {
-                  background-color: transparent;
-                  color: #f8f8f8;
-                }
+              window {
+                background-color: transparent;
+                color: #f8f8f8;
+              }
 
-                #input {
-                  background-color: rgba(0, 0, 0, 0.5);
-                  border: none;
-                  outline: none;
-                  padding: 4px 8px;
-                  border-radius: 7px;
-                  margin-bottom: 8px;
-                  color: #f6f6f6;
-                }
+              #input {
+                background-color: rgba(0, 0, 0, 0.5);
+                border: none;
+                outline: none;
+                padding: 4px 8px;
+                border-radius: 7px;
+                margin-bottom: 8px;
+                color: #f6f6f6;
+              }
 
-                #scroll {
-                  background-color: rgba(0, 0, 0, 0.5);
-                  padding: 4px;
-                  border: none;
-                  border-radius: 7px;
-                }
+              #scroll {
+                background-color: rgba(0, 0, 0, 0.5);
+                padding: 4px;
+                border: none;
+                border-radius: 7px;
+              }
 
-                #entry {
-                  padding: 4px 8px;
-                }
+              #entry {
+                padding: 4px 8px;
+              }
 
-                #entry:selected {
-                  background: linear-gradient(45deg, rgba(0,180,231,0.32) 0%, rgba(0,231,180,0.32) 100%);
-                  border-radius: 3px;
-                  outline: none;
-                }
-              '';
-            };
+              #entry:selected {
+                background: linear-gradient(45deg, rgba(0,180,231,0.32) 0%, rgba(0,231,180,0.32) 100%);
+                border-radius: 3px;
+                outline: none;
+              }
+            '';
           };
           home.sessionVariables = {
             MOZ_ENABLE_WAYLAND = "1";
+            MOZ_WAYLAND = "1";
+            MOZ_DBUS_REMOTE = "1";
+            MOZ_USE_XINPUT2 = "1";
             NIXOS_OZONE_WL = "1";
           };
           services.gnome-keyring.enable = true;

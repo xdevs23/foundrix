@@ -1,5 +1,6 @@
 {
   pkgs,
+  pkgsUnstable,
   lib,
   config,
   mkConfigurableUsersOption,
@@ -17,7 +18,7 @@
       type = lib.types.package;
       description = "Steam package to use";
       default =
-        if config.foundrix.hardware.gpu.usesUnstablePackages then pkgs.unstable.steam else pkgs.steam;
+        if config.foundrix.hardware.gpu.usesUnstablePackages then pkgsUnstable.steam else pkgs.steam;
     };
     gamescope.enable = lib.mkEnableOption "gamescope";
     gamescope.session.enable = lib.mkEnableOption "gamescope session";
@@ -50,7 +51,7 @@
           capSysNice = lib.mkDefault true;
           package =
             if config.foundrix.hardware.gpu.usesUnstablePackages then
-              pkgs.unstable.gamescope
+              pkgsUnstable.gamescope
             else
               pkgs.gamescope;
         };
