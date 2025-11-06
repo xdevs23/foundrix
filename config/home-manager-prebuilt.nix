@@ -38,61 +38,63 @@
           ''
       ) userConfigs;
     in
-    lib.mkMerge [(namespaced __curPos {
-      build.prebuiltHomes = prebuiltHomes;
-    })
-    {
-      home-manager.useUserPackages = lib.mkForce false;
-      home-manager.sharedModules = [
-        {
-          programs.home-manager.enable = lib.mkForce false;
-        }
-      ];
-      fileSystems = lib.mkMerge (
-        lib.mapAttrsToList (userName: cfg: {
-          "/home/${userName}" = {
-            device = "overlay";
-            fsType = "overlay";
-            options = [
-              "lowerdir=${prebuiltHomes.${userName}}"
-              "upperdir=/var/home/${userName}/upper"
-              "workdir=/var/home/${userName}/work"
-              "x-systemd.requires=systemd-tmpfiles-setup.service"
-            ];
-          };
-        }) userConfigs
-      );
-      systemd.tmpfiles.settings = lib.mkMerge (
-        lib.mapAttrsToList (userName: cfg: {
-          "home-${userName}" = {
-            "/var/home/${userName}" = {
-              d = {
-                mode = "0750";
-                user = toString cfg.userId;
-                group = toString cfg.groupId;
+    lib.mkMerge [
+      (namespaced __curPos {
+        build.prebuiltHomes = prebuiltHomes;
+      })
+      {
+        home-manager.useUserPackages = lib.mkForce false;
+        home-manager.sharedModules = [
+          {
+            programs.home-manager.enable = lib.mkForce false;
+          }
+        ];
+        fileSystems = lib.mkMerge (
+          lib.mapAttrsToList (userName: cfg: {
+            "/home/${userName}" = {
+              device = "overlay";
+              fsType = "overlay";
+              options = [
+                "lowerdir=${prebuiltHomes.${userName}}"
+                "upperdir=/var/home/${userName}/upper"
+                "workdir=/var/home/${userName}/work"
+                "x-systemd.requires=systemd-tmpfiles-setup.service"
+              ];
+            };
+          }) userConfigs
+        );
+        systemd.tmpfiles.settings = lib.mkMerge (
+          lib.mapAttrsToList (userName: cfg: {
+            "home-${userName}" = {
+              "/var/home/${userName}" = {
+                d = {
+                  mode = "0750";
+                  user = toString cfg.userId;
+                  group = toString cfg.groupId;
+                };
+              };
+              "/var/home/${userName}/upper" = {
+                d = {
+                  mode = "0750";
+                  user = toString cfg.userId;
+                  group = toString cfg.groupId;
+                };
+              };
+              "/var/home/${userName}/work" = {
+                d = {
+                  mode = "0750";
+                  user = toString cfg.userId;
+                  group = toString cfg.groupId;
+                };
               };
             };
-            "/var/home/${userName}/upper" = {
-              d = {
-                mode = "0750";
-                user = toString cfg.userId;
-                group = toString cfg.groupId;
-              };
-            };
-            "/var/home/${userName}/work" = {
-              d = {
-                mode = "0750";
-                user = toString cfg.userId;
-                group = toString cfg.groupId;
-              };
-            };
-          };
-        }) userConfigs
-      );
-      systemd.services = lib.mkMerge (
-        lib.mapAttrsToList (userName: cfg: {
-          "home-manager-${userName}".enable = false;
-        }) userConfigs
-      );
-    }];
+          }) userConfigs
+        );
+        systemd.services = lib.mkMerge (
+          lib.mapAttrsToList (userName: cfg: {
+            "home-manager-${userName}".enable = false;
+          }) userConfigs
+        );
+      }
+    ];
 }
