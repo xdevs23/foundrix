@@ -14,28 +14,7 @@ let
       lib.lists.dropEnd 1 (lib.strings.splitString "." (builtins.baseNameOf path))
     );
   platformNames = builtins.map mkPlatformName platformModules;
-
-  mkDeviceFrameworkModules = targetPlatformConfiguration: [
-    ./device-specific.nix
-    targetPlatformConfiguration
-    (
-      { foundrixModules, ... }:
-      {
-        imports = [ foundrixModules.config.home-manager-prebuilt ];
-      }
-    )
-  ];
-  mkFinalConfiguration =
-    {
-      targetPlatformConfiguration,
-      deviceConfiguration,
-      nixosConfiguration,
-    }:
-    nixosConfiguration.extendModules {
-      modules = (mkDeviceFrameworkModules targetPlatformConfiguration) ++ [
-        deviceConfiguration
-      ];
-    };
+  inherit (customLib.deviceFramework) mkDeviceFrameworkModules mkFinalConfiguration;
 in
 rec {
   mkTargetOutputList =
@@ -46,6 +25,13 @@ rec {
         # And some architectures have broken packages
         pkgs.stdenv.buildPlatform.isLinux
         && (pkgs.stdenv.buildPlatform.isx86_64 || pkgs.stdenv.buildPlatform.isAarch64)
+        # Device is not allowed to be specified in the commonized configuration.
+        # In such a case, this configuration is likely device-specific and thus should not have
+        # images generated. For generating images, the device framework should be used.
+        # Note that using the device framework and having device-specific configs is not mutually exclusive.
+        # You can still have your commonized configs and then manually combine them into a separate config,
+        # for example in the case of nixos-rebuild.
+        && !(nixosConfiguration.config ? device)
       )
       (
         map (
@@ -82,6 +68,12 @@ rec {
             qemuCfg = nixosConfiguration.extendModules {
               modules = (mkDeviceFrameworkModules targetPlatformConfiguration) ++ [
                 ../device-parts/qemu.nix
+                (
+                  { foundrixModules, ... }:
+                  {
+                    imports = [ foundrixModules.config.home-manager-prebuilt ];
+                  }
+                )
               ];
             };
             outputs = {

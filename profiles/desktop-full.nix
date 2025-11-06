@@ -14,6 +14,7 @@
     foundrixModules.config.home-manager
     foundrixModules.config.nix
     foundrixModules.config.security.all
+    foundrixModules.config.xdg
   ];
 
   programs.gnupg.agent.enable = lib.mkDefault true;

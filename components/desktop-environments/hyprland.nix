@@ -8,9 +8,15 @@
   applyHomeManagerUsers,
   namespaced,
   namespacedCfg,
+  foundrixModules,
   ...
 }:
 {
+  imports = [
+    foundrixModules.config.graphics.gtk
+    foundrixModules.config.graphics.qt
+  ];
+
   options = namespaced __curPos {
     users = mkConfigurableUsersOption {
       description = "Which users to apply hyprland configuration to. Defaults to all users.";
@@ -66,6 +72,10 @@
     additionalBindm = lib.mkOption {
       type = with lib.types; listOf str;
       default = [ ];
+    };
+    extraConfig = lib.mkOption {
+      type = lib.types.str;
+      default = "";
     };
   };
 
@@ -124,6 +134,7 @@
             enable = true;
             package = config.programs.hyprland.package;
             portalPackage = config.programs.hyprland.portalPackage;
+            extraConfig = cfg.extraConfig;
             settings =
               let
                 wlPaste = lib.getExe' pkgs.wl-clipboard "wl-paste";

@@ -3,6 +3,7 @@
   pkgs,
   lib,
   foundrix,
+  foundrixPackages,
   options,
   ...
 }:
@@ -76,5 +77,6 @@
       in
       getPath config allParts;
     _module.args.system = pkgs.hostPlatform.system;
+    _module.args.foundrixPkgs = foundrixPackages pkgs;
   };
 }

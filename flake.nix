@@ -76,6 +76,7 @@
       modulesFromDirectoryRecursive = directory: processDirectoryRecursive directory;
     in
     pluggedInTo (flakeArgs // { foundrix = self; }) {
+      lib = import ./lib/export.nix;
       nixosConfigurations = {
         smoke-test = lib.nixosSystem {
           specialArgs = self.nixosModules.foundrixSpecialArgs;
@@ -117,7 +118,6 @@
               ./config
               ./framework
               ./hardware
-              ./home
               ./profiles
               ./services
             ]
