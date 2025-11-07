@@ -10,10 +10,13 @@ rec {
       deviceConfiguration,
       nixosConfiguration,
     }:
-    nixosConfiguration.extendModules {
+    (nixosConfiguration.extendModules {
       modules = (mkDeviceFrameworkModules targetPlatformConfiguration) ++ [
         deviceConfiguration
       ];
+    })
+    // {
+      deviceSpecific = true;
     };
   mkDeviceSpecificConfiguration =
     {

@@ -31,7 +31,8 @@ rec {
         # Note that using the device framework and having device-specific configs is not mutually exclusive.
         # You can still have your commonized configs and then manually combine them into a separate config,
         # for example in the case of nixos-rebuild.
-        && !(nixosConfiguration.config ? device)
+        && !(nixosConfiguration.deviceSpecific or false)
+        && !(nixosConfiguration.disableTargetOutputs or false)
       )
       (
         map (

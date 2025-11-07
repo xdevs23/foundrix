@@ -13,9 +13,8 @@
         pkgs.adwaita-icon-theme
         pkgs.adwaita-qt6
       ];
-      environment.sessionVariables = {
+      home.sessionVariables = {
         GTK_THEME = "Adwaita";
-        QT_STYLE_OVERRIDE = "Adwaita";
       };
       gtk = {
         theme = {
