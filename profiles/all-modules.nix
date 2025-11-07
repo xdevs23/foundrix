@@ -19,6 +19,7 @@
     config.clamav
     config.compat
     config.gstreamer
+    config.home-jdk
     config.home-manager
     config.mdraid
     config.nix
