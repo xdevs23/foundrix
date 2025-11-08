@@ -74,6 +74,21 @@
         processDir directory;
 
       modulesFromDirectoryRecursive = directory: processDirectoryRecursive directory;
+
+      foundrixNixosModules = lib.attrsets.mergeAttrsList (
+        map
+          (path: {
+            ${baseNameOf path} = if builtins.pathExists path then modulesFromDirectoryRecursive path else { };
+          })
+          [
+            ./components
+            ./config
+            ./framework
+            ./hardware
+            ./profiles
+            ./services
+          ]
+      );
     in
     pluggedInTo (flakeArgs // { foundrix = self; }) {
       lib = import ./lib/export.nix;
@@ -107,25 +122,10 @@
           )
         )
       );
-      nixosModules =
-        lib.attrsets.mergeAttrsList (
-          map
-            (path: {
-              ${baseNameOf path} = if builtins.pathExists path then modulesFromDirectoryRecursive path else { };
-            })
-            [
-              ./components
-              ./config
-              ./framework
-              ./hardware
-              ./profiles
-              ./services
-            ]
-        )
-        // {
-          inherit pluggedInTo;
-          foundrixInputs = builtins.removeAttrs flakeArgs [ "self" ];
-        };
+      nixosModules = foundrixNixosModules // {
+        inherit pluggedInTo;
+        foundrixInputs = builtins.removeAttrs flakeArgs [ "self" ];
+      };
       checks = forAllSystems (
         system:
         let
@@ -167,6 +167,7 @@
           '';
         };
       };
+      inherit (import ./show.nix { nixosModules = foundrixNixosModules; }) list-modules show-modules;
       formatter = forAllSystems (system: nixpkgs.legacyPackages.${system}.nixfmt-rfc-style);
     }
   );
