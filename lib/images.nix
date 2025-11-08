@@ -66,17 +66,21 @@ rec {
           in
           builtins.addErrorContext "while constructing outputs for ${arch}" rec {
             inherit arch finalConfiguration;
-            qemuCfg = nixosConfiguration.extendModules {
-              modules = (mkDeviceFrameworkModules targetPlatformConfiguration) ++ [
-                ../device-parts/qemu.nix
-                (
-                  { foundrixModules, ... }:
-                  {
-                    imports = [ foundrixModules.config.home-manager-prebuilt ];
-                  }
-                )
-              ];
-            };
+            qemuCfg =
+              if buildCfg == null then
+                null
+              else
+                nixosConfiguration.extendModules {
+                  modules = (mkDeviceFrameworkModules targetPlatformConfiguration) ++ [
+                    ../device-parts/qemu.nix
+                    (
+                      { foundrixModules, ... }:
+                      {
+                        imports = [ foundrixModules.config.home-manager-prebuilt ];
+                      }
+                    )
+                  ];
+                };
             outputs = {
               image = buildCfg.image or null;
               update = buildCfg.otaUpdate or null;

@@ -57,7 +57,7 @@
       packages = forAllSystems (
         system:
         let
-          devices = (collectDeviceConfigs ./devices) // (collectDeviceConfigs (self + "/devices"));
+          devices = collectDeviceConfigs (self + "/devices");
           customLibInstance = customLib system;
 
           mergedPackages = lib.mergeAttrsList (

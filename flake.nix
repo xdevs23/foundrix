@@ -158,6 +158,15 @@
           ) profileFiles
         )
       );
+      templates = {
+        desktop-pc = {
+          path = ./templates/desktop-pc;
+          description = ''
+            A flake-based NixOS desktop configuration
+            with foundrix fully configured and ready to use.
+          '';
+        };
+      };
       formatter = forAllSystems (system: nixpkgs.legacyPackages.${system}.nixfmt-rfc-style);
     }
   );

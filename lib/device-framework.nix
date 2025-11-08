@@ -23,9 +23,30 @@ rec {
       platformModule,
       nixosConfiguration,
       deviceConfiguration,
+      hostname ? null,
     }:
     mkFinalConfiguration {
-      inherit nixosConfiguration deviceConfiguration;
+      inherit deviceConfiguration;
+      nixosConfiguration =
+        if hostname == null then
+          nixosConfiguration
+        else
+          nixosConfiguration.extendModules {
+            modules = [
+              {
+                networking.hostName = hostname;
+              }
+            ];
+          };
       targetPlatformConfiguration = platformModule;
     };
+  mkDeviceSpecificConfigurations =
+    devicesParams:
+    builtins.mapAttrs (
+      hostname: deviceParams:
+      mkDeviceSpecificConfiguration {
+        inherit (deviceParams) platformModule nixosConfiguration deviceConfiguration;
+        inherit hostname;
+      }
+    ) devicesParams;
 }
