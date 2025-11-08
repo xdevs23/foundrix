@@ -44,7 +44,14 @@
       useTmpfs = lib.mkDefault true;
       tmpfsSize = "100%";
     };
-    kernelParams = [ "boot.shell_on_fail" ];
+    kernelParams = [
+      "boot.shell_on_fail"
+      "quiet"
+      "loglevel=2"
+      "rd.systemd.show_status=false"
+      "rd.udev.log_level=3"
+      "udev.log_priority=3"
+    ];
     initrd = {
       systemd.enable = true;
       availableKernelModules =
