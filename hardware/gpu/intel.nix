@@ -34,6 +34,7 @@
         ocl-icd
         oneDNN
       ];
+      description = "XPU packages to use";
     };
   };
 

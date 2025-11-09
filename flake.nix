@@ -6,6 +6,8 @@
     # is to deviate from the main one
     nixpkgs-unstable.url = "github:NixOS/nixpkgs/nixos-unstable";
     nixpkgs-master.url = "github:NixOS/nixpkgs/master";
+    # This one is only used in this flake, thus it does not need "follows"
+    nixpkgs-stable.url = "github:NixOS/nixpkgs/nixos-25.05";
     home-manager = {
       url = "github:nix-community/home-manager/master";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -13,7 +15,12 @@
   };
 
   outputs = (
-    { self, nixpkgs, ... }@flakeArgs:
+    {
+      self,
+      nixpkgs,
+      nixpkgs-stable,
+      ...
+    }@flakeArgs:
     let
       lib = nixpkgs.lib;
 
@@ -114,11 +121,93 @@
         forAllSystems (
           system:
           let
-            hostPlatformPkgs = import nixpkgs { inherit system; };
+            buildPlatformPkgs = import nixpkgs { inherit system; };
+            # Need to use stable pkgs because certifi doesn't build from unstable
+            buildPlatformPkgsStable = import nixpkgs-stable { inherit system; };
           in
-          builtins.addErrorContext "while constructing packages for system ${system}" (
-            foundrixPackages hostPlatformPkgs
-          )
+          (builtins.addErrorContext "while constructing packages for system ${system}" (
+            foundrixPackages buildPlatformPkgs
+          ))
+          // {
+            docs =
+              let
+                collectModules =
+                  attrset:
+                  let
+                    recurse =
+                      set:
+                      builtins.concatLists (
+                        builtins.map (
+                          name:
+                          let
+                            value = set.${name};
+                          in
+                          if builtins.isAttrs value && !builtins.isFunction value then recurse value else [ value ]
+                        ) (builtins.attrNames set)
+                      );
+                  in
+                  recurse attrset;
+                eval = lib.nixosSystem {
+                  specialArgs = self.nixosModules.foundrixSpecialArgs // {
+                    foundrixIgnoreMissingInputs = true;
+                  };
+                  modules = (
+                    collectModules (
+                      lib.updateManyAttrsByPath [
+                        {
+                          path = [ "hardware" ];
+                          update = old: builtins.removeAttrs old [ "platform" ];
+                        }
+                      ] foundrixNixosModules
+                    )
+                    ++ [
+                      ./lib/device-specific.nix
+                      {
+                        nixpkgs.hostPlatform = system;
+                      }
+                    ]
+                  );
+                };
+                optionsDoc = buildPlatformPkgsStable.nixosOptionsDoc {
+                  options = { inherit (eval.options) foundrix device; };
+                };
+              in
+              buildPlatformPkgsStable.stdenv.mkDerivation {
+                dontUnpack = true;
+                name = "docs";
+
+                nativeBuildInputs = with buildPlatformPkgsStable; [
+                  mkdocs
+                  python310Packages.mkdocs-material
+                  python310Packages.pygments
+                ];
+
+                buildPhase = ''
+                  mkdir docs
+                  cp ${optionsDoc.optionsCommonMark} "./docs/nixos-options.md"
+                  cp ${
+                    buildPlatformPkgsStable.writeText "" (
+                      builtins.toJSON {
+                        site_name = "foundrix Option Documentation";
+                      }
+                    )
+                  } mkdocs.yml
+                  mkdocs build
+                '';
+
+                installPhase = ''
+                  mv site $out
+                  mkdir $out/bin
+                  cat \
+                    ${buildPlatformPkgsStable.writeShellScript "" ""} \
+                    <(echo "xdg-open $out/nixos-options/index.html") \
+                    > $out/bin/docs
+                  chmod +x $out/bin/docs
+                '';
+
+                meta.mainProgram = "docs";
+              };
+          }
         )
       );
       nixosModules = foundrixNixosModules // {

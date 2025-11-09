@@ -18,6 +18,7 @@
       defaultSpecialArgs = {
         foundrixModules = foundrix.nixosModules;
         foundrixInputs = foundrix.nixosModules.foundrixInputs;
+        foundrixIgnoreMissingInputs = false;
         inherit foundrix foundrixPackages;
         inputs = builtins.removeAttrs flakeArgs [ "self" ];
       }

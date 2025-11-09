@@ -9,6 +9,7 @@
   namespaced,
   namespacedCfg,
   foundrixModules,
+  foundrixIgnoreMissingInputs,
   ...
 }:
 {
@@ -64,18 +65,22 @@
     additionalBind = lib.mkOption {
       type = with lib.types; listOf str;
       default = [ ];
+      description = "Additional 'bind' elements";
     };
     additionalBinde = lib.mkOption {
       type = with lib.types; listOf str;
       default = [ ];
+      description = "Additional 'binde' elements";
     };
     additionalBindm = lib.mkOption {
       type = with lib.types; listOf str;
       default = [ ];
+      description = "Additional 'bindm' elements";
     };
     extraConfig = lib.mkOption {
       type = lib.types.str;
       default = "";
+      description = "Verbatim extra config";
     };
   };
 
@@ -84,8 +89,9 @@
       cfg = namespacedCfg __curPos;
     in
     lib.mkIf
-      (lib.asserts.assertMsg (inputs ? hyprland) "Please provide a 'hyprland' input in your flake.nix")
-
+      ((if foundrixIgnoreMissingInputs then (c: _: c) else lib.asserts.assertMsg) (
+        inputs ? hyprland
+      ) "Please provide a 'hyprland' input in your flake.nix")
       {
         programs = {
           hyprland =

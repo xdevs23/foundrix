@@ -10,15 +10,18 @@
 {
   options = namespaced __curPos {
     instances = lib.mkOption {
+      description = "Instances of quickshell to build";
       type = lib.types.attrsOf (
         lib.types.submodule {
           options = {
             configPath = lib.mkOption {
               type = with lib.types; either str path;
+              description = "Path to where the quickshell files are contained within";
             };
             additionalArgs = lib.mkOption {
               type = lib.types.str;
               default = "";
+              description = "Additional arguments to pass to quickshell";
             };
           };
         }
@@ -26,11 +29,13 @@
       default = { };
     };
     build.instances = lib.mkOption {
+      description = "Instances of quickshell build outputs, matches provided instances";
       type =
         with lib.types;
         attrsOf (submodule {
           options.package = lib.mkOption {
             type = lib.types.package;
+            description = "Built package that starts quickshell with the provided configuration";
           };
         });
     };

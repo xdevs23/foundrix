@@ -26,21 +26,14 @@
       description = "Whether AMD GPU hardware is supported";
     };
     upstreamRocmPackages = lib.mkOption {
-      type = with lib.types; lazyAttrsOf anything;
-      default =
-        if (namespacedCfg __curPos).useUnstablePackages then
-          pkgsUnstable.rocmPackages
-        else
-          pkgs.rocmPackages;
+      type = with lib.types; nullOr (lazyAttrsOf anything);
+      default = null;
+      description = "Where to get ROCm packages from before performing any changes to it";
     };
     rocmPackages = lib.mkOption {
-      type = with lib.types; lazyAttrsOf anything;
-      default =
-        let
-          cfg = (namespacedCfg __curPos);
-          upstream = cfg.upstreamRocmPackages;
-        in
-        upstream;
+      type = with lib.types; nullOr (lazyAttrsOf anything);
+      default = null;
+      description = "Final ROCm packages, possibly modified";
     };
     rocmScript = lib.mkOption {
       description = "Generate a shell script package that prepares your script for proper ROCm usage";
@@ -99,6 +92,19 @@
       };
     in
     lib.mkMerge [
+      (namespaced __curPos {
+        upstreamRocmPackages =
+          if (namespacedCfg __curPos).useUnstablePackages then
+            pkgsUnstable.rocmPackages
+          else
+            pkgs.rocmPackages;
+        rocmPackages =
+          let
+            cfg = (namespacedCfg __curPos);
+            upstream = cfg.upstreamRocmPackages;
+          in
+          upstream;
+      })
       {
         nixpkgs.config.rocmSupport = cfg.isSupported;
         nixpkgs.config.rocmPackages = cfg.rocmPackages;

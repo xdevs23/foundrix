@@ -25,42 +25,52 @@
       osIconBackground = lib.mkOption {
         type = lib.types.str;
         default = "#233253";
+        description = "Background color of OS icon";
       };
       hostBackground = lib.mkOption {
         type = lib.types.str;
         default = "#26375B";
+        description = "Background color of host string";
       };
       userBackground = lib.mkOption {
         type = lib.types.str;
         default = "#2A3D64";
+        description = "Background color of user string";
       };
       dirBackground = lib.mkOption {
         type = lib.types.str;
         default = "#2E436E";
+        description = "Background color of directory string";
       };
       dirAnchorBackground = lib.mkOption {
         type = lib.types.str;
         default = "#334A79";
+        description = "Background color of directory anchor";
       };
       osIconForeground = lib.mkOption {
         type = lib.types.str;
         default = "#7EBAE4";
+        description = "Text color of OS icon";
       };
       hostForeground = lib.mkOption {
         type = lib.types.str;
         default = "#87BFE6";
+        description = "Text color of host string";
       };
       userForeground = lib.mkOption {
         type = lib.types.str;
         default = "#8FC3E8";
+        description = "Text color of user string";
       };
       dirForeground = lib.mkOption {
         type = lib.types.str;
         default = "#9FCCEB";
+        description = "Text color of directory string";
       };
       dirAnchorForeground = lib.mkOption {
         type = lib.types.str;
         default = "#BFDDF2";
+        description = "Text color of directory anchor";
       };
     };
   };

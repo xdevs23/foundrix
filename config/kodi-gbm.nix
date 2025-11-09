@@ -19,6 +19,7 @@
     kodiData = lib.mkOption {
       type = lib.types.str;
       default = "/home/${(namespacedCfg __curPos).user}/.kodi";
+      description = "Where to store kodi data";
     };
   };
 
