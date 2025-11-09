@@ -56,7 +56,7 @@ rec {
     {
       options = namespaced curPos {
         users = mkConfigurableUsersOption {
-          description = "Which users to apply hyprland configuration to. Defaults to all users.";
+          description = "Which users to apply this configuration to. Defaults to all users.";
         };
       };
 
