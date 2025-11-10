@@ -153,6 +153,7 @@
             clinfo
             amdgpu_top
             vulkan-tools
+            nvtopPackages.amd
           ]
           ++ (if cfg.overclocking.unlock then [ amdgpuClocks ] else [ ]);
 

@@ -78,6 +78,7 @@
           clinfo
           libva-utils
           vulkan-tools
+          nvtopPackages.intel
         ];
         hardware.enableRedistributableFirmware = true;
         hardware.graphics = {
