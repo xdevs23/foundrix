@@ -8,12 +8,14 @@
         "qt-qml.doNotAskForQmllsDownload" = true;
       };
       programs.vscode.profiles.default.extensions = pkgs.vscode-utils.extensionsFromVscodeMarketplace [
+        # chore: update qt-qml extension
         {
           name = "qt-qml";
           publisher = "TheQtCompany";
           version = "1.9.0";
           sha256 = "sha256-cWS3xUAbPiH/Mqohs0reWNyfMLiSO7tXdIp7/GbTysw=";
         }
+        # chore: update qt-core extension
         {
           name = "qt-core";
           publisher = "TheQtCompany";
