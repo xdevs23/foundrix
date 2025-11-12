@@ -25,7 +25,9 @@ pkgs.writeShellScriptBin "launch-qemu-closure-${pkgs.stdenv.hostPlatform.qemuArc
     -drive file=fat:ro:${
       pkgs.runCommandLocal "" { } ''
         mkdir -p $out/EFI/BOOT
-        cp --reflink=auto ${uki} $out/EFI/BOOT/BOOTX64.efi
+        cp --reflink=auto ${uki} $out/EFI/BOOT/BOOT${
+          lib.strings.toUpper pkgs.stdenv.hostPlatform.efiArch
+        }.efi
       ''
     },format=raw \
     -virtfs local,path=${closure},mount_tag=store,security_model=none \
