@@ -49,20 +49,62 @@
             programs.home-manager.enable = lib.mkForce false;
           }
         ];
-        fileSystems = lib.mkMerge (
-          lib.mapAttrsToList (userName: cfg: {
-            "/home/${userName}" = {
-              device = "overlay";
-              fsType = "overlay";
-              options = [
-                "lowerdir=${prebuiltHomes.${userName}}"
-                "upperdir=/var/home/${userName}/upper"
-                "workdir=/var/home/${userName}/work"
-                "x-systemd.requires=systemd-tmpfiles-setup.service"
-              ];
-            };
-          }) userConfigs
+        systemd.services = lib.mkMerge (
+          lib.mapAttrsToList (
+            userName: cfg:
+            let
+              prebuiltHome = prebuiltHomes.${userName};
+              copiedHome = "/var/home/${userName}/base";
+            in
+            {
+              "prepare-home-${userName}" = rec {
+                description = "Prepare home directory base for ${userName}";
+                requiredBy = [ "home-${userName}.mount" ];
+                before = requiredBy;
+                requires = [ "systemd-tmpfiles-setup.service" ];
+                after = requires;
+                unitConfig = {
+                  ConditionPathExists = "!${copiedHome}/.nix-profile";
+                  DefaultDependencies = false;
+                };
+                serviceConfig = {
+                  Type = "oneshot";
+                  RemainAfterExit = true;
+                  ExecStart = pkgs.writeShellScript "prepare-home-${userName}" ''
+                    mkdir -p ${copiedHome}
+                    cp -R --reflink=auto ${prebuiltHome}/. ${copiedHome}/
+                    chown -R ${toString cfg.userId}:100 ${copiedHome}
+                  '';
+                };
+              };
+              "home-manager-${userName}".enable = false;
+            }
+          ) userConfigs
         );
+        systemd.mounts = lib.flatten (
+          lib.mapAttrsToList (
+            userName: cfg:
+            let
+              copiedHome = "/var/home/${userName}/base";
+            in
+            rec {
+              where = "/home/${userName}";
+              what = "overlay";
+              type = "overlay";
+              options = "lowerdir=${copiedHome},upperdir=/var/home/${userName}/upper,workdir=/var/home/${userName}/work,userxattr";
+              unitConfig.DefaultDependencies = false;
+              before = [ "multi-user.target" ];
+              wantedBy = [ "multi-user.target" ];
+              requires = [
+                "prepare-home-${userName}.service"
+                "systemd-tmpfiles-setup.service"
+              ];
+              after = requires;
+              description = "Overlay home directory for ${userName}";
+            }
+          ) userConfigs
+        );
+
         systemd.tmpfiles.settings = lib.mkMerge (
           lib.mapAttrsToList (userName: cfg: {
             "home-${userName}" = {
@@ -70,29 +112,31 @@
                 d = {
                   mode = "0750";
                   user = toString cfg.userId;
-                  group = toString cfg.groupId;
+                  group = "100";
+                };
+              };
+              "/var/home/${userName}/base" = {
+                d = {
+                  mode = "0750";
+                  user = toString cfg.userId;
+                  group = "100";
                 };
               };
               "/var/home/${userName}/upper" = {
                 d = {
                   mode = "0750";
                   user = toString cfg.userId;
-                  group = toString cfg.groupId;
+                  group = "100";
                 };
               };
               "/var/home/${userName}/work" = {
                 d = {
                   mode = "0750";
                   user = toString cfg.userId;
-                  group = toString cfg.groupId;
+                  group = "100";
                 };
               };
             };
-          }) userConfigs
-        );
-        systemd.services = lib.mkMerge (
-          lib.mapAttrsToList (userName: cfg: {
-            "home-manager-${userName}".enable = false;
           }) userConfigs
         );
       }
