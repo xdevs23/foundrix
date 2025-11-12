@@ -109,6 +109,7 @@ in
       };
       rhUefiShim =
         let
+          # chore: update shimSources
           shimSources =
             {
               "x86_64-linux" = {
