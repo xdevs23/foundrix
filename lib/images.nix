@@ -77,6 +77,13 @@ rec {
                       { foundrixModules, ... }:
                       {
                         imports = [ foundrixModules.config.home-manager-prebuilt ];
+                        boot.kernelParams = [
+                          "systemd.setenv=SYSTEMD_SULOGIN_FORCE=1"
+                          "printk.devkmsg=on"
+                          "earlycon"
+                          "console=ttyS0,115200n8r"
+                          "systemd.crash_action=emergency"
+                        ];
                       }
                     )
                   ];
