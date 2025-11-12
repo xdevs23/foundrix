@@ -41,16 +41,16 @@ rec {
             arch = lib.removeSuffix ".nix" platformFile;
             targetPlatformConfiguration = {
               imports = [ (platformDir + "/${platformFile}") ];
-              nixpkgs.buildPlatform = pkgs.system;
+              nixpkgs.buildPlatform = pkgs.stdenv.buildPlatform.system;
             };
             finalConfiguration = mkFinalConfiguration (args // { inherit targetPlatformConfiguration; });
             buildCfg =
               if
                 # Again, just avoiding broken packages
-                (finalConfiguration.pkgs.hostPlatform.isx86_64 || finalConfiguration.pkgs.hostPlatform.isAarch64)
+                (finalConfiguration.pkgs.stdenv.hostPlatform.isx86_64 || finalConfiguration.pkgs.stdenv.hostPlatform.isAarch64)
                 && (
                   finalConfiguration.config.device.crossCompile
-                  || finalConfiguration.pkgs.hostPlatform == finalConfiguration.pkgs.buildPlatform
+                  || finalConfiguration.pkgs.stdenv.hostPlatform == finalConfiguration.pkgs.stdenv.buildPlatform
                 )
                 && (
                   finalConfiguration.config.device.platforms == null

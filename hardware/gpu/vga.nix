@@ -23,7 +23,7 @@
     ];
     hardware.graphics = {
       enable = true;
-      enable32Bit = pkgs.hostPlatform.isx86_64;
+      enable32Bit = pkgs.stdenv.hostPlatform.isx86_64;
     };
   };
 }

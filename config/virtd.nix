@@ -20,10 +20,10 @@
     virtualisation.libvirtd = {
       enable = true;
       package = pkgs.libvirt.override {
-        enableXen = lib.warnIf (!pkgs.buildPlatform.isx86 && pkgs.hostPlatform.isx86_64) ''
+        enableXen = lib.warnIf (!pkgs.stdenv.buildPlatform.isx86 && pkgs.stdenv.hostPlatform.isx86_64) ''
           cross-compilation of libvirtd with xen for x86_64 on non-x86 is not supported due to syslinux incompatibility.
           Disabling enableXen of pkgs.libvirt.
-        '' (pkgs.buildPlatform.isx86 && pkgs.hostPlatform.isx86_64);
+        '' (pkgs.stdenv.buildPlatform.isx86 && pkgs.stdenv.hostPlatform.isx86_64);
       };
       qemu = {
         package = pkgs.qemu_kvm;

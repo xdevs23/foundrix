@@ -17,7 +17,7 @@
   ];
 
   services.dbus.enable = lib.mkDefault true;
-  services.bpftune.enable = lib.mkDefault pkgs.hostPlatform.isx86_64;
+  services.bpftune.enable = lib.mkDefault pkgs.stdenv.hostPlatform.isx86_64;
 
   boot.loader.systemd-boot = {
     enable = lib.mkDefault true;
@@ -57,7 +57,7 @@
       availableKernelModules =
         # Typically, modern desktop-like systems will have NVMe and USB
         lib.optionals
-          (pkgs.hostPlatform.isx86_64 || pkgs.hostPlatform.isAarch64 || pkgs.hostPlatform.isRiscV64)
+          (pkgs.stdenv.hostPlatform.isx86_64 || pkgs.stdenv.hostPlatform.isAarch64 || pkgs.stdenv.hostPlatform.isRiscV64)
           [
             "nvme"
             "usb_storage"

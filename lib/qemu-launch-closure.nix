@@ -8,14 +8,14 @@
   hostForwards ? [ ],
   ...
 }:
-pkgs.writeShellScriptBin "launch-qemu-closure-${pkgs.hostPlatform.qemuArch}" ''
-  ${lib.getExe' pkgs.qemu_kvm "qemu-system-${pkgs.hostPlatform.qemuArch}"} \
-    ${lib.optionalString pkgs.hostPlatform.isx86_64 ''
+pkgs.writeShellScriptBin "launch-qemu-closure-${pkgs.stdenv.hostPlatform.qemuArch}" ''
+  ${lib.getExe' pkgs.qemu_kvm "qemu-system-${pkgs.stdenv.hostPlatform.qemuArch}"} \
+    ${lib.optionalString pkgs.stdenv.hostPlatform.isx86_64 ''
       -M q35,nvdimm=on \
       -M accel=kvm:tcg \
       -bios ${pkgs.OVMF.fd}/FV/OVMF.fd \
     ''} \
-    ${lib.optionalString (pkgs.buildPlatform.system == pkgs.hostPlatform.system) ''-cpu host \''}
+    ${lib.optionalString (pkgs.stdenv.buildPlatform.system == pkgs.stdenv.hostPlatform.system) ''-cpu host \''}
     -m 8G,slots=2,maxmem=16G \
     -smp sockets=1,dies=1,cores=4,threads=1 \
     -device qemu-xhci,id=xhci \

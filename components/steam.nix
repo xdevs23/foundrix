@@ -34,12 +34,12 @@
     lib.mkIf
       (
         (
-          pkgs.buildPlatform.isx86
-          || lib.warn "Steam can't be built on non-x86 platforms, omitting from build on ${pkgs.buildPlatform.system}" false
+          pkgs.stdenv.buildPlatform.isx86
+          || lib.warn "Steam can't be built on non-x86 platforms, omitting from build on ${pkgs.stdenv.buildPlatform.system}" false
         )
         && (
-          pkgs.hostPlatform.isx86
-          || lib.warn "Steam can't be built for non-x86 platforms, omitting from build for ${pkgs.hostPlatform.system}" false
+          pkgs.stdenv.hostPlatform.isx86
+          || lib.warn "Steam can't be built for non-x86 platforms, omitting from build for ${pkgs.stdenv.hostPlatform.system}" false
         )
       )
       {

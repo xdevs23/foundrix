@@ -21,12 +21,12 @@
 
   config = {
     _module.args.pkgsUnstable = import foundrix.inputs.nixpkgs-unstable {
-      inherit (pkgs) system;
+      inherit (pkgs.stdenv.hostPlatform) system;
       config = config.nixpkgs.config;
       overlays = config.nixpkgs-unstable.overlays;
     };
     _module.args.pkgsMaster = import foundrix.inputs.nixpkgs-master {
-      inherit (pkgs) system;
+      inherit (pkgs.stdenv.hostPlatform) system;
       config = config.nixpkgs.config;
       overlays = config.nixpkgs-master.overlays;
     };
@@ -76,7 +76,7 @@
           cfg: path: if path == [ ] then cfg else getPath cfg.${builtins.head path} (builtins.tail path);
       in
       getPath config allParts;
-    _module.args.system = pkgs.hostPlatform.system;
+    _module.args.system = pkgs.stdenv.hostPlatform.system;
     _module.args.foundrixPkgs = foundrixPackages pkgs;
   };
 }

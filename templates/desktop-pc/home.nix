@@ -30,7 +30,7 @@
     # Here's a selection of packages you may find useful. Change to your liking.
     home.packages = with pkgs; [
       # Example for using a flake input:
-      #inputs.zen-browser.packages.${pkgs.system}.beta
+      #inputs.zen-browser.packages.${pkgs.stdenv.hostPlatform.system}.beta
       jq
       pv
       pwgen

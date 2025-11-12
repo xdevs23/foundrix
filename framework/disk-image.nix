@@ -21,7 +21,7 @@
       description = "Name of the disk image, UKI name by default";
     };
     efi.enable = (lib.mkEnableOption "EFI suppport") // {
-      default = pkgs.hostPlatform.is64bit;
+      default = pkgs.stdenv.hostPlatform.isx86_64;
     };
     readOnlyNixStore = lib.mkEnableOption "read-only nix store";
     bootloader.extraConfig = lib.mkOption {
@@ -51,7 +51,7 @@
     {
       image.repart =
         let
-          inherit (pkgs.hostPlatform) efiArch;
+          inherit (pkgs.stdenv.hostPlatform) efiArch;
         in
         {
           inherit (cfg) name;
