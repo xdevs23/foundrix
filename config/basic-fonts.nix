@@ -3,7 +3,7 @@
   fonts = {
     packages = with pkgs; [
       noto-fonts
-      noto-fonts-emoji
+      (if lib.versionOlder lib.version "25.10" then noto-fonts-emoji else noto-fonts-color-emoji)
       noto-fonts-cjk-sans
       liberation_ttf
     ];
