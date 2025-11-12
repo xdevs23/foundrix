@@ -13,9 +13,6 @@
         pkgs.adwaita-icon-theme
         pkgs.adwaita-qt6
       ];
-      home.sessionVariables = {
-        GTK_THEME = "Adwaita:dark";
-      };
       gtk = {
         theme = {
           name = "Adwaita-dark";
