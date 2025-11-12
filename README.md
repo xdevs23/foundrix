@@ -5,27 +5,32 @@
 ## Key Features
 
 - **Composable**: Mix and match modules to build exactly what you need
-- **Production-ready**: Battle-tested configurations for real-world deployments
+- **Profiles**: Handcrafted profiles to reduce boilerplate in common setups
+- **Templates**: Get started in no time
 - **A-only systems**: For writable systems with standard updates
-- **A/B atomic updates**: Fail-safe system updates with automatic rollback
-- **Secure boot**: Custom keys or RedHat shim with MOK for custom OS verification
+- **A/B atomic updates**: Fail-safe system updates with automatic rollback (WIP)
+- **Secure boot**: Custom keys or RedHat shim with MOK for custom OS verification (WIP)
 - **Flexible Nix store**: Read-only and read-write configurations
 - **Home Manager support**: Works on regular writable NixOS and read-only systems without runtime burden
-- **Optional encryption**: TPM2 support secured through secure boot chain
-- **Multi-architecture**: x86_64, arm64, riscv64 support
-- **Modern updates**: systemd-sysupdate integration for reliable OTA deployments
+- **Optional encryption**: TPM2 support secured through secure boot chain (WIP)
+- **Multi-architecture**: x86_64, arm64, riscv64 (WIP) support
+- **Modern updates**: systemd-sysupdate integration for reliable OTA deployments (WIP)
 
 ## Quick Example
 
 ```nix
 {
   imports = [
-    "${inputs.foundrix}/modules/hardware/generic/any/ahci.nix"
-    "${inputs.foundrix}/modules/components/bootloaders/systemd-boot.nix"
-    "${inputs.foundrix}/modules/components/networking/systemd-networkd.nix"
-    "${inputs.foundrix}/modules/filesystem/tmpfs-root.nix"
-    "${inputs.foundrix}/modules/partition/layouts/ab.nix"
-    "${inputs.foundrix}/modules/ota/systemd-sysupdate.nix"
+    foundrixModules.profiles.desktop-full
+    foundrixModules.config.shell.zsh.lite
+    foundrixModules.config.virtd
+    foundrixModules.config.adb
+    foundrixModules.config.linux.sysrq
+    foundrixModules.config.virtualisation.docker
+    foundrixModules.config.graphics.cursors.breezex-rosepine
+    foundrixModules.config.graphics.fonts.adwaita-sans
+    foundrixModules.config.home-jdk
+    foundrixModules.components.llama-cpp
   ];
 }
 ```
@@ -34,23 +39,49 @@ Perfect for managing fleets of edge devices, embedded systems, kiosks, or person
 
 ## Advanced Capabilities
 
-- **Atomic System Updates**: A/B partition layouts for fail-safe updates with automatic rollback
-- **Secure Boot Chain**: Full UEFI secure boot with custom keys or RedHat shim with MOK for custom OS verification
+- **Atomic System Updates**: A/B partition layouts for fail-safe updates with automatic rollback (WIP)
+- **Secure Boot Chain**: Full UEFI secure boot with custom keys or RedHat shim with MOK for custom OS verification (WIP)
 - **Ephemeral Systems**: Stateless, immutable systems that reset on reboot
 - **Tmpfs Root**: Root filesystem on tmpfs with flexible Nix store configurations (read-only or writable)
-- **OTA Updates**: Over-the-air updates via systemd-sysupdate for remote deployments
-- **TPM2 Encryption**: Optional disk encryption secured through the secure boot chain
-- **Multi-Architecture**: Native support for x86_64, arm64, and riscv64 platforms
+- **OTA Updates**: Over-the-air updates via systemd-sysupdate for remote deployments (WIP)
+- **TPM2 Encryption**: Optional disk encryption secured through the secure boot chain (WIP)
+- **Multi-Architecture**: Native support for x86_64, arm64, and riscv64 (WIP) platforms
 
 ## Getting Started
 
-### Using with Flakes (Recommended)
+### Using templates
 
-> TODO
+Create a new project using a template of your choice.
 
-### Using with Channels
+For example, for a Desktop PC:
 
-> TODO
+```
+nix flake new my-os -t git+https://codeberg.org/xdevs23/foundrix.git#desktop-pc
+```
+
+Customize to your liking by reading into the `flake.nix` and `configuration.nix`.
+
+Check what is available via `nix flake show path:.`
+
+You can list all available modules using either
+
+```
+nix eval --refresh --raw git+https://codeberg.org/xdevs23/foundrix#show-modules
+```
+
+or
+
+```
+nix eval --refresh --raw git+https://codeberg.org/xdevs23/foundrix#list-modules
+```
+
+## Documentation
+
+Option documentation can be built and launched in your browser using
+
+```
+nix run --refresh git+https://codeberg.org/xdevs23/foundrix#docs
+```
 
 ## Licensing
 
