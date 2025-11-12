@@ -47,7 +47,10 @@ rec {
             buildCfg =
               if
                 # Again, just avoiding broken packages
-                (finalConfiguration.pkgs.stdenv.hostPlatform.isx86_64 || finalConfiguration.pkgs.stdenv.hostPlatform.isAarch64)
+                (
+                  finalConfiguration.pkgs.stdenv.hostPlatform.isx86_64
+                  || finalConfiguration.pkgs.stdenv.hostPlatform.isAarch64
+                )
                 && (
                   finalConfiguration.config.device.crossCompile
                   || finalConfiguration.pkgs.stdenv.hostPlatform == finalConfiguration.pkgs.stdenv.buildPlatform

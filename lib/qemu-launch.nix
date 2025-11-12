@@ -14,7 +14,9 @@ pkgs.writeShellScriptBin "launch-qemu-${pkgs.stdenv.hostPlatform.qemuArch}" ''
       -M accel=kvm:tcg \
       -bios ${pkgs.OVMF.fd}/FV/OVMF.fd \
     ''} \
-    ${lib.optionalString (pkgs.stdenv.buildPlatform.system == pkgs.stdenv.hostPlatform.system) ''-cpu host \''}
+    ${lib.optionalString (
+      pkgs.stdenv.buildPlatform.system == pkgs.stdenv.hostPlatform.system
+    ) ''-cpu host \''}
     -m 8G,slots=2,maxmem=16G \
     -smp sockets=1,dies=1,cores=4,threads=1 \
     -device qemu-xhci,id=xhci \
