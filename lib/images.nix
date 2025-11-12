@@ -77,18 +77,25 @@ rec {
                   modules = (mkDeviceFrameworkModules targetPlatformConfiguration) ++ [
                     ../device-parts/qemu.nix
                     (
-                      { foundrixModules, ... }:
-                      {
-                        imports = [ foundrixModules.config.home-manager-prebuilt ];
-                        boot.kernelParams = [
-                          "systemd.setenv=SYSTEMD_SULOGIN_FORCE=1"
-                          "printk.devkmsg=on"
-                          "earlycon"
-                          "console=ttyS0,115200n8r"
-                          "systemd.crash_action=emergency"
-                        ];
-                      }
+                      if finalConfiguration.config ? home-manager then
+                        (
+                          { foundrixModules, ... }:
+                          {
+                            imports = [ foundrixModules.config.home-manager-prebuilt ];
+                          }
+                        )
+                      else
+                        { }
                     )
+                    {
+                      boot.kernelParams = [
+                        "systemd.setenv=SYSTEMD_SULOGIN_FORCE=1"
+                        "printk.devkmsg=on"
+                        "earlycon"
+                        "console=ttyS0,115200n8r"
+                        "systemd.crash_action=emergency"
+                      ];
+                    }
                   ];
                 };
             outputs = {
