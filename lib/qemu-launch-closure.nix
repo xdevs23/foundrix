@@ -9,15 +9,30 @@
   ...
 }:
 pkgs.writeShellScriptBin "launch-qemu-closure-${pkgs.stdenv.hostPlatform.qemuArch}" ''
-  ${lib.getExe' pkgs.qemu_kvm "qemu-system-${pkgs.stdenv.hostPlatform.qemuArch}"} \
+  qemu_command="qemu-system-${pkgs.stdenv.hostPlatform.qemuArch}"
+  if ! command -V $qemu_command 2>/dev/null >/dev/null; then
+    qemu_command="${lib.getExe' pkgs.qemu_kvm "qemu-system-${pkgs.stdenv.hostPlatform.qemuArch}"}"
+  fi
+  $qemu_command \
     ${lib.optionalString pkgs.stdenv.hostPlatform.isx86_64 ''
       -M q35,nvdimm=on \
       -M accel=kvm:tcg \
+      -device virtio-gpu-pci,edid=on,yres=720,xres=1280 \
       -bios ${pkgs.OVMF.fd}/FV/OVMF.fd \
+      ${lib.optionalString (
+        pkgs.stdenv.buildPlatform.system == pkgs.stdenv.hostPlatform.system &&
+        pkgs.stdenv.buildPlatform.isx86_64
+      ) ''-cpu host \''}
     ''} \
-    ${lib.optionalString (
-      pkgs.stdenv.buildPlatform.system == pkgs.stdenv.hostPlatform.system
-    ) ''-cpu host \''}
+    ${lib.optionalString pkgs.stdenv.hostPlatform.isAarch64 ''
+      -machine virt-9.2 \
+      -accel tcg \
+      -cpu cortex-a57 \
+      -drive if=pflash,format=raw,file=${
+        pkgs.qemu
+      }/share/qemu/edk2-aarch64-code.fd,readonly=on \
+      -device virtio-gpu-pci \
+    ''} \
     -m 8G,slots=2,maxmem=16G \
     -smp sockets=1,dies=1,cores=4,threads=1 \
     -device qemu-xhci,id=xhci \
@@ -26,7 +41,7 @@ pkgs.writeShellScriptBin "launch-qemu-closure-${pkgs.stdenv.hostPlatform.qemuArc
       pkgs.runCommandLocal "" { } ''
         mkdir -p $out/EFI/BOOT
         cp --reflink=auto ${uki} $out/EFI/BOOT/BOOT${
-          lib.strings.toUpper pkgs.stdenv.hostPlatform.efiArch
+          pkgs.stdenv.hostPlatform.efiArch
         }.efi
       ''
     },format=raw \
@@ -54,7 +69,6 @@ pkgs.writeShellScriptBin "launch-qemu-closure-${pkgs.stdenv.hostPlatform.qemuArc
     } \
     -parallel none \
     -display gtk,gl=on,show-cursor=off \
-    -device virtio-gpu-pci,edid=on,yres=720,xres=1280 \
     -vga none \
     ${
       lib.concatStringsSep "," (
