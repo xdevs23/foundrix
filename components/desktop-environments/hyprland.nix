@@ -124,8 +124,8 @@
         };
         home-manager = applyHomeManagerUsers cfg.users {
           xdg.portal.extraPortals = [
-            pkgs.xdg-desktop-portal-gtk
             config.programs.hyprland.portalPackage
+            pkgs.xdg-desktop-portal-gtk
           ];
           xdg.portal.config = rec {
             common = {
