@@ -8,11 +8,15 @@
 }:
 {
   imports = [
+    foundrixModules.config.basic-baremetal
     foundrixModules.config.oomd
     foundrixModules.config.networking.network-discovery
+    foundrixModules.config.security.all
   ];
 
   services.dbus.enable = lib.mkDefault true;
+  services.bpftune.enable = lib.mkDefault pkgs.stdenv.hostPlatform.isx86_64;
+  services.timesyncd.enable = lib.mkDefault true;
 
   users.mutableUsers = false;
 
@@ -22,7 +26,10 @@
   ];
   boot = {
     kernelPackages = lib.mkOverride 101 pkgs.linuxPackages_latest;
-    tmp.useTmpfs = lib.mkDefault true;
+    tmp = {
+      useTmpfs = lib.mkDefault true;
+      tmpfsSize = "100%";
+    };
     loader.systemd-boot = {
       enable = lib.mkDefault true;
       configurationLimit = lib.mkDefault 5;

@@ -12,6 +12,7 @@
     foundrixModules.config.oomd
     foundrixModules.config.networking.network-manager
     foundrixModules.config.networking.network-discovery
+    foundrixModules.config.basic-baremetal
     foundrixModules.config.basic-fonts
     foundrixModules.config.basic-user-system
   ];
@@ -54,22 +55,6 @@
     ];
     initrd = {
       systemd.enable = true;
-      availableKernelModules =
-        # Typically, modern desktop-like systems will have NVMe and USB
-        lib.optionals
-          (
-            pkgs.stdenv.hostPlatform.isx86_64
-            || pkgs.stdenv.hostPlatform.isAarch64
-            || pkgs.stdenv.hostPlatform.isRiscV64
-          )
-          [
-            "nvme"
-            "usb_storage"
-            "usbhid"
-            "xhci_pci"
-            "sd_mod"
-            "uas"
-          ];
     };
   };
 

@@ -254,6 +254,14 @@
             with foundrix fully configured and ready to use.
           '';
         };
+        headless = {
+          path = ./templates/headless;
+          description = ''
+            A flake-based NixOS headless configuration
+            with foundrix fully configured and ready to use.
+            This is for servers and embedded systems like routers and homelabs.
+          '';
+        };
       };
       inherit (import ./show.nix { nixosModules = foundrixNixosModules; }) list-modules show-modules;
       formatter = forAllSystems (system: nixpkgs.legacyPackages.${system}.nixfmt-rfc-style);
