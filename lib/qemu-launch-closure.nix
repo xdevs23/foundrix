@@ -20,17 +20,15 @@ pkgs.writeShellScriptBin "launch-qemu-closure-${pkgs.stdenv.hostPlatform.qemuArc
       -device virtio-gpu-pci,edid=on,yres=720,xres=1280 \
       -bios ${pkgs.OVMF.fd}/FV/OVMF.fd \
       ${lib.optionalString (
-        pkgs.stdenv.buildPlatform.system == pkgs.stdenv.hostPlatform.system &&
-        pkgs.stdenv.buildPlatform.isx86_64
+        pkgs.stdenv.buildPlatform.system == pkgs.stdenv.hostPlatform.system
+        && pkgs.stdenv.buildPlatform.isx86_64
       ) ''-cpu host \''}
     ''} \
     ${lib.optionalString pkgs.stdenv.hostPlatform.isAarch64 ''
       -machine virt-9.2 \
       -accel tcg \
       -cpu cortex-a57 \
-      -drive if=pflash,format=raw,file=${
-        pkgs.qemu
-      }/share/qemu/edk2-aarch64-code.fd,readonly=on \
+      -drive if=pflash,format=raw,file=${pkgs.qemu}/share/qemu/edk2-aarch64-code.fd,readonly=on \
       -device virtio-gpu-pci \
     ''} \
     -m 8G,slots=2,maxmem=16G \
@@ -40,9 +38,7 @@ pkgs.writeShellScriptBin "launch-qemu-closure-${pkgs.stdenv.hostPlatform.qemuArc
     -drive file=fat:ro:${
       pkgs.runCommandLocal "" { } ''
         mkdir -p $out/EFI/BOOT
-        cp --reflink=auto ${uki} $out/EFI/BOOT/BOOT${
-          pkgs.stdenv.hostPlatform.efiArch
-        }.efi
+        cp --reflink=auto ${uki} $out/EFI/BOOT/BOOT${pkgs.stdenv.hostPlatform.efiArch}.efi
       ''
     },format=raw \
     -virtfs local,path=${closure},mount_tag=store,security_model=none \
