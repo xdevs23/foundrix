@@ -13,7 +13,7 @@
 - **Flexible Nix store**: Read-only and read-write configurations
 - **Home Manager support**: Works on regular writable NixOS and read-only systems without runtime burden
 - **Optional encryption**: TPM2 support secured through secure boot chain (WIP)
-- **Multi-architecture**: x86_64, arm64, riscv64 (WIP) support
+- **Multi-architecture**: x86_64, aarch64, riscv64 (WIP) support
 - **Modern updates**: systemd-sysupdate integration for reliable OTA deployments (WIP)
 
 ## Quick Example
@@ -45,7 +45,7 @@ Perfect for managing fleets of edge devices, embedded systems, kiosks, or person
 - **Tmpfs Root**: Root filesystem on tmpfs with flexible Nix store configurations (read-only or writable)
 - **OTA Updates**: Over-the-air updates via systemd-sysupdate for remote deployments (WIP)
 - **TPM2 Encryption**: Optional disk encryption secured through the secure boot chain (WIP)
-- **Multi-Architecture**: Native support for x86_64, arm64, and riscv64 (WIP) platforms
+- **Multi-Architecture**: Native support for x86_64, aarch64, and riscv64 (WIP) platforms
 
 ## Getting Started
 
