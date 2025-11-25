@@ -107,7 +107,7 @@
             self.nixosModules.profiles.minimal-image
             self.nixosModules.profiles.minimal-image-ota
             self.nixosModules.config.debug
-            { foundrix.framework.disk-image.readOnlyNixStore = true; }
+            { foundrix.framework.repart-disk-image.readOnlyNixStore = true; }
             {
               # Let's just set some default to make nix flake check happy
               # This will be overridden by the platform-specific module

@@ -2,6 +2,9 @@
   lib,
   namespaced,
   namespacedCfg,
+  options,
+  config,
+  pkgs,
   ...
 }:
 

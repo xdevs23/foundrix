@@ -99,7 +99,7 @@ rec {
                   ];
                 };
             outputs = {
-              image = buildCfg.image or null;
+              image = buildCfg.finalImage or buildCfg.image or null;
               update = buildCfg.otaUpdate or null;
               "update@compressed" = buildCfg.compressedOtaUpdate or null;
               toplevel = buildCfg.toplevel or null;
@@ -109,12 +109,12 @@ rec {
                     closure = qemuCfg.config.system.build.toplevelClosure;
                     uki = "${qemuCfg.config.system.build.uki}/${qemuCfg.config.system.boot.loader.ukiFile}";
                   }
-                else if (buildCfg.image or null) != null then
+                else if (buildCfg.finalImage or buildCfg.image or null) != null then
                   let
                     qemuBuildCfg = qemuCfg.config.system.build;
                   in
                   customLib.qemu-launch {
-                    systemDisk = "${qemuBuildCfg.image}/${qemuCfg.config.image.fileName}";
+                    systemDisk = "${buildCfg.finalImage or qemuBuildCfg.image}/${qemuCfg.config.image.fileName}";
                   }
                 else
                   null;

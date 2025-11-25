@@ -22,7 +22,7 @@
       default =
         if (namespacedCfg __curPos).fsType == "btrfs" then
           [
-            "subvol=@nixos"
+            "subvol=@nix"
             "compress=lzo"
           ]
         else
