@@ -13,6 +13,7 @@
     foundrixModules.config.graphics.fonts.adwaita-sans
     foundrixModules.config.graphics.gtk
     foundrixModules.config.graphics.qt
+    foundrixModules.config.graphics.wayland
   ];
 
   options = namespaced __curPos {

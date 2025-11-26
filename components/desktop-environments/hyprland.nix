@@ -16,6 +16,7 @@
   imports = [
     foundrixModules.config.graphics.gtk
     foundrixModules.config.graphics.qt
+    foundrixModules.config.graphics.wayland
   ];
 
   options = namespaced __curPos {
@@ -509,11 +510,8 @@
             '';
           };
           home.sessionVariables = {
-            MOZ_ENABLE_WAYLAND = "1";
-            MOZ_WAYLAND = "1";
             MOZ_DBUS_REMOTE = "1";
             MOZ_USE_XINPUT2 = "1";
-            NIXOS_OZONE_WL = "1";
           };
           services.gnome-keyring.enable = true;
         };
