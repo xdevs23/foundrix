@@ -78,13 +78,5 @@
       getPath config allParts;
     _module.args.system = pkgs.stdenv.hostPlatform.system;
     _module.args.foundrixPkgs = foundrixPackages pkgs;
-    _module.args.applyToAllNixpkgs = attrs: {
-      nixpkgs = attrs;
-      nixpkgs-unstable = attrs;
-    };
-    _module.args.applyOverlaysToAllNixpkgs = overlays: {
-      nixpkgs.overlays = overlays;
-      nixpkgs-unstable.overlays = overlays;
-    };
   };
 }

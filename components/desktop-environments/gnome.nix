@@ -3,7 +3,6 @@
   lib,
   mkConfigurableUsersOption,
   applyHomeManagerUsers,
-  applyOverlaysToAllNixpkgs,
   namespaced,
   namespacedCfg,
   foundrixModules,
@@ -34,6 +33,43 @@
   config =
     let
       cfg = namespacedCfg __curPos;
+      overlays = [
+        (
+          final: prev:
+          let
+            fixSpotify =
+              spotify:
+              spotify.overrideAttrs (
+                finalAttrs: prevAttrs: {
+                  fixupPhase =
+                    builtins.replaceStrings
+                      [
+                        ''--add-flags "\''${NIXOS_OZONE_WL:+\''${WAYLAND_DISPLAY:+--enable-features=UseOzonePlatform --ozone-platform=wayland --enable-wayland-ime=true}}"''
+                        ''--add-flags "\''${NIXOS_OZONE_WL:+\''${WAYLAND_DISPLAY:+--enable-features=UseOzonePlatform --ozone-platform=wayland}}"''
+                      ]
+                      [ "" "" ]
+                      prevAttrs.fixupPhase;
+                }
+              );
+          in
+          {
+            spotify = fixSpotify prev.spotify;
+          }
+        )
+        (final: prev: {
+          mattermost-desktop = prev.mattermost-desktop.overrideAttrs (
+            finalAttrs: prevAttrs: {
+              installPhase =
+                builtins.replaceStrings
+                  [ "--enable-features" ]
+                  [
+                    "--disable-features=GlobalShortcutsPortal --enable-features"
+                  ]
+                  prevAttrs.installPhase;
+            }
+          );
+        })
+      ];
     in
     {
       home-manager = applyHomeManagerUsers cfg.users {
@@ -60,6 +96,8 @@
         };
       };
       services.gnome.gnome-keyring.enable = true;
+      nixpkgs.overlays = overlays;
+      nixpkgs-unstable.overlays = overlays;
     }
     // (lib.optionalAttrs (lib.versionOlder lib.version "25.10") {
       services.xserver = {
@@ -70,42 +108,5 @@
     // (lib.optionalAttrs (lib.versionAtLeast lib.version "25.10") {
       services.desktopManager.gnome.enable = true;
       services.displayManager.gdm.enable = cfg.useGdm;
-    })
-    // (applyOverlaysToAllNixpkgs [
-      (
-        final: prev:
-        let
-          fixSpotify =
-            spotify:
-            spotify.overrideAttrs (
-              finalAttrs: prevAttrs: {
-                fixupPhase =
-                  builtins.replaceStrings
-                    [
-                      ''--add-flags "\''${NIXOS_OZONE_WL:+\''${WAYLAND_DISPLAY:+--enable-features=UseOzonePlatform --ozone-platform=wayland --enable-wayland-ime=true}}"''
-                      ''--add-flags "\''${NIXOS_OZONE_WL:+\''${WAYLAND_DISPLAY:+--enable-features=UseOzonePlatform --ozone-platform=wayland}}"''
-                    ]
-                    [ "" "" ]
-                    prevAttrs.fixupPhase;
-              }
-            );
-        in
-        {
-          spotify = fixSpotify prev.spotify;
-        }
-      )
-      (final: prev: {
-        mattermost-desktop = prev.mattermost-desktop.overrideAttrs (
-          finalAttrs: prevAttrs: {
-            installPhase =
-              builtins.replaceStrings
-                [ "--enable-features" ]
-                [
-                  "--disable-features=GlobalShortcutsPortal --enable-features"
-                ]
-                prevAttrs.installPhase;
-          }
-        );
-      })
-    ]);
+    });
 }
