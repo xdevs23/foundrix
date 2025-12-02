@@ -243,11 +243,12 @@
 
                   animation = [
                     "windows, 1, 3, myBezier"
+                    "windowsMove, 1, 3, myBezier"
                     "windowsOut, 1, 3, default, popin 80%"
                     "border, 1, 8, default"
                     "borderangle, 1, 6, default"
                     "fade, 1, 4, default"
-                    "workspaces, 1, 4, default"
+                    "workspaces, 1, 3, myBezier"
                   ];
                 };
                 dwindle = {
