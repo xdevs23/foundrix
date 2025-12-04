@@ -3,6 +3,7 @@
   config,
   lib,
   namespaced,
+  namespacedCfg,
   ...
 }:
 {
@@ -11,9 +12,15 @@
       type = with lib.types; attrsOf package;
       description = "Packages of prebuilt homes";
     };
+    prepareOnEveryBoot = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = "Whether to prepare home directories on every boot. When enabled, the base layer is refreshed each boot to pick up changes. When disabled, the base is only prepared once.";
+    };
   };
   config =
     let
+      cfg = namespacedCfg __curPos;
       hmUsers = config.home-manager.users;
       userConfigs = lib.mapAttrs' (
         userName: userCfg:
@@ -51,7 +58,7 @@
         ];
         systemd.services = lib.mkMerge (
           lib.mapAttrsToList (
-            userName: cfg:
+            userName: userCfg:
             let
               prebuiltHome = prebuiltHomes.${userName};
               copiedHome = "/var/home/${userName}/base";
@@ -64,16 +71,18 @@
                 requires = [ "systemd-tmpfiles-setup.service" ];
                 after = requires;
                 unitConfig = {
-                  ConditionPathExists = "!${copiedHome}/.nix-profile";
                   DefaultDependencies = false;
+                } // lib.optionalAttrs (!cfg.prepareOnEveryBoot) {
+                  ConditionPathExists = "!${copiedHome}/.nix-profile";
                 };
                 serviceConfig = {
                   Type = "oneshot";
                   RemainAfterExit = true;
                   ExecStart = pkgs.writeShellScript "prepare-home-${userName}" ''
                     mkdir -p ${copiedHome}
-                    cp -R --reflink=auto ${prebuiltHome}/. ${copiedHome}/
-                    chown -R ${toString cfg.userId}:100 ${copiedHome}
+                    ${lib.getExe pkgs.rsync} -rlc --delete ${prebuiltHome}/. ${copiedHome}/
+                    chown -R ${toString userCfg.userId}:100 ${copiedHome}
+                    chmod -R u+w ${copiedHome}
                   '';
                 };
               };
