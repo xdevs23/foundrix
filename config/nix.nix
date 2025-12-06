@@ -7,7 +7,7 @@
 }:
 {
   options = namespaced __curPos {
-    buildDirOnTmp = lib.mkEnableOption "storing build directories on /tmp which is usually a tmpfs";
+    buildDirOnTmp = lib.mkEnableOption "storing build directories on /nix/tmp (requires foundrix.config.filesystem.nix-tmp)";
   };
   config =
     let
@@ -25,7 +25,7 @@
         settings = {
           max-jobs = lib.mkDefault 4;
           cores = lib.mkDefault (config.device.cpu.threads or 1);
-          build-dir = lib.mkIf cfg.buildDirOnTmp "/tmp";
+          build-dir = lib.mkIf cfg.buildDirOnTmp "/nix/tmp";
           experimental-features = [
             "nix-command"
             "flakes"
