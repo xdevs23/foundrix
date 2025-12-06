@@ -40,8 +40,15 @@
   programs.dconf.enable = true;
 
   networking.firewall.allowedTCPPorts = [
-    8081
-    9090
+    8081  # Kodi webserver
+    9090  # Kodi JSON-RPC
+    1538  # UPnP renderer
+    36666 # AirPlay
+    36667 # AirPlay
+  ];
+  networking.firewall.allowedUDPPorts = [
+    1900  # UPnP SSDP
+    45654 # Librespot RTP
   ];
 
   boot.extraModprobeConfig = lib.mkIf (config.foundrix.hardware.gpu.intel.isSupported or false) ''

@@ -101,6 +101,7 @@
           spirv-llvm-translator
           vulkan-tools
           jasper
+          ffmpeg
           jellyfin-ffmpeg
           libaacs
           libass
