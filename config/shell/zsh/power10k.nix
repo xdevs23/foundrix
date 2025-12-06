@@ -102,7 +102,7 @@
           zsh-history-substring-search
           zsh-completions
           zsh-z
-          thefuck
+          pay-respects
         ];
         programs.zsh = {
           enable = true;
@@ -166,6 +166,7 @@
                 typeset -g POWERLEVEL9K_CUSTOM_OS_ICON="echo $'\u${cfg.osIconCodepoint}'"
               fi
               source ${pkgs.zsh-powerlevel10k}/share/zsh-powerlevel10k/powerlevel10k.zsh-theme
+              eval "$(pay-respects zsh --nocnf)"
               [[ -z "$ZSH_LAST_WORKING_DIRECTORY" ]] || return
               [[ "$PWD" == "$HOME" ]] || return
 

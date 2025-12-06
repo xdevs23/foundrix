@@ -118,7 +118,7 @@
           enable = true;
           settings = {
             default_session = {
-              command = "${lib.getExe pkgs.greetd.tuigreet} --time --remember --cmd ${lib.getExe' config.programs.hyprland.package "Hyprland"}";
+              command = "${lib.getExe pkgs.tuigreet} --time --remember --cmd ${lib.getExe' config.programs.hyprland.package "Hyprland"}";
               user = "greeter";
             };
           };

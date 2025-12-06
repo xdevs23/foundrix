@@ -1,6 +1,5 @@
 {
   inputs,
-  system,
   pkgs,
   lib,
   namespaced,
@@ -44,7 +43,7 @@
     build.instances = lib.mapAttrs (name: cfg: {
       package = pkgs.writeShellScriptBin "quickshell-wrapped" ''
         export QS_NO_RELOAD_POPUP=1
-        ${lib.getExe inputs.quickshell.packages.${system}.default} \
+        ${lib.getExe inputs.quickshell.packages.${pkgs.stdenv.hostPlatform.system}.default} \
           -c "${cfg.configPath}" ${cfg.additionalArgs}
       '';
     }) (namespacedCfg __curPos).instances;

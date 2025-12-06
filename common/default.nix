@@ -76,7 +76,6 @@
           cfg: path: if path == [ ] then cfg else getPath cfg.${builtins.head path} (builtins.tail path);
       in
       getPath config allParts;
-    _module.args.system = pkgs.stdenv.hostPlatform.system;
     _module.args.foundrixPkgs = foundrixPackages pkgs;
   };
 }
