@@ -72,7 +72,8 @@
                 after = requires;
                 unitConfig = {
                   DefaultDependencies = false;
-                } // lib.optionalAttrs (!cfg.prepareOnEveryBoot) {
+                }
+                // lib.optionalAttrs (!cfg.prepareOnEveryBoot) {
                   ConditionPathExists = "!${copiedHome}/.nix-profile";
                 };
                 serviceConfig = {

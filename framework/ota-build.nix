@@ -59,60 +59,62 @@
       artifacts = cfg.artifacts;
     in
     {
-      system.build.otaUpdate = pkgs.runCommand "update-${sys.image.id}-${sys.image.version}"
-        {
-          allowSubstitutes = false;
-          dontFixup = true;
-          nativeBuildInputs = [ pkgs.coreutils ];
-        }
-        ''
-          mkdir -p $out
-          ${lib.concatStringsSep "\n" (
-            lib.mapAttrsToList (name: artifact: ''
-              cp --reflink=auto ${artifact.source} $out/${name}
-            '') artifacts
-          )}
-          ${lib.optionalString (artifacts != { }) ''
-            cd $out
+      system.build.otaUpdate =
+        pkgs.runCommand "update-${sys.image.id}-${sys.image.version}"
+          {
+            allowSubstitutes = false;
+            dontFixup = true;
+            nativeBuildInputs = [ pkgs.coreutils ];
+          }
+          ''
+            mkdir -p $out
             ${lib.concatStringsSep "\n" (
               lib.mapAttrsToList (name: artifact: ''
-                sha256sum ${name} >> SHA256SUMS
+                cp --reflink=auto ${artifact.source} $out/${name}
               '') artifacts
             )}
-          ''}
-        '';
+            ${lib.optionalString (artifacts != { }) ''
+              cd $out
+              ${lib.concatStringsSep "\n" (
+                lib.mapAttrsToList (name: artifact: ''
+                  sha256sum ${name} >> SHA256SUMS
+                '') artifacts
+              )}
+            ''}
+          '';
 
-      system.build.compressedOtaUpdate = pkgs.runCommand "compressed-update-${sys.image.id}-${sys.image.version}"
-        {
-          allowSubstitutes = false;
-          dontFixup = true;
-          nativeBuildInputs = [ pkgs.coreutils ];
-        }
-        ''
-          mkdir -p $out
-          ${lib.concatStringsSep "\n" (
-            lib.mapAttrsToList (
-              name: artifact:
-              let
-                compressed = artifact.compressor {
-                  name = "compressed-${name}.${artifact.compressedExtension}";
-                  inputFile = artifact.source;
-                  compressionLevel = artifact.compressionLevel;
-                };
-              in
-              ''
-                cp --reflink=auto ${compressed} $out/${name}.${artifact.compressedExtension}
-              ''
-            ) artifacts
-          )}
-          ${lib.optionalString (artifacts != { }) ''
-            cd $out
+      system.build.compressedOtaUpdate =
+        pkgs.runCommand "compressed-update-${sys.image.id}-${sys.image.version}"
+          {
+            allowSubstitutes = false;
+            dontFixup = true;
+            nativeBuildInputs = [ pkgs.coreutils ];
+          }
+          ''
+            mkdir -p $out
             ${lib.concatStringsSep "\n" (
-              lib.mapAttrsToList (name: artifact: ''
-                sha256sum ${name}.${artifact.compressedExtension} >> SHA256SUMS
-              '') artifacts
+              lib.mapAttrsToList (
+                name: artifact:
+                let
+                  compressed = artifact.compressor {
+                    name = "compressed-${name}.${artifact.compressedExtension}";
+                    inputFile = artifact.source;
+                    compressionLevel = artifact.compressionLevel;
+                  };
+                in
+                ''
+                  cp --reflink=auto ${compressed} $out/${name}.${artifact.compressedExtension}
+                ''
+              ) artifacts
             )}
-          ''}
-        '';
+            ${lib.optionalString (artifacts != { }) ''
+              cd $out
+              ${lib.concatStringsSep "\n" (
+                lib.mapAttrsToList (name: artifact: ''
+                  sha256sum ${name}.${artifact.compressedExtension} >> SHA256SUMS
+                '') artifacts
+              )}
+            ''}
+          '';
     };
 }

@@ -40,15 +40,15 @@
   programs.dconf.enable = true;
 
   networking.firewall.allowedTCPPorts = [
-    8081  # Kodi webserver
-    9090  # Kodi JSON-RPC
-    1538  # UPnP renderer
-    5354  # Librespot zeroconf HTTP
+    8081 # Kodi webserver
+    9090 # Kodi JSON-RPC
+    1538 # UPnP renderer
+    5354 # Librespot zeroconf HTTP
     36666 # AirPlay
     36667 # AirPlay
   ];
   networking.firewall.allowedUDPPorts = [
-    1900  # UPnP SSDP
+    1900 # UPnP SSDP
     45654 # Librespot RTP
   ];
 

@@ -15,6 +15,9 @@
     backupFileExtension = "bak";
     extraSpecialArgs = { inherit inputs foundrixModules foundrixPackages; };
   };
-  environment.pathsToLink = [ "/share/applications" "/share/xdg-desktop-portal" ];
+  environment.pathsToLink = [
+    "/share/applications"
+    "/share/xdg-desktop-portal"
+  ];
   _module.args.libHm = foundrixInputs.home-manager.lib;
 }
