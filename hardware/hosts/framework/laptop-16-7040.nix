@@ -25,6 +25,11 @@
       default = 8;
       description = "Amount of VRAM to make available in GB. Sets TTM pages_limit and page_pool_size kernel parameters.";
     };
+    setAmdGpuTargets = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = "Set only the AMD GPU targets you need. If disabled, all default targets are included.";
+    };
   };
 
   config =
@@ -35,7 +40,7 @@
       ttmPages = cfg.vram * 262144;
     in
     {
-      foundrix.hardware.gpu.amd.gpuTargets = [
+      foundrix.hardware.gpu.amd.gpuTargets = lib.mkIf cfg.setAmdGpuTargets [
         "gfx1100"
         "gfx1101"
         "gfx1102"
