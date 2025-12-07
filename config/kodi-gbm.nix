@@ -39,6 +39,9 @@
             "systemd-user-sessions.service"
           ];
 
+          # Add system packages to PATH for addons that need external tools
+          path = [ "/run/current-system/sw" ];
+
           serviceConfig = {
             Type = "simple";
             User = cfg.user;

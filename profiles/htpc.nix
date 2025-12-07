@@ -43,6 +43,7 @@
     8081  # Kodi webserver
     9090  # Kodi JSON-RPC
     1538  # UPnP renderer
+    5354  # Librespot zeroconf HTTP
     36666 # AirPlay
     36667 # AirPlay
   ];
