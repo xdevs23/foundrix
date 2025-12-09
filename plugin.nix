@@ -21,10 +21,11 @@
         foundrixIgnoreMissingInputs = false;
         inherit foundrix foundrixPackages;
         inputs = builtins.removeAttrs flakeArgs [ "self" ];
+        currentFlake = self;
       }
       // (import ./special.nix {
-        inherit lib;
-        foundrix = self;
+        inherit lib foundrix;
+        currentFlake = self;
       });
 
       customLib =

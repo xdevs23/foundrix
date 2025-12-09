@@ -3,6 +3,7 @@
   pkgs,
   lib,
   foundrix,
+  currentFlake,
   foundrixPackages,
   options,
   ...
@@ -51,10 +52,16 @@
       curPos:
       let
         file = curPos.file;
-        root = "${foundrix}";
+        foundrixRoot = toString foundrix;
+        currentFlakeRoot = toString currentFlake;
+
+        # Check if file is within foundrix
+        isInFoundrix = lib.hasPrefix foundrixRoot file;
+
+        root = if isInFoundrix then foundrixRoot else currentFlakeRoot;
 
         # Get relative path from root
-        relPath = builtins.substring (builtins.stringLength root + 1) (builtins.stringLength file) file;
+        relPath = builtins.substring (builtins.stringLength (toString root) + 1) (builtins.stringLength file) file;
 
         # Split into parts
         parts = builtins.filter (x: x != "") (lib.splitString "/" relPath);
@@ -69,7 +76,8 @@
 
         # Build path parts
         dirParts = lib.lists.take (builtins.length parts - 1) parts;
-        allParts = [ "foundrix" ] ++ dirParts ++ (if baseName == "default" then [ ] else [ baseName ]);
+        prefix = if isInFoundrix then [ "foundrix" ] else [ "custom" ];
+        allParts = prefix ++ dirParts ++ (if baseName == "default" then [ ] else [ baseName ]);
 
         # Navigate config path
         getPath =

@@ -1,4 +1,4 @@
-{ lib, foundrix, ... }:
+{ lib, foundrix, currentFlake, ... }:
 rec {
   maybeOr = value: default: if value == null then default else value;
   mkMaybe = value: lib.mkIf (value != null) value;
@@ -7,10 +7,16 @@ rec {
     curPos: options:
     let
       file = curPos.file;
-      root = "${foundrix}";
+      foundrixRoot = toString foundrix;
+      currentFlakeRoot = toString currentFlake;
+
+      # Check if file is within foundrix
+      isInFoundrix = lib.hasPrefix foundrixRoot file;
+
+      root = if isInFoundrix then foundrixRoot else currentFlakeRoot;
 
       # Get relative path from root
-      relPath = builtins.substring (builtins.stringLength root + 1) (builtins.stringLength file) file;
+      relPath = builtins.substring (builtins.stringLength (toString root) + 1) (builtins.stringLength file) file;
 
       # Split into parts
       parts = builtins.filter (x: x != "") (lib.splitString "/" relPath);
@@ -24,8 +30,10 @@ rec {
           fileName;
 
       # Build path parts: directory parts + filename (unless it's "default")
+      # For foundrix modules, prefix with "foundrix"; for user configs, no prefix
       dirParts = lib.lists.take (builtins.length parts - 1) parts;
-      allParts = [ "foundrix" ] ++ dirParts ++ (if baseName == "default" then [ ] else [ baseName ]);
+      prefix = if isInFoundrix then [ "foundrix" ] else [ "custom" ];
+      allParts = prefix ++ dirParts ++ (if baseName == "default" then [ ] else [ baseName ]);
 
       # Create nested attrset from parts
       mkNested =
