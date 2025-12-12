@@ -168,7 +168,7 @@
                   "HYPRCURSOR_THEME,rose-pine-hyprcursor"
                 ];
                 monitor = cfg.monitors ++ [
-                  ",highres,auto,auto"
+                  ",highres,auto,auto,vrr,1"
                 ];
                 exec-once = [
                   # For text
