@@ -1,4 +1,9 @@
-{ lib, foundrix, currentFlake, ... }:
+{
+  lib,
+  foundrix,
+  currentFlake,
+  ...
+}:
 rec {
   maybeOr = value: default: if value == null then default else value;
   mkMaybe = value: lib.mkIf (value != null) value;
@@ -16,7 +21,9 @@ rec {
       root = if isInFoundrix then foundrixRoot else currentFlakeRoot;
 
       # Get relative path from root
-      relPath = builtins.substring (builtins.stringLength (toString root) + 1) (builtins.stringLength file) file;
+      relPath = builtins.substring (
+        builtins.stringLength (toString root) + 1
+      ) (builtins.stringLength file) file;
 
       # Split into parts
       parts = builtins.filter (x: x != "") (lib.splitString "/" relPath);
