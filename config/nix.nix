@@ -14,7 +14,6 @@
       cfg = namespacedCfg __curPos;
     in
     {
-      system.rebuild.enableNg = true;
       nix = {
         enable = lib.mkForce true;
         gc = {
