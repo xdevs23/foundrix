@@ -30,6 +30,11 @@
   config =
     let
       cfg = namespacedCfg __curPos;
+      gamescopePackage =
+        if config.foundrix.hardware.gpu.usesUnstablePackages then
+          pkgsUnstable.gamescope
+        else
+          pkgs.gamescope;
     in
     lib.mkIf
       (
@@ -49,12 +54,9 @@
         programs.gamescope = {
           enable = cfg.gamescope.enable;
           capSysNice = lib.mkDefault true;
-          package =
-            if config.foundrix.hardware.gpu.usesUnstablePackages then
-              pkgsUnstable.gamescope
-            else
-              pkgs.gamescope;
+          package = gamescopePackage;
         };
+        environment.systemPackages = lib.optional cfg.gamescope.enable gamescopePackage;
         programs.steam = {
           enable = true;
           package = cfg.package;
