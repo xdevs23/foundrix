@@ -88,6 +88,65 @@
   config =
     let
       cfg = namespacedCfg __curPos;
+
+      # Extract monitor identifier (part before first comma) from monitor config strings
+      getMonitorId = monitorStr: builtins.head (lib.strings.splitString "," monitorStr);
+      monitorIds = map getMonitorId cfg.monitors;
+      monitorCount = builtins.length monitorIds;
+      hasMultipleMonitors = monitorCount > 1;
+
+      # Workspace ID for a given virtual workspace number (1-9) and monitor index
+      # Monitor 0: 1-9, Monitor 1: 11-19, Monitor 2: 21-29, etc.
+      workspaceId =
+        virtualWs: monitorIndex: if monitorIndex == 0 then virtualWs else (monitorIndex * 10) + virtualWs;
+
+      # Generate workspace rules: bind workspaces to monitors with persistent flag
+      workspaceRulesForMonitor =
+        monitorIndex: monitorId:
+        map (
+          n:
+          "${toString (workspaceId n monitorIndex)}, monitor:${monitorId}, persistent:true, default:${
+            if n == 1 then "true" else "false"
+          }"
+        ) (lib.range 1 9);
+      workspaceRules = lib.flatten (lib.imap0 workspaceRulesForMonitor monitorIds);
+
+      # Synchronized workspace switching: switch all monitors, then refocus original monitor
+      # Generates: MON=$(hyprctl activeworkspace -j | jq -r '.monitor'); hyprctl dispatch workspace N; hyprctl dispatch workspace N+10; ...; hyprctl dispatch focusmonitor $MON
+      switchAllWorkspaces = n:
+        let
+          dispatches = lib.concatStringsSep "; " (
+            map (i: "hyprctl dispatch workspace ${toString (workspaceId n i)}") (lib.range 0 (monitorCount - 1))
+          );
+        in
+        "MON=$(hyprctl activeworkspace -j | jq -r '.monitor'); ${dispatches}; hyprctl dispatch focusmonitor $MON";
+      synchronizedWorkspaceBinds = map (n: "$mainMod, ${toString n}, exec, ${switchAllWorkspaces n}") (lib.range 1 9);
+
+      # Move to workspace: move window, switch all monitors, refocus monitor where window landed
+      moveToWorkspace = n:
+        let
+          dispatches = lib.concatStringsSep "; " (
+            map (i: "hyprctl dispatch workspace ${toString (workspaceId n i)}") (lib.range 0 (monitorCount - 1))
+          );
+        in
+        "hyprctl dispatch movetoworkspace m~${toString n}; MON=$(hyprctl activeworkspace -j | jq -r '.monitor'); ${dispatches}; hyprctl dispatch focusmonitor $MON";
+      moveToWorkspaceBinds = map (n: "$mainMod SHIFT, ${toString n}, exec, ${moveToWorkspace n}") (lib.range 1 9);
+
+      # Single monitor: use simple workspace bindings
+      singleMonitorWorkspaceBinds = map (n: "$mainMod, ${toString n}, workspace, ${toString n}") (
+        lib.range 1 9
+      );
+      singleMonitorMoveBinds = map (n: "$mainMod SHIFT, ${toString n}, movetoworkspace, ${toString n}") (
+        lib.range 1 9
+      );
+
+      # Multi-monitor: commands to switch all monitors to next/previous virtual workspace
+      # Generates: hyprctl dispatch workspace $NEW; hyprctl dispatch workspace $((NEW + 10)); ...
+      dispatchAllMonitors = lib.concatStringsSep "; " (
+        map (i: "hyprctl dispatch workspace $(( NEW${if i == 0 then "" else " + ${toString (i * 10)}"} ))") (lib.range 0 (monitorCount - 1))
+      );
+      virtualWorkspaceNext = "CURR=$(hyprctl monitors -j | jq '.[] | select(.id==0) | .activeWorkspace.id'); NEW=$(( (CURR % 9) + 1 )); ${dispatchAllMonitors}";
+      virtualWorkspacePrev = "CURR=$(hyprctl monitors -j | jq '.[] | select(.id==0) | .activeWorkspace.id'); NEW=$(( ((CURR - 2 + 9) % 9) + 1 )); ${dispatchAllMonitors}";
     in
     lib.mkIf
       ((if foundrixIgnoreMissingInputs then (c: _: c) else lib.asserts.assertMsg) (
@@ -170,6 +229,7 @@
                 monitor = cfg.monitors ++ [
                   ",highres,auto,auto,vrr,1"
                 ];
+                workspace = lib.mkIf hasMultipleMonitors workspaceRules;
                 exec-once = [
                   # For text
                   "${wlPaste} --type text --watch ${cliphist} store -max-dedupe-search 40 -max-items 100"
@@ -256,15 +316,19 @@
                   preserve_split = true;
                 };
                 gestures = {
-                  gesture = [
-                    "3, left, workspace, +1" # Swipe left to go to next workspace
-                    "3, right, workspace, -1" # Swipe right to go to previous workspace
-                    "3, up, fullscreen, maximize" # Swipe up to maximize window
-                    "3, down, float" # Swipe down to float/unfloat window
-                    "4, down, close" # Swipe down with 4 fingers to close window
-                    "3, horizontal, mod: SUPER, move" # Hold Super + swipe to move window
-                    "3, vertical, mod: SUPER, resize" # Hold Super + vertical swipe to resize
-                  ];
+                  gesture =
+                    [
+                      "3, up, fullscreen, maximize" # Swipe up to maximize window
+                      "3, down, float" # Swipe down to float/unfloat window
+                      "4, down, close" # Swipe down with 4 fingers to close window
+                      "3, horizontal, mod: SUPER, move" # Hold Super + swipe to move window
+                      "3, vertical, mod: SUPER, resize" # Hold Super + vertical swipe to resize
+                    ]
+                    # Workspace swipe gestures only work on single monitor (gestures don't support exec dispatcher)
+                    ++ lib.optionals (!hasMultipleMonitors) [
+                      "3, left, workspace, +1"
+                      "3, right, workspace, -1"
+                    ];
                 };
                 render = {
                   direct_scanout = 1;
@@ -314,25 +378,15 @@
                   "$mainMod, right, movefocus, r"
                   "$mainMod, up, movefocus, u"
                   "$mainMod, down, movefocus, d"
-                  "$mainMod, 1, workspace, 1"
-                  "$mainMod, 2, workspace, 2"
-                  "$mainMod, 3, workspace, 3"
-                  "$mainMod, 4, workspace, 4"
-                  "$mainMod, 5, workspace, 5"
-                  "$mainMod, 6, workspace, 6"
-                  "$mainMod, 7, workspace, 7"
-                  "$mainMod, 8, workspace, 8"
-                  "$mainMod, 9, workspace, 9"
-                  "$mainMod SHIFT, 1, movetoworkspace, 1"
-                  "$mainMod SHIFT, 2, movetoworkspace, 2"
-                  "$mainMod SHIFT, 3, movetoworkspace, 3"
-                  "$mainMod SHIFT, 4, movetoworkspace, 4"
-                  "$mainMod SHIFT, 5, movetoworkspace, 5"
-                  "$mainMod SHIFT, 6, movetoworkspace, 6"
-                  "$mainMod SHIFT, 7, movetoworkspace, 7"
-                  "$mainMod SHIFT, 8, movetoworkspace, 8"
-                  "$mainMod SHIFT, 9, movetoworkspace, 9"
                   "$mainMod, L, exec, ${loginctl} lock-session"
+                ]
+                ++ (
+                  if hasMultipleMonitors then
+                    synchronizedWorkspaceBinds ++ moveToWorkspaceBinds
+                  else
+                    singleMonitorWorkspaceBinds ++ singleMonitorMoveBinds
+                )
+                ++ [
                   ''$mainMod SHIFT, V, exec, ${cliphist} list | $menu --dmenu -p "Search clipboard history…" -M multi-contains -i | ${cliphist} decode | ${wlCopy}''
                   ''$mainMod SHIFT, E, exec, ${wlCopy} -c''
                   ''$mainMod SHIFT, P, exec, ${wlCopy} --clear''
@@ -340,8 +394,17 @@
                   ''$mainMod+ALT, 5, exec, ps -eo pid,cmd | $menu --dmenu -p "Search process to terminate…" -M multi-contains -i | awk '{ print $1 }' | xargs kill -9''
                   ''$mainMod+ALT SHIFT, 9, exec, $menu --dmenu -p "Enter process string to kill…" --exec-search --lines 1 -b | xargs pkill -9''
                   ''$mainMod+ALT SHIFT, 5, exec, $menu --dmenu -p "Enter process string to terminate…" --exec-search --lines 1 -b | xargs pkill -9''
-                  "$mainMod, mouse_left, workspace, e-1"
-                  "$mainMod, mouse_right, workspace, e+1"
+                ]
+                ++ (
+                  if hasMultipleMonitors then [
+                    "$mainMod, mouse_left, exec, ${virtualWorkspacePrev}"
+                    "$mainMod, mouse_right, exec, ${virtualWorkspaceNext}"
+                  ] else [
+                    "$mainMod, mouse_left, workspace, e-1"
+                    "$mainMod, mouse_right, workspace, e+1"
+                  ]
+                )
+                ++ [
                   "ALT SHIFT, KP_Begin, exec, ${ydotool} click C0"
                   "ALT SHIFT, KP_Begin, exec, ${ydotool} click C0"
                   "$mainMod SHIFT, PRINT, exec, ${hyprshot} -m window -m active -o $screenShotDir"
