@@ -359,6 +359,7 @@
                   "float, class:^(org.kde.polkit-kde-authentication-agent.*)$"
                   "noblur, xwayland:1"
                   "suppressevent maximize, class:.*"
+                  "stayfocused, class:^(wofi)$"
                 ];
                 "$mainMod" = cfg.mainMod;
                 "$screenShotDir" = "~/Pictures/Screenshots";
