@@ -113,24 +113,30 @@
 
       # Synchronized workspace switching: switch all monitors, then refocus original monitor
       # Generates: MON=$(hyprctl activeworkspace -j | jq -r '.monitor'); hyprctl dispatch workspace N; hyprctl dispatch workspace N+10; ...; hyprctl dispatch focusmonitor $MON
-      switchAllWorkspaces = n:
+      switchAllWorkspaces =
+        n:
         let
           dispatches = lib.concatStringsSep "; " (
             map (i: "hyprctl dispatch workspace ${toString (workspaceId n i)}") (lib.range 0 (monitorCount - 1))
           );
         in
         "MON=$(hyprctl activeworkspace -j | jq -r '.monitor'); ${dispatches}; hyprctl dispatch focusmonitor $MON";
-      synchronizedWorkspaceBinds = map (n: "$mainMod, ${toString n}, exec, ${switchAllWorkspaces n}") (lib.range 1 9);
+      synchronizedWorkspaceBinds = map (n: "$mainMod, ${toString n}, exec, ${switchAllWorkspaces n}") (
+        lib.range 1 9
+      );
 
       # Move to workspace: move window, switch all monitors, refocus monitor where window landed
-      moveToWorkspace = n:
+      moveToWorkspace =
+        n:
         let
           dispatches = lib.concatStringsSep "; " (
             map (i: "hyprctl dispatch workspace ${toString (workspaceId n i)}") (lib.range 0 (monitorCount - 1))
           );
         in
         "hyprctl dispatch movetoworkspace m~${toString n}; MON=$(hyprctl activeworkspace -j | jq -r '.monitor'); ${dispatches}; hyprctl dispatch focusmonitor $MON";
-      moveToWorkspaceBinds = map (n: "$mainMod SHIFT, ${toString n}, exec, ${moveToWorkspace n}") (lib.range 1 9);
+      moveToWorkspaceBinds = map (n: "$mainMod SHIFT, ${toString n}, exec, ${moveToWorkspace n}") (
+        lib.range 1 9
+      );
 
       # Single monitor: use simple workspace bindings
       singleMonitorWorkspaceBinds = map (n: "$mainMod, ${toString n}, workspace, ${toString n}") (
@@ -143,7 +149,9 @@
       # Multi-monitor: commands to switch all monitors to next/previous virtual workspace
       # Generates: hyprctl dispatch workspace $NEW; hyprctl dispatch workspace $((NEW + 10)); ...
       dispatchAllMonitors = lib.concatStringsSep "; " (
-        map (i: "hyprctl dispatch workspace $(( NEW${if i == 0 then "" else " + ${toString (i * 10)}"} ))") (lib.range 0 (monitorCount - 1))
+        map (
+          i: "hyprctl dispatch workspace $(( NEW${if i == 0 then "" else " + ${toString (i * 10)}"} ))"
+        ) (lib.range 0 (monitorCount - 1))
       );
       virtualWorkspaceNext = "CURR=$(hyprctl monitors -j | jq '.[] | select(.id==0) | .activeWorkspace.id'); NEW=$(( (CURR % 9) + 1 )); ${dispatchAllMonitors}";
       virtualWorkspacePrev = "CURR=$(hyprctl monitors -j | jq '.[] | select(.id==0) | .activeWorkspace.id'); NEW=$(( ((CURR - 2 + 9) % 9) + 1 )); ${dispatchAllMonitors}";
@@ -316,19 +324,18 @@
                   preserve_split = true;
                 };
                 gestures = {
-                  gesture =
-                    [
-                      "3, up, fullscreen, maximize" # Swipe up to maximize window
-                      "3, down, float" # Swipe down to float/unfloat window
-                      "4, down, close" # Swipe down with 4 fingers to close window
-                      "3, horizontal, mod: SUPER, move" # Hold Super + swipe to move window
-                      "3, vertical, mod: SUPER, resize" # Hold Super + vertical swipe to resize
-                    ]
-                    # Workspace swipe gestures only work on single monitor (gestures don't support exec dispatcher)
-                    ++ lib.optionals (!hasMultipleMonitors) [
-                      "3, left, workspace, +1"
-                      "3, right, workspace, -1"
-                    ];
+                  gesture = [
+                    "3, up, fullscreen, maximize" # Swipe up to maximize window
+                    "3, down, float" # Swipe down to float/unfloat window
+                    "4, down, close" # Swipe down with 4 fingers to close window
+                    "3, horizontal, mod: SUPER, move" # Hold Super + swipe to move window
+                    "3, vertical, mod: SUPER, resize" # Hold Super + vertical swipe to resize
+                  ]
+                  # Workspace swipe gestures only work on single monitor (gestures don't support exec dispatcher)
+                  ++ lib.optionals (!hasMultipleMonitors) [
+                    "3, left, workspace, +1"
+                    "3, right, workspace, -1"
+                  ];
                 };
                 render = {
                   direct_scanout = 1;
@@ -397,13 +404,16 @@
                   ''$mainMod+ALT SHIFT, 5, exec, $menu --dmenu -p "Enter process string to terminate…" --exec-search --lines 1 -b | xargs pkill -9''
                 ]
                 ++ (
-                  if hasMultipleMonitors then [
-                    "$mainMod, mouse_left, exec, ${virtualWorkspacePrev}"
-                    "$mainMod, mouse_right, exec, ${virtualWorkspaceNext}"
-                  ] else [
-                    "$mainMod, mouse_left, workspace, e-1"
-                    "$mainMod, mouse_right, workspace, e+1"
-                  ]
+                  if hasMultipleMonitors then
+                    [
+                      "$mainMod, mouse_left, exec, ${virtualWorkspacePrev}"
+                      "$mainMod, mouse_right, exec, ${virtualWorkspaceNext}"
+                    ]
+                  else
+                    [
+                      "$mainMod, mouse_left, workspace, e-1"
+                      "$mainMod, mouse_right, workspace, e+1"
+                    ]
                 )
                 ++ [
                   "ALT SHIFT, KP_Begin, exec, ${ydotool} click C0"
