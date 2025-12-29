@@ -93,6 +93,7 @@
             ./framework
             ./hardware
             ./profiles
+            ./services
           ]
       );
     in
