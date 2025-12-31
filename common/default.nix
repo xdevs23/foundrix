@@ -5,6 +5,7 @@
   foundrix,
   currentFlake,
   foundrixPackages,
+  pkgsUnstable,
   options,
   ...
 }:
@@ -86,6 +87,8 @@
           cfg: path: if path == [ ] then cfg else getPath cfg.${builtins.head path} (builtins.tail path);
       in
       getPath config allParts;
-    _module.args.foundrixPkgs = foundrixPackages pkgs;
+    _module.args.foundrixPkgs = foundrixPackages pkgs {
+      inherit pkgsUnstable;
+    };
   };
 }

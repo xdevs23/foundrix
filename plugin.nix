@@ -10,11 +10,17 @@
       lib = nixpkgs.lib;
       forAllSystems = nixpkgs.lib.genAttrs nixpkgs.lib.systems.flakeExposed;
       foundrixPackages =
-        pkgs:
-        (lib.filesystem.packagesFromDirectoryRecursive {
-          inherit (pkgs) callPackage;
+        pkgs: extraArgs:
+        let
+          scope = extraArgs // {
+            inherit pkgs;
+          };
+        in
+        lib.filesystem.packagesFromDirectoryRecursive {
+          callPackage = pkgs.newScope scope;
+          newScope = extra: pkgs.newScope (scope // extra);
           directory = ./packages;
-        });
+        };
       defaultSpecialArgs = {
         foundrixModules = foundrix.nixosModules;
         foundrixInputs = foundrix.nixosModules.foundrixInputs;

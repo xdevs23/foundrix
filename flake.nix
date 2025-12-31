@@ -28,11 +28,17 @@
 
       forAllSystems = nixpkgs.lib.genAttrs nixpkgs.lib.systems.flakeExposed;
       foundrixPackages =
-        pkgs:
-        (lib.filesystem.packagesFromDirectoryRecursive {
-          inherit (pkgs) callPackage;
+        pkgs: extraArgs:
+        let
+          scope = extraArgs // {
+            inherit pkgs;
+          };
+        in
+        lib.filesystem.packagesFromDirectoryRecursive {
+          callPackage = pkgs.newScope scope;
+          newScope = extra: pkgs.newScope (scope // extra);
           directory = ./packages;
-        });
+        };
       traverseDirectory = import ./lib/traverse-directory.nix { inherit lib; };
 
       collectNixFiles =
@@ -125,7 +131,7 @@
             buildPlatformPkgsStable = import nixpkgs-stable { inherit system; };
           in
           (builtins.addErrorContext "while constructing packages for system ${system}" (
-            foundrixPackages buildPlatformPkgs
+            foundrixPackages buildPlatformPkgs { pkgsUnstable = buildPlatformPkgs; }
           ))
           // {
             docs =
