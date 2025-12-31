@@ -48,5 +48,33 @@
         inherit (cfg) name;
         split = true;
       };
+
+      systemd.services.nix-store-registration = {
+        description = "Register Nix store paths in database";
+        requiredBy = [ "multi-user.target" ];
+        before = [ "multi-user.target" ];
+        after = [ "local-fs.target" ];
+
+        unitConfig = {
+          DefaultDependencies = false;
+          ConditionPathExists = [
+            "!/nix/var/nix/db/.registered"
+            "/nix/store/nix-path-registration"
+          ];
+          OnFailure = "emergency.target";
+        };
+
+        serviceConfig = {
+          Type = "oneshot";
+          RemainAfterExit = true;
+          User = "root";
+        };
+
+        script = ''
+          set -euo pipefail
+          ${lib.getExe' config.nix.package "nix-store"} --load-db < /nix/store/nix-path-registration
+          touch /nix/var/nix/db/.registered
+        '';
+      };
     };
 }
