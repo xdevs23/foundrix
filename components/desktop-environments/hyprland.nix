@@ -149,9 +149,9 @@
       # Multi-monitor: commands to switch all monitors to next/previous virtual workspace
       # Uses --batch to execute atomically and avoid focus race conditions
       dispatchAllMonitors = lib.concatStringsSep "; " (
-        map (
-          i: "dispatch workspace $(( NEW${if i == 0 then "" else " + ${toString (i * 10)}"} ))"
-        ) (lib.range 0 (monitorCount - 1))
+        map (i: "dispatch workspace $(( NEW${if i == 0 then "" else " + ${toString (i * 10)}"} ))") (
+          lib.range 0 (monitorCount - 1)
+        )
       );
       virtualWorkspaceNext = "CURR=$(hyprctl monitors -j | jq '.[] | select(.id==0) | .activeWorkspace.id'); NEW=$(( (CURR % 9) + 1 )); hyprctl --batch \"${dispatchAllMonitors}\"";
       virtualWorkspacePrev = "CURR=$(hyprctl monitors -j | jq '.[] | select(.id==0) | .activeWorkspace.id'); NEW=$(( ((CURR - 2 + 9) % 9) + 1 )); hyprctl --batch \"${dispatchAllMonitors}\"";
