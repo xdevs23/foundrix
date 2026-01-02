@@ -12,7 +12,9 @@ let
   steamCfg = config.programs.steam;
 
   # Get extra compat tools paths from the system steam config
-  extraCompatPaths = lib.makeSearchPathOutput "steamcompattool" "" (steamCfg.extraCompatPackages or [ ]);
+  extraCompatPaths = lib.makeSearchPathOutput "steamcompattool" "" (
+    steamCfg.extraCompatPackages or [ ]
+  );
 
   # MangoHud config file for mangoapp
   mangoConfigFile = pkgs.writeText "mangohud.conf" cfg.mangoConfig;
@@ -90,7 +92,9 @@ let
     export STEAM_USE_DYNAMIC_VRS=1
 
     # Steam compatibility tools from system config
-    ${lib.optionalString (extraCompatPaths != "") ''export STEAM_EXTRA_COMPAT_TOOLS_PATHS="${extraCompatPaths}"''}
+    ${lib.optionalString (
+      extraCompatPaths != ""
+    ) ''export STEAM_EXTRA_COMPAT_TOOLS_PATHS="${extraCompatPaths}"''}
 
     # Gamescope/gaming optimizations
     export ENABLE_GAMESCOPE_WSI=${if cfg.gamescopeWsi then "1" else "0"}
@@ -106,18 +110,18 @@ let
     # Note: Do NOT set ENABLE_HDR_WSI=1 with gamescope - it conflicts
     # Gamescope handles HDR itself, we only need DXVK_HDR for games
     ${lib.optionalString cfg.hdr.enable ''
-    export DXVK_HDR=1
+      export DXVK_HDR=1
     ''}
 
     # Mangoapp configuration (disable vulkan layer, use gamescope's mangoapp)
     ${lib.optionalString cfg.mangoapp ''
-    export DISABLE_MANGOHUD=1
-    export MANGOHUD_CONFIGFILE="${mangoConfigFile}"
+      export DISABLE_MANGOHUD=1
+      export MANGOHUD_CONFIGFILE="${mangoConfigFile}"
     ''}
 
     # NTSync for smoother games (requires kernel module)
     ${lib.optionalString cfg.ntSync ''
-    export PROTON_USE_NTSYNC=1
+      export PROTON_USE_NTSYNC=1
     ''}
 
     # Disable AMD Anti-Lag (causes issues with FSR4 and stuttering per CachyOS)
@@ -125,7 +129,7 @@ let
 
     # Disable Steam Overlay to fix ~24 min lag bomb
     ${lib.optionalString cfg.disableSteamOverlay ''
-    export LD_PRELOAD=""
+      export LD_PRELOAD=""
     ''}
 
     # Cursor theme
@@ -468,11 +472,16 @@ in
     security.polkit.extraConfig =
       let
         # Find all services that alias to display-manager.service
-        dmServices = lib.filter
-          (name: lib.elem "display-manager.service" (config.systemd.services.${name}.aliases or [ ]))
-          (lib.attrNames config.systemd.services);
+        dmServices = lib.filter (
+          name: lib.elem "display-manager.service" (config.systemd.services.${name}.aliases or [ ])
+        ) (lib.attrNames config.systemd.services);
         # Build list: gamescope-session + display-manager + all actual DM services + recovery
-        allowedUnits = [ "gamescope-session" "gamescope-session-recovery" "display-manager" ] ++ dmServices;
+        allowedUnits = [
+          "gamescope-session"
+          "gamescope-session-recovery"
+          "display-manager"
+        ]
+        ++ dmServices;
         # Generate JS array for polkit
         unitsArray = lib.concatMapStringsSep ", " (u: ''"${u}.service"'') allowedUnits;
       in
