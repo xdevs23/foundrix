@@ -44,7 +44,12 @@
           description = "Setup directories for Home Manager (${userName})";
           wantedBy = [ "home-manager-${userName}.service" ];
           before = wantedBy;
-          requires = [ "nix-store-registration.service" ] ++ cfg.homeManagerUserSetupRequires;
+          requires = [
+            "nix-store-registration.service"
+            "systemd-tmpfiles-setup.service"
+          ]
+          ++ lib.optional config.services.userborn.enable "userborn.service"
+          ++ cfg.homeManagerUserSetupRequires;
           after = requires;
 
           serviceConfig = {
