@@ -14,6 +14,7 @@
     ./general.nix
     #./upstream-fixes.nix
     ./hardware.nix
+    ./nixpkgs.nix
   ];
 
   options = {
