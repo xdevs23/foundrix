@@ -15,6 +15,7 @@
     foundrixModules.config.basic-baremetal
     foundrixModules.config.basic-fonts
     foundrixModules.config.basic-user-system
+    foundrixModules.config.nix
   ];
 
   services.dbus.enable = lib.mkDefault true;

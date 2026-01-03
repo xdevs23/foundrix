@@ -12,7 +12,6 @@
     foundrixModules.config.compat
     foundrixModules.config.gstreamer
     foundrixModules.config.home-manager
-    foundrixModules.config.nix
     foundrixModules.config.security.all
     foundrixModules.config.xdg
   ];

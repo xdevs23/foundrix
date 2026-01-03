@@ -12,6 +12,7 @@
     foundrixModules.config.oomd
     foundrixModules.config.networking.network-discovery
     foundrixModules.config.security.all
+    foundrixModules.config.nix
   ];
 
   services.dbus.enable = lib.mkDefault true;
