@@ -127,7 +127,7 @@ rec {
       name,
       deviceConfiguration,
       nixosConfiguration,
-      seenDeviceNames ? {},
+      seenDeviceNames ? { },
     }:
     let
       targetName = name;
@@ -138,12 +138,17 @@ rec {
     let
       # Get device name from first output (all outputs have same device name)
       deviceName =
-        if maybeOutputs == [] then null
-        else (builtins.head maybeOutputs).finalConfiguration.config.device.name;
+        if maybeOutputs == [ ] then
+          null
+        else
+          (builtins.head maybeOutputs).finalConfiguration.config.device.name;
       alreadySeen = deviceName != null && seenDeviceNames ? ${deviceName};
     in
     if alreadySeen then
-      { outputs = {}; seen = seenDeviceNames; }
+      {
+        outputs = { };
+        seen = seenDeviceNames;
+      }
     else
       {
         outputs = lib.foldl' (
@@ -162,7 +167,7 @@ rec {
             }) filtered;
           in
           acc // renamed
-        ) {} maybeOutputs;
+        ) { } maybeOutputs;
         seen = if deviceName == null then seenDeviceNames else seenDeviceNames // { ${deviceName} = true; };
       };
 }

@@ -53,15 +53,15 @@
       collectDeviceConfigs =
         dir:
         let
-          processDir = currentDir: relativePath:
+          processDir =
+            currentDir: relativePath:
             let
               entries = builtins.readDir currentDir;
               hasDefault = entries ? "default.nix" && entries."default.nix" == "regular";
 
               # Get all .nix files except default.nix
               nixFiles = lib.filterAttrs (
-                name: type:
-                type == "regular" && lib.hasSuffix ".nix" name && name != "default.nix"
+                name: type: type == "regular" && lib.hasSuffix ".nix" name && name != "default.nix"
               ) entries;
 
               # Get all subdirectories
@@ -74,7 +74,10 @@
                   baseName = lib.removeSuffix ".nix" name;
                   attrName = if relativePath == "" then baseName else "${relativePath}-${baseName}";
                 in
-                { name = attrName; value = currentDir + "/${name}"; }
+                {
+                  name = attrName;
+                  value = currentDir + "/${name}";
+                }
               ) nixFiles;
 
               # For each subdirectory:
@@ -85,7 +88,8 @@
                 name:
                 let
                   siblingNix = "${name}.nix";
-                  hasSiblingNix = nixFiles ? ${siblingNix} || (entries ? ${siblingNix} && entries.${siblingNix} == "regular");
+                  hasSiblingNix =
+                    nixFiles ? ${siblingNix} || (entries ? ${siblingNix} && entries.${siblingNix} == "regular");
                   subdirPath = currentDir + "/${name}";
                   subdirEntries = builtins.readDir subdirPath;
                   subdirHasDefault = subdirEntries ? "default.nix" && subdirEntries."default.nix" == "regular";
@@ -96,7 +100,12 @@
                   processDir subdirPath newRelativePath
                 else if subdirHasDefault then
                   # foo/default.nix exists (no sibling), use foo/ as device, don't recurse
-                  [ { name = newRelativePath; value = subdirPath; } ]
+                  [
+                    {
+                      name = newRelativePath;
+                      value = subdirPath;
+                    }
+                  ]
                 else
                   # No default.nix, recurse into subdirectory
                   processDir subdirPath newRelativePath
@@ -127,28 +136,34 @@
           }) (self.nixosConfigurations or { });
 
           # Fold over all (config, device) pairs, threading seen device names
-          result = lib.foldl' (
-            acc:
-            { configName, nixosConfig }:
-            builtins.addErrorContext "while processing NixOS configuration ${configName}" (
-              lib.foldl' (
-                innerAcc:
-                devicePath:
-                let
-                  targetResult = customLibInstance.images.mkTargetOutputs {
-                    name = configName;
-                    deviceConfiguration = devicePath;
-                    nixosConfiguration = nixosConfig;
-                    seenDeviceNames = innerAcc.seen;
-                  };
-                in
-                {
-                  outputs = innerAcc.outputs // targetResult.outputs;
-                  seen = targetResult.seen;
-                }
-              ) acc devicePaths
-            )
-          ) { outputs = {}; seen = {}; } configList;
+          result =
+            lib.foldl'
+              (
+                acc:
+                { configName, nixosConfig }:
+                builtins.addErrorContext "while processing NixOS configuration ${configName}" (
+                  lib.foldl' (
+                    innerAcc: devicePath:
+                    let
+                      targetResult = customLibInstance.images.mkTargetOutputs {
+                        name = configName;
+                        deviceConfiguration = devicePath;
+                        nixosConfiguration = nixosConfig;
+                        seenDeviceNames = innerAcc.seen;
+                      };
+                    in
+                    {
+                      outputs = innerAcc.outputs // targetResult.outputs;
+                      seen = targetResult.seen;
+                    }
+                  ) acc devicePaths
+                )
+              )
+              {
+                outputs = { };
+                seen = { };
+              }
+              configList;
 
           mergedPackages = result.outputs;
         in
