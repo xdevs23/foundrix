@@ -31,6 +31,7 @@
         # This is NOT your hostname, but just an identifier.
         # There is no device-specific configuration included here as foundrix orchestrates all that for you.
         # It will discover your devices in the "devices" directory and automatically prepare them as needed.
+        # You can customize this by adding `deviceRoots = [ ./devices ./products ];` alongside nixosConfigurations.
         # Ready to use packages will be placed in this flake's packages. For that, consult `nix flake show path:.`
         # Modules added here is equivalent to importing them from configuration.nix.
         # If you only need a single configuration, you can also move the additional modules to your configuration.nix

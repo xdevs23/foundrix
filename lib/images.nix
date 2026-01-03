@@ -127,6 +127,7 @@ rec {
       name,
       deviceConfiguration,
       nixosConfiguration,
+      seenDeviceNames ? {},
     }:
     let
       targetName = name;
@@ -134,21 +135,34 @@ rec {
         inherit deviceConfiguration nixosConfiguration;
       };
     in
-    lib.foldl' (
-      acc:
+    let
+      # Get device name from first output (all outputs have same device name)
+      deviceName =
+        if maybeOutputs == [] then null
+        else (builtins.head maybeOutputs).finalConfiguration.config.device.name;
+      alreadySeen = deviceName != null && seenDeviceNames ? ${deviceName};
+    in
+    if alreadySeen then
+      { outputs = {}; seen = seenDeviceNames; }
+    else
       {
-        arch,
-        finalConfiguration,
-        outputs,
-        ...
-      }:
-      let
-        filtered = lib.filterAttrs (_: value: value != null) outputs;
-        renamed = lib.mapAttrs' (artifact: output: {
-          name = "${targetName}/${artifact}:${finalConfiguration.config.device.name}:${arch}";
-          value = output;
-        }) filtered;
-      in
-      acc // renamed
-    ) { } maybeOutputs;
+        outputs = lib.foldl' (
+          acc:
+          {
+            arch,
+            finalConfiguration,
+            outputs,
+            ...
+          }:
+          let
+            filtered = lib.filterAttrs (_: value: value != null) outputs;
+            renamed = lib.mapAttrs' (artifact: output: {
+              name = "${targetName}/${artifact}:${deviceName}:${arch}";
+              value = output;
+            }) filtered;
+          in
+          acc // renamed
+        ) {} maybeOutputs;
+        seen = if deviceName == null then seenDeviceNames else seenDeviceNames // { ${deviceName} = true; };
+      };
 }

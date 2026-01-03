@@ -24,7 +24,13 @@
     let
       lib = nixpkgs.lib;
 
-      pluggedInTo = args: flake: lib.recursiveUpdate flake ((import ./plugin.nix).outputs args);
+      pluggedInTo =
+        args: flake:
+        let
+          deviceRoots = flake.deviceRoots or [ (args.self + "/devices") ];
+          cleanFlake = builtins.removeAttrs flake [ "deviceRoots" ];
+        in
+        lib.recursiveUpdate cleanFlake ((import ./plugin.nix).outputs (args // { inherit deviceRoots; }));
 
       forAllSystems = nixpkgs.lib.genAttrs nixpkgs.lib.systems.flakeExposed;
       foundrixPackages =
