@@ -27,7 +27,7 @@
         foundrixInputs = foundrix.nixosModules.foundrixInputs;
         foundrixIgnoreMissingInputs = false;
         inherit foundrix foundrixPackages;
-        inputs = builtins.removeAttrs flakeArgs [ "self" ];
+        inputs = removeAttrs flakeArgs [ "self" ];
         currentFlake = self;
       }
       // (import ./special.nix {
@@ -57,7 +57,6 @@
             currentDir: relativePath:
             let
               entries = builtins.readDir currentDir;
-              hasDefault = entries ? "default.nix" && entries."default.nix" == "regular";
 
               # Get all .nix files except default.nix
               nixFiles = lib.filterAttrs (
