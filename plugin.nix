@@ -134,35 +134,41 @@
             nixosConfig = value;
           }) (self.nixosConfigurations or { });
 
-          # Fold over all (config, device) pairs, threading seen device names
-          result =
-            lib.foldl'
-              (
-                acc:
-                { configName, nixosConfig }:
-                builtins.addErrorContext "while processing NixOS configuration ${configName}" (
-                  lib.foldl' (
-                    innerAcc: devicePath:
-                    let
-                      targetResult = customLibInstance.images.mkTargetOutputs {
-                        name = configName;
-                        deviceConfiguration = devicePath;
-                        nixosConfiguration = nixosConfig;
-                        seenDeviceNames = innerAcc.seen;
-                      };
-                    in
+          # Fold over all (config, device) pairs, deduplicating by device.name within each config
+          result = lib.foldl' (
+            acc:
+            { configName, nixosConfig }:
+            builtins.addErrorContext "while processing NixOS configuration ${configName}" (
+              let
+                # Reset seen for each config - deduplication is per-config, not global
+                configResult =
+                  lib.foldl'
+                    (
+                      innerAcc: devicePath:
+                      let
+                        targetResult = customLibInstance.images.mkTargetOutputs {
+                          name = configName;
+                          deviceConfiguration = devicePath;
+                          nixosConfiguration = nixosConfig;
+                          seenDeviceNames = innerAcc.seen;
+                        };
+                      in
+                      {
+                        outputs = innerAcc.outputs // targetResult.outputs;
+                        seen = targetResult.seen;
+                      }
+                    )
                     {
-                      outputs = innerAcc.outputs // targetResult.outputs;
-                      seen = targetResult.seen;
+                      outputs = { };
+                      seen = { };
                     }
-                  ) acc devicePaths
-                )
-              )
+                    devicePaths;
+              in
               {
-                outputs = { };
-                seen = { };
+                outputs = acc.outputs // configResult.outputs;
               }
-              configList;
+            )
+          ) { outputs = { }; } configList;
 
           mergedPackages = result.outputs;
         in
