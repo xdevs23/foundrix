@@ -20,6 +20,86 @@ let
   # MangoHud config file for mangoapp
   mangoConfigFile = pkgs.writeText "mangohud.conf" cfg.mangoConfig;
 
+  # State is stored in user's XDG_RUNTIME_DIR (secure, per-user, kernel-enforced isolation)
+
+  # Find next available TTY (starting from 7, skipping occupied ones)
+  findAvailableTty = pkgs.writeShellScript "find-available-tty" ''
+    for tty in $(${lib.getExe' pkgs.coreutils "seq"} 7 12); do
+      # Check if TTY is in use via fuser
+      if ! ${lib.getExe' pkgs.procps "fuser"} "/dev/tty$tty" >/dev/null 2>&1; then
+        echo "$tty"
+        exit 0
+      fi
+    done
+    # Fallback to tty7
+    echo "7"
+  '';
+
+  # Get current VT number via sysfs (works without /dev/tty access)
+  getCurrentVt = pkgs.writeShellScript "get-current-vt" ''
+    vt=$(${lib.getExe' pkgs.coreutils "cat"} /sys/class/tty/tty0/active 2>/dev/null)
+    # Extract number, validate it's numeric
+    vt_num=$(echo "$vt" | ${lib.getExe' pkgs.gnused "sed"} 's/tty//' | ${lib.getExe' pkgs.gnused "sed"} 's/[^0-9]//g')
+    if [[ -n "$vt_num" ]]; then
+      echo "$vt_num"
+    else
+      echo "1"
+    fi
+  '';
+
+  # Save session state before switching to gamemode (runs as user)
+  saveSessionState = pkgs.writeShellScript "save-session-state" ''
+    # Check if gamescope session is already running
+    if ${lib.getExe' pkgs.systemd "systemctl"} is-active --quiet gamescope-session.service; then
+      echo "Error: Gamescope session is already running" >&2
+      exit 1
+    fi
+
+    STATE_DIR="$XDG_RUNTIME_DIR/gamescope-session"
+    ${lib.getExe' pkgs.coreutils "mkdir"} -p "$STATE_DIR"
+
+    # Save original TTY (use sysfs, works without /dev/tty access)
+    ${getCurrentVt} > "$STATE_DIR/original-tty"
+
+    # Find and save target TTY for gamescope
+    target_tty=$(${findAvailableTty})
+    echo "$target_tty" > "$STATE_DIR/target-tty"
+
+    # Save display environment for steam restart
+    echo "''${DISPLAY:-}" > "$STATE_DIR/display"
+    echo "''${WAYLAND_DISPLAY:-}" > "$STATE_DIR/wayland-display"
+    echo "''${DBUS_SESSION_BUS_ADDRESS:-}" > "$STATE_DIR/dbus-address"
+
+    # Check if steam is running and save state
+    if ${lib.getExe' pkgs.procps "pgrep"} -x steam >/dev/null 2>&1; then
+      echo "1" > "$STATE_DIR/steam-was-running"
+      # Shutdown steam gracefully
+      ${lib.getExe cfg.steamPackage} -shutdown || true
+      # Wait for steam to exit (max 15 seconds)
+      for i in $(${lib.getExe' pkgs.coreutils "seq"} 1 30); do
+        ${lib.getExe' pkgs.procps "pgrep"} -x steam >/dev/null 2>&1 || break
+        ${lib.getExe' pkgs.coreutils "sleep"} 0.5
+      done
+    else
+      echo "0" > "$STATE_DIR/steam-was-running"
+    fi
+  '';
+
+  # HDR reset script (shared between modes)
+  resetHdr = pkgs.writeShellScript "reset-hdr" ''
+    for driver in amdgpu xe i915; do
+      ${lib.getExe' pkgs.libdrm "proptest"} -M "$driver" -D /dev/dri/card* 2>/dev/null | \
+        ${lib.getExe pkgs.gawk} '
+          /^Connector [0-9]+/ { connector = $2 }
+          /HDR_OUTPUT_METADATA/ { print connector, $1 }
+        ' | while read -r connector prop_id; do
+          if [ -n "$connector" ] && [ -n "$prop_id" ]; then
+            ${lib.getExe' pkgs.libdrm "proptest"} -M "$driver" -D /dev/dri/card* "$connector" connector "$prop_id" 0 2>/dev/null || true
+          fi
+        done
+    done
+  '';
+
   defaultGamescopePackage =
     if config.foundrix.hardware.gpu.usesUnstablePackages or false then
       pkgsUnstable.gamescope
@@ -156,6 +236,9 @@ let
       -R "$socket" -T "$stats" &
     gamescope_pid="$!"
 
+    # Save PID for recovery service to use
+    echo "$gamescope_pid" > "$XDG_RUNTIME_DIR/gamescope-session/gamescope.pid"
+
     # Wait for gamescope to be ready
     if read -r -t 10 response_x_display response_wl_display <>"$socket"; then
       export DISPLAY="$response_x_display"
@@ -179,6 +262,11 @@ let
   # Script to write target user (runs as root via sudo)
   write-gamescope-user = pkgs.writeShellScript "write-gamescope-user" ''
     user="$1"
+    # Security: only allow users to start sessions as themselves
+    if [[ "$user" != "$SUDO_USER" ]]; then
+      echo "Error: Can only start gamescope session as yourself" >&2
+      exit 1
+    fi
     if ${lib.getExe' pkgs.coreutils "id"} "$user" &>/dev/null; then
       echo "$user" > /run/gamescope-session-user
     else
@@ -187,36 +275,61 @@ let
     fi
   '';
 
-  # Generate greetd config for auto-login to gamescope
+  # greetd config format
+  greetdFormat = pkgs.formats.toml { };
+
+  # Template config - VT and user are substituted at runtime
+  greetdConfigTemplate = greetdFormat.generate "greetd-template.toml" {
+    terminal.vt = 0; # placeholder, replaced at runtime
+    initial_session = {
+      command = "${gamescope-session-run}";
+      user = "PLACEHOLDER_USER"; # replaced at runtime
+    };
+    default_session = {
+      command = "${gamescope-session-run}";
+      user = "PLACEHOLDER_USER"; # replaced at runtime
+    };
+  };
+
+  # Generate greetd config at runtime with actual TTY and user
   gamescope-greetd-config = pkgs.writeShellScript "gamescope-greetd-config" ''
     GSUSER=$(${lib.getExe' pkgs.coreutils "cat"} /run/gamescope-session-user)
-    ${lib.getExe' pkgs.coreutils "cat"} > /run/gamescope-greetd.toml <<EOF
-    [terminal]
-    vt = 7
-
-    [initial_session]
-    command = "${gamescope-session-run}"
-    user = "$GSUSER"
-
-    [default_session]
-    command = "${gamescope-session-run}"
-    user = "$GSUSER"
-    EOF
+    GSUID=$(${lib.getExe' pkgs.coreutils "id"} -u "$GSUSER")
+    STATE_DIR="/run/user/$GSUID/gamescope-session"
+    TARGET_TTY=$(${lib.getExe' pkgs.coreutils "cat"} "$STATE_DIR/target-tty" 2>/dev/null || echo "7")
+    # Validate TTY is numeric
+    TARGET_TTY=$(echo "$TARGET_TTY" | ${lib.getExe' pkgs.gnused "sed"} 's/[^0-9]//g')
+    [[ -z "$TARGET_TTY" ]] && TARGET_TTY=7
+    ${lib.getExe' pkgs.gnused "sed"} \
+      -e "s/vt = 0/vt = $TARGET_TTY/" \
+      -e "s/PLACEHOLDER_USER/$GSUSER/g" \
+      ${greetdConfigTemplate} > /run/gamescope-greetd.toml
   '';
 
   # Wrapper that generates config and runs greetd
   gamescope-session-wrapper = pkgs.writeShellScript "gamescope-session-wrapper" ''
     set -euo pipefail
     ${gamescope-greetd-config}
-    ${lib.getExe' pkgs.kbd "chvt"} 7
+    GSUSER=$(${lib.getExe' pkgs.coreutils "cat"} /run/gamescope-session-user)
+    GSUID=$(${lib.getExe' pkgs.coreutils "id"} -u "$GSUSER")
+    STATE_DIR="/run/user/$GSUID/gamescope-session"
+    TARGET_TTY=$(${lib.getExe' pkgs.coreutils "cat"} "$STATE_DIR/target-tty" 2>/dev/null || echo "7")
+    # Validate TTY is numeric
+    TARGET_TTY=$(echo "$TARGET_TTY" | ${lib.getExe' pkgs.gnused "sed"} 's/[^0-9]//g')
+    [[ -z "$TARGET_TTY" ]] && TARGET_TTY=7
+    ${lib.getExe' pkgs.kbd "chvt"} "$TARGET_TTY"
     exec ${lib.getExe pkgs.greetd} --config /run/gamescope-greetd.toml
   '';
 
   # Implementation scripts for session switching (run via user services to survive DM stop)
   gamescope-switch-impl = pkgs.writeShellScriptBin "gamescope-switch-impl" ''
     set -euo pipefail
+    # Save current state (TTY, steam running, find target TTY) - runs as user
+    ${saveSessionState}
     /run/wrappers/bin/sudo ${write-gamescope-user} "$USER"
-    ${lib.getExe' pkgs.systemd "systemctl"} stop display-manager.service
+    ${lib.optionalString cfg.restartDisplayManager ''
+      ${lib.getExe' pkgs.systemd "systemctl"} stop display-manager.service
+    ''}
     ${lib.getExe' pkgs.systemd "systemctl"} start gamescope-session.service || \
       ${lib.getExe' pkgs.systemd "systemctl"} start gamescope-session-recovery.service
   '';
@@ -387,6 +500,16 @@ in
         "-pipewire-dmabuf"
       ];
     };
+
+    restartDisplayManager = lib.mkOption {
+      type = lib.types.bool;
+      description = ''
+        Whether to stop/restart display-manager when switching sessions.
+        When false (default): gamescope runs on a separate TTY alongside your desktop.
+        When true: display-manager is stopped when entering game mode and restarted on exit.
+      '';
+      default = false;
+    };
   };
 
   config = lib.mkIf cfg.enable {
@@ -402,7 +525,8 @@ in
     # Gamescope session runs its own greetd instance for proper PAM/logind session
     systemd.services.gamescope-session = {
       description = "Gamescope Gaming Session";
-      conflicts = [ "display-manager.service" ];
+      # Only conflict with display-manager if we're stopping/restarting it
+      conflicts = lib.mkIf cfg.restartDisplayManager [ "display-manager.service" ];
       after = [
         "systemd-user-sessions.service"
         "sound.target"
@@ -415,43 +539,91 @@ in
         Type = "idle";
         ExecStart = gamescope-session-wrapper;
         Restart = "no";
-        # TTY setup for proper output
-        TTYPath = "/dev/tty7";
-        TTYReset = true;
-        TTYVHangup = true;
-        TTYVTDisallocate = true;
-        StandardInput = "tty";
-        StandardOutput = "tty";
+        # greetd handles TTY allocation dynamically based on state file
+        StandardOutput = "journal";
         StandardError = "journal";
         # Clean up temp files on stop (normal or failed)
         ExecStopPost = "${lib.getExe' pkgs.coreutils "rm"} -f /run/gamescope-session-user /run/gamescope-greetd.toml";
       };
     };
 
-    # Recovery service to return to desktop if gamescope fails
+    # Recovery service to return to desktop
     systemd.services.gamescope-session-recovery = {
-      description = "Recover from failed Gamescope session";
+      description = "Return from Gamescope session to desktop";
       serviceConfig = {
         Type = "oneshot";
         ExecStart = pkgs.writeShellScript "gamescope-session-recover" ''
           ${lib.getExe' pkgs.systemd "systemctl"} stop gamescope-session.service || true
-          ${lib.getExe' pkgs.procps "pkill"} -9 gamescope || true
 
-          # Reset HDR state on monitors using proptest
-          for driver in amdgpu xe i915; do
-            ${lib.getExe' pkgs.libdrm "proptest"} -M "$driver" -D /dev/dri/card* 2>/dev/null | \
-              ${lib.getExe pkgs.gawk} '
-                /^Connector [0-9]+/ { connector = $2 }
-                /HDR_OUTPUT_METADATA/ { print connector, $1 }
-              ' | while read -r connector prop_id; do
-                if [ -n "$connector" ] && [ -n "$prop_id" ]; then
-                  ${lib.getExe' pkgs.libdrm "proptest"} -M "$driver" -D /dev/dri/card* "$connector" connector "$prop_id" 0 2>/dev/null || true
+          # Get user info and state directory
+          SESSION_USER=$(${lib.getExe' pkgs.coreutils "cat"} /run/gamescope-session-user 2>/dev/null || echo "")
+          if [[ -n "$SESSION_USER" ]]; then
+            uid=$(${lib.getExe' pkgs.coreutils "id"} -u "$SESSION_USER")
+            STATE_DIR="/run/user/$uid/gamescope-session"
+          else
+            STATE_DIR=""
+          fi
+
+          # Kill only our gamescope instance using saved PID
+          if [[ -n "$STATE_DIR" ]] && [[ -f "$STATE_DIR/gamescope.pid" ]]; then
+            GAMESCOPE_PID=$(${lib.getExe' pkgs.coreutils "cat"} "$STATE_DIR/gamescope.pid")
+            if [[ -n "$GAMESCOPE_PID" ]] && ${lib.getExe' pkgs.coreutils "kill"} -0 "$GAMESCOPE_PID" 2>/dev/null; then
+              ${lib.getExe' pkgs.coreutils "kill"} -9 "$GAMESCOPE_PID" 2>/dev/null || true
+            fi
+          else
+            # Fallback: kill all gamescope (shouldn't happen normally)
+            ${lib.getExe' pkgs.procps "pkill"} -9 gamescope || true
+          fi
+
+          # Reset HDR state on monitors
+          ${resetHdr}
+
+          # Read saved state
+          if [[ -n "$STATE_DIR" ]]; then
+            ORIGINAL_TTY=$(${lib.getExe' pkgs.coreutils "cat"} "$STATE_DIR/original-tty" 2>/dev/null || echo "1")
+            STEAM_WAS_RUNNING=$(${lib.getExe' pkgs.coreutils "cat"} "$STATE_DIR/steam-was-running" 2>/dev/null || echo "0")
+            SAVED_DISPLAY=$(${lib.getExe' pkgs.coreutils "cat"} "$STATE_DIR/display" 2>/dev/null || echo "")
+            SAVED_WAYLAND=$(${lib.getExe' pkgs.coreutils "cat"} "$STATE_DIR/wayland-display" 2>/dev/null || echo "")
+            SAVED_DBUS=$(${lib.getExe' pkgs.coreutils "cat"} "$STATE_DIR/dbus-address" 2>/dev/null || echo "")
+          else
+            ORIGINAL_TTY="1"
+            STEAM_WAS_RUNNING="0"
+          fi
+
+          # Validate TTY is numeric
+          ORIGINAL_TTY=$(echo "$ORIGINAL_TTY" | ${lib.getExe' pkgs.gnused "sed"} 's/[^0-9]//g')
+          [[ -z "$ORIGINAL_TTY" ]] && ORIGINAL_TTY=1
+
+          ${
+            if cfg.restartDisplayManager then
+              ''
+                # restartDisplayManager mode: restart display-manager
+                ${lib.getExe' pkgs.kbd "chvt"} 1
+                ${lib.getExe' pkgs.systemd "systemctl"} restart display-manager.service
+              ''
+            else
+              ''
+                # Default mode: switch back to original TTY
+                ${lib.getExe' pkgs.kbd "chvt"} "$ORIGINAL_TTY"
+
+                # Restart Steam if it was running before switching to gamemode
+                if [[ "$STEAM_WAS_RUNNING" == "1" ]] && [[ -n "$SESSION_USER" ]]; then
+                  export XDG_RUNTIME_DIR="/run/user/$uid"
+                  # Use saved display environment
+                  ${lib.getExe' pkgs.systemd "runuser"} -u "$SESSION_USER" -- \
+                    env DISPLAY="$SAVED_DISPLAY" \
+                        WAYLAND_DISPLAY="$SAVED_WAYLAND" \
+                        DBUS_SESSION_BUS_ADDRESS="$SAVED_DBUS" \
+                    ${lib.getExe' pkgs.systemd "systemd-run"} --user --scope \
+                    ${lib.getExe cfg.steamPackage} &
                 fi
-              done
-          done
+              ''
+          }
 
-          ${lib.getExe' pkgs.kbd "chvt"} 1
-          ${lib.getExe' pkgs.systemd "systemctl"} restart display-manager.service
+          # Clean up state files
+          if [[ -n "$STATE_DIR" ]]; then
+            ${lib.getExe' pkgs.coreutils "rm"} -rf "$STATE_DIR"
+          fi
         '';
       };
     };
