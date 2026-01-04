@@ -5,6 +5,7 @@
   config,
   namespaced,
   namespacedCfg,
+  foundrixModules,
   ...
 }:
 let
@@ -254,6 +255,10 @@ let
   };
 in
 {
+  imports = [
+    foundrixModules.components.steam
+  ];
+
   options = namespaced __curPos {
     enable = lib.mkEnableOption "gamescope session switching";
 
@@ -511,9 +516,8 @@ in
     ];
 
     # Use programs.gamescope which sets up security wrapper with cap_sys_nice
+    foundrix.components.steam.gamescope.enable = true;
     programs.gamescope = {
-      enable = true;
-      capSysNice = lib.mkDefault true;
       package = lib.mkDefault cfg.gamescopePackage;
     };
 
@@ -536,5 +540,18 @@ in
 
     # Load NTSync kernel module for smoother Wine/Proton sync
     boot.kernelModules = lib.mkIf cfg.ntSync [ "ntsync" ];
+
+    security.pam.services.greetd = {
+      allowNullPassword = true;
+      startSession = true;
+    };
+
+    # This is set by gamescopeSession in nixpkgs, so set it here, too
+    security.wrappers.bwrap = lib.mkIf cfg.realtimeScheduling {
+      owner = "root";
+      group = "root";
+      source = lib.getExe' pkgs.bubblewrap "bwrap";
+      setuid = true;
+    };
   };
 }
