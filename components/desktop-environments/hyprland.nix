@@ -111,29 +111,53 @@
         ) (lib.range 1 9);
       workspaceRules = lib.flatten (lib.imap0 workspaceRulesForMonitor monitorIds);
 
-      # Synchronized workspace switching: switch all monitors, then refocus original monitor
-      # Uses --batch to execute atomically and avoid focus race conditions
+      # Synchronized workspace switching: switch all monitors, focused monitor last for proper keyboard focus
+      # Detects focused monitor, then orders dispatches so its workspace is switched last
       switchAllWorkspaces =
         n:
         let
-          dispatches = lib.concatStringsSep "; " (
-            map (i: "dispatch workspace ${toString (workspaceId n i)}") (lib.range 0 (monitorCount - 1))
+          # Generate dispatch order with focusedIdx last
+          dispatchesForFocused =
+            focusedIdx:
+            let
+              otherMonitors = lib.filter (i: i != focusedIdx) (lib.range 0 (monitorCount - 1));
+              orderedMonitors = otherMonitors ++ [ focusedIdx ];
+            in
+            lib.concatStringsSep "; " (
+              map (i: "dispatch workspace ${toString (workspaceId n i)}") orderedMonitors
+            );
+          # Generate shell case for each possible focused monitor
+          cases = lib.concatStringsSep " " (
+            map (i: "${toString i}) hyprctl --batch \"${dispatchesForFocused i}\" ;;") (
+              lib.range 0 (monitorCount - 1)
+            )
           );
         in
-        "MON=$(hyprctl activeworkspace -j | jq -r '.monitor'); hyprctl --batch \"${dispatches}; dispatch focusmonitor $MON\"";
+        "case $(hyprctl monitors -j | jq -r '.[] | select(.focused==true) | .id') in ${cases} esac";
       synchronizedWorkspaceBinds = map (n: "$mainMod, ${toString n}, exec, ${switchAllWorkspaces n}") (
         lib.range 1 9
       );
 
-      # Move to workspace: move window, switch all monitors, refocus monitor where window landed
+      # Move to workspace: move window, switch all monitors, focused monitor last for proper keyboard focus
       moveToWorkspace =
         n:
         let
-          dispatches = lib.concatStringsSep "; " (
-            map (i: "dispatch workspace ${toString (workspaceId n i)}") (lib.range 0 (monitorCount - 1))
+          dispatchesForFocused =
+            focusedIdx:
+            let
+              otherMonitors = lib.filter (i: i != focusedIdx) (lib.range 0 (monitorCount - 1));
+              orderedMonitors = otherMonitors ++ [ focusedIdx ];
+            in
+            lib.concatStringsSep "; " (
+              map (i: "dispatch workspace ${toString (workspaceId n i)}") orderedMonitors
+            );
+          cases = lib.concatStringsSep " " (
+            map (i: "${toString i}) hyprctl --batch \"${dispatchesForFocused i}\" ;;") (
+              lib.range 0 (monitorCount - 1)
+            )
           );
         in
-        "hyprctl dispatch movetoworkspace m~${toString n}; MON=$(hyprctl activeworkspace -j | jq -r '.monitor'); hyprctl --batch \"${dispatches}; dispatch focusmonitor $MON\"";
+        "hyprctl dispatch movetoworkspace m~${toString n}; case $(hyprctl monitors -j | jq -r '.[] | select(.focused==true) | .id') in ${cases} esac";
       moveToWorkspaceBinds = map (n: "$mainMod SHIFT, ${toString n}, exec, ${moveToWorkspace n}") (
         lib.range 1 9
       );
@@ -147,14 +171,25 @@
       );
 
       # Multi-monitor: commands to switch all monitors to next/previous virtual workspace
-      # Uses --batch to execute atomically and avoid focus race conditions
-      dispatchAllMonitors = lib.concatStringsSep "; " (
-        map (i: "dispatch workspace $(( NEW${if i == 0 then "" else " + ${toString (i * 10)}"} ))") (
+      # Orders dispatches so focused monitor's workspace is switched last for proper keyboard focus
+      dispatchAllMonitorsForFocused =
+        focusedIdx:
+        let
+          otherMonitors = lib.filter (i: i != focusedIdx) (lib.range 0 (monitorCount - 1));
+          orderedMonitors = otherMonitors ++ [ focusedIdx ];
+        in
+        lib.concatStringsSep "; " (
+          map (
+            i: "dispatch workspace $(( NEW${if i == 0 then "" else " + ${toString (i * 10)}"} ))"
+          ) orderedMonitors
+        );
+      dispatchAllMonitorsCases = lib.concatStringsSep " " (
+        map (i: "${toString i}) hyprctl --batch \"${dispatchAllMonitorsForFocused i}\" ;;") (
           lib.range 0 (monitorCount - 1)
         )
       );
-      virtualWorkspaceNext = "CURR=$(hyprctl monitors -j | jq '.[] | select(.id==0) | .activeWorkspace.id'); NEW=$(( (CURR % 9) + 1 )); hyprctl --batch \"${dispatchAllMonitors}\"";
-      virtualWorkspacePrev = "CURR=$(hyprctl monitors -j | jq '.[] | select(.id==0) | .activeWorkspace.id'); NEW=$(( ((CURR - 2 + 9) % 9) + 1 )); hyprctl --batch \"${dispatchAllMonitors}\"";
+      virtualWorkspaceNext = "CURR=$(hyprctl monitors -j | jq '.[] | select(.id==0) | .activeWorkspace.id'); NEW=$(( (CURR % 9) + 1 )); case $(hyprctl monitors -j | jq -r '.[] | select(.focused==true) | .id') in ${dispatchAllMonitorsCases} esac";
+      virtualWorkspacePrev = "CURR=$(hyprctl monitors -j | jq '.[] | select(.id==0) | .activeWorkspace.id'); NEW=$(( ((CURR - 2 + 9) % 9) + 1 )); case $(hyprctl monitors -j | jq -r '.[] | select(.focused==true) | .id') in ${dispatchAllMonitorsCases} esac";
     in
     lib.mkIf
       ((if foundrixIgnoreMissingInputs then (c: _: c) else lib.asserts.assertMsg) (
