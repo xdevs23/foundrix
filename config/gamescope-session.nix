@@ -510,6 +510,40 @@ in
       '';
       default = false;
     };
+
+    desktopEntry = lib.mkOption {
+      type = lib.types.package;
+      readOnly = true;
+      default = gamemode-desktop-entry;
+      description = ''
+        The desktop entry package for switching to game mode.
+        Read-only. Can be referenced in other modules.
+
+        Examples:
+
+        Add to system packages:
+          environment.systemPackages = [ config.foundrix.config.gamescope-session.desktopEntry ];
+
+        GNOME favorites (via Home Manager dconf):
+          dconf.settings."org/gnome/shell".favorite-apps = [
+            "gamescope-session.desktop"
+            # ... other apps
+          ];
+
+        KDE Plasma taskbar (via plasma-manager panels):
+          programs.plasma.panels = [{
+            widgets = [{
+              iconTasks.launchers = [
+                "applications:gamescope-session.desktop"
+                # ... other apps
+              ];
+            }];
+          }];
+
+        Get the .desktop file path:
+          "''${config.foundrix.config.gamescope-session.desktopEntry}/share/applications/gamescope-session.desktop"
+      '';
+    };
   };
 
   config = lib.mkIf cfg.enable {
