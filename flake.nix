@@ -144,6 +144,24 @@
             }
           ];
         };
+        smoke-test-readonly-ab = lib.nixosSystem {
+          specialArgs = self.nixosModules.foundrixSpecialArgs;
+          modules = [
+            ./common
+            self.nixosModules.profiles.image.readonly-ab
+            self.nixosModules.config.runtime.repart.data
+            self.nixosModules.config.filesystem.root-tmpfs
+            self.nixosModules.config.filesystem.var
+            self.nixosModules.config.filesystem.home-tmpfs
+            self.nixosModules.config.debug
+            {
+              nixpkgs.hostPlatform = lib.mkOverride 1200 "x86_64-linux";
+              boot.uki.name = "smoke-test";
+              foundrix.config.image.device.dataDevice = "/dev/nvme0n1";
+              system.image.version = "1";
+            }
+          ];
+        };
       };
       packages = (
         forAllSystems (

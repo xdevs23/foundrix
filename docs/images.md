@@ -100,18 +100,78 @@ Data disk (runtime):
 └── 50-var (btrfs)     ← /var subvolume (created on first boot)
 ```
 
+## Read-Only Profile (readonly-ab)
+
+For appliances that don't need runtime package installation:
+
+```nix
+imports = [
+  foundrixModules.profiles.image.readonly-ab
+  foundrixModules.config.runtime.repart.data
+  foundrixModules.config.filesystem.root-tmpfs
+  foundrixModules.config.filesystem.var
+  foundrixModules.config.filesystem.home-tmpfs
+];
+
+foundrix.config.image.device.dataDevice = "/dev/nvme0n1";
+system.image.version = "1";  # Required for A/B slot labeling
+```
+
+**Partition layout:**
+```
+System disk (image):
+├── 10-esp (FAT32)           ← EFI bootloader
+├── 30-store (erofs)         ← Read-only /nix/store
+└── 35-store-empty           ← Empty A/B slot for updates
+
+Data disk (runtime):
+└── 21-data (btrfs)          ← /var (created on first boot)
+```
+
 ## Available Modules
+
+### Profiles
 
 | Module | Description |
 |--------|-------------|
 | `profiles.image.server-writable` | Writable btrfs store + UEFI/BIOS boot |
-| `config.image.store.btrfs-writable` | Writable btrfs nix store partition |
+| `profiles.image.readonly-ab` | Read-only erofs store + A/B slots + UEFI |
+
+### Store Types
+
+| Module | Description |
+|--------|-------------|
+| `config.image.store.btrfs-writable` | Writable btrfs nix store |
+| `config.image.store.erofs-readonly` | Read-only erofs nix store |
+
+### Boot
+
+| Module | Description |
+|--------|-------------|
 | `config.image.boot.systemd-boot` | UEFI boot with systemd-boot |
 | `config.image.boot.systemd-boot-bios` | UEFI + syslinux BIOS fallback |
-| `config.runtime.repart.var` | Runtime /var partition |
+
+### Slots
+
+| Module | Description |
+|--------|-------------|
+| `config.image.slots.ab` | A/B slot layout for atomic updates |
+
+### Runtime Partitioning
+
+| Module | Description |
+|--------|-------------|
+| `config.runtime.repart.var` | /var partition (servers) |
+| `config.runtime.repart.data` | Generic data partition (appliances) |
+
+### Filesystems
+
+| Module | Description |
+|--------|-------------|
 | `config.filesystem.root-tmpfs` | Ephemeral root on tmpfs |
 | `config.filesystem.esp` | EFI System Partition mount |
-| `config.filesystem.nix` | /nix mount |
+| `config.filesystem.nix` | /nix mount (btrfs) |
+| `config.filesystem.nix-store-erofs` | /nix/store mount (erofs) |
 | `config.filesystem.var` | /var mount with persistence |
 | `config.filesystem.home-tmpfs` | Ephemeral /home on tmpfs |
 

@@ -158,6 +158,41 @@ smoke-test-my-feature = lib.nixosSystem {
 };
 ```
 
+## Image Store Configuration
+
+### nixStorePrefix Explained
+
+The `nixStorePrefix` option in `image.repart.partitions` controls where nix store contents are placed within the partition:
+
+| nixStorePrefix | Contents in partition | Partition mount point |
+|----------------|----------------------|----------------------|
+| `/nix/store` | `nix/store/...` | `/` or btrfs subvol |
+| `/` | `...` (store at root) | `/nix/store` |
+
+**btrfs-writable** uses `/nix/store` - the partition contains a full filesystem tree with nix store inside, mounted with subvolume options.
+
+**erofs-readonly** uses `/` - the partition IS the nix store, mounted directly to `/nix/store`.
+
+### erofs Read-Only Store
+
+For read-only systems (HTPCs, appliances), use erofs:
+- Compressed (lz4hc by default)
+- Fast random reads
+- No runtime modification possible
+
+Requires `system.image.version` for partition labeling:
+```nix
+system.image.version = "1";
+```
+
+### A/B Slot Layout
+
+The `slots.ab` module adds an empty store partition for atomic updates:
+- Active slot: `30-store` with label `store_${version}`
+- Empty slot: `35-store-empty` with label `_empty`
+
+systemd-sysupdate writes to the empty slot, then reboots into it.
+
 ## Common Gotchas
 
 ### boot.initrd.systemd.enable Required
@@ -190,16 +225,29 @@ Avoid `/dev/sdX` or `/dev/nvmeXnY` as these can change.
 ```
 foundrix/
 ├── config/
-│   ├── image/           # Image-time configuration
-│   │   ├── boot/        # Boot loader modules
-│   │   ├── store/       # Nix store partition types
-│   │   ├── device.nix   # Device selection options
-│   │   └── partition-ids.nix
-│   ├── runtime/         # Runtime partitioning
-│   │   └── repart/      # systemd-repart modules
-│   └── filesystem/      # Mount configurations
+│   ├── image/                    # Image-time configuration
+│   │   ├── boot/
+│   │   │   ├── systemd-boot.nix      # UEFI boot
+│   │   │   └── systemd-boot-bios.nix # UEFI + BIOS fallback
+│   │   ├── store/
+│   │   │   ├── btrfs-writable.nix    # Writable nix store
+│   │   │   └── erofs-readonly.nix    # Read-only nix store
+│   │   ├── slots/
+│   │   │   └── ab.nix                # A/B slot layout
+│   │   ├── device.nix                # Device path options
+│   │   └── partition-ids.nix         # Partition ID constants
+│   ├── runtime/                  # Runtime partitioning
+│   │   └── repart/
+│   │       ├── var.nix               # /var for servers
+│   │       └── data.nix              # Generic data partition
+│   └── filesystem/               # Mount configurations
+│       ├── nix.nix                   # /nix mount (btrfs)
+│       ├── nix-store-erofs.nix       # /nix/store mount (erofs)
+│       └── var.nix                   # /var mount
 ├── profiles/
-│   └── image/           # High-level image profiles
-├── framework/           # Build frameworks
+│   └── image/                    # High-level image profiles
+│       ├── server-writable.nix       # Writable server
+│       └── readonly-ab.nix           # Read-only with A/B
+├── framework/                    # Build frameworks
 └── flake.nix
 ```
