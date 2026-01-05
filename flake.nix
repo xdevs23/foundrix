@@ -127,6 +127,23 @@
             }
           ];
         };
+        smoke-test-server-writable = lib.nixosSystem {
+          specialArgs = self.nixosModules.foundrixSpecialArgs;
+          modules = [
+            ./common
+            self.nixosModules.profiles.image.server-writable
+            self.nixosModules.config.runtime.repart.var
+            self.nixosModules.config.filesystem.root-tmpfs
+            self.nixosModules.config.filesystem.nix
+            self.nixosModules.config.filesystem.var
+            self.nixosModules.config.debug
+            {
+              nixpkgs.hostPlatform = lib.mkOverride 1200 "x86_64-linux";
+              boot.uki.name = "smoke-test";
+              foundrix.config.image.device.dataDevice = "/dev/sda";
+            }
+          ];
+        };
       };
       packages = (
         forAllSystems (
@@ -271,6 +288,14 @@
             A flake-based NixOS headless configuration
             with foundrix fully configured and ready to use.
             This is for servers and embedded systems like routers and homelabs.
+          '';
+        };
+        server-writable = {
+          path = ./templates/server-writable;
+          description = ''
+            A flake-based NixOS server configuration with disk image support.
+            Includes writable btrfs nix store, UEFI+BIOS boot, runtime /var partition,
+            and ephemeral root. Ready to deploy to cloud VMs or bare metal servers.
           '';
         };
       };
