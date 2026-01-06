@@ -75,6 +75,20 @@ or
 nix eval --refresh --raw git+https://codeberg.org/xdevs23/foundrix#list-modules
 ```
 
+### Viewing Traits
+
+Traits are cross-module capability announcements. View enabled traits for a configuration:
+
+```bash
+nix eval --raw 'path:.#show-traits.my-config'
+```
+
+View all traits (enabled and disabled):
+
+```bash
+nix eval --raw 'path:.#show-all-traits.my-config'
+```
+
 ## Documentation
 
 Option documentation can be built and launched in your browser using
@@ -82,6 +96,12 @@ Option documentation can be built and launched in your browser using
 ```
 nix run --refresh git+https://codeberg.org/xdevs23/foundrix#docs
 ```
+
+Additional documentation:
+
+- [Building Disk Images](docs/images.md) - Guide to building bootable disk images
+- [Trait System](docs/traits.md) - Cross-module capability announcements
+- [Tips and Tricks](TIPS_AND_TRICKS.md) - Development tips and common patterns
 
 ## Licensing
 
