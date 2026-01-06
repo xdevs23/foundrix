@@ -28,7 +28,7 @@
         args: flake:
         let
           deviceRoots = flake.deviceRoots or [ (args.self + "/devices") ];
-          cleanFlake = builtins.removeAttrs flake [ "deviceRoots" ];
+          cleanFlake = removeAttrs flake [ "deviceRoots" ];
         in
         lib.recursiveUpdate cleanFlake ((import ./plugin.nix).outputs (args // { inherit deviceRoots; }));
 
@@ -56,12 +56,12 @@
 
       # Convert a single nix file path to a module with special args
       pathToModule =
-        path:
+        modulePath:
         { ... }:
         {
           imports = [
             ./common
-            path
+            modulePath
           ];
           config._module.specialArgs = self.nixosModules.foundrixSpecialArgs;
         };
@@ -75,16 +75,16 @@
             lib.concatMapAttrs (
               name: type:
               let
-                path = dir + "/${name}";
+                filePath = dir + "/${name}";
               in
               if type == "directory" then
-                { "${name}" = processDir path; }
+                { "${name}" = processDir filePath; }
               else if type == "regular" && lib.hasSuffix ".nix" name && name != "default.nix" then
                 let
                   baseName = lib.removeSuffix ".nix" name;
                 in
                 {
-                  ${baseName} = pathToModule path;
+                  ${baseName} = pathToModule filePath;
                 }
               else
                 { }
@@ -96,8 +96,8 @@
 
       foundrixNixosModules = lib.attrsets.mergeAttrsList (
         map
-          (path: {
-            ${baseNameOf path} = if builtins.pathExists path then modulesFromDirectoryRecursive path else { };
+          (dirPath: {
+            ${baseNameOf dirPath} = if builtins.pathExists dirPath then modulesFromDirectoryRecursive dirPath else { };
           })
           [
             ./components
@@ -185,7 +185,7 @@
                     recurse =
                       set:
                       builtins.concatLists (
-                        builtins.map (
+                        map (
                           name:
                           let
                             value = set.${name};
@@ -204,7 +204,7 @@
                       lib.updateManyAttrsByPath [
                         {
                           path = [ "hardware" ];
-                          update = old: builtins.removeAttrs old [ "platform" ];
+                          update = old: removeAttrs old [ "platform" ];
                         }
                       ] foundrixNixosModules
                     )
@@ -260,7 +260,7 @@
       );
       nixosModules = foundrixNixosModules // {
         inherit pluggedInTo;
-        foundrixInputs = builtins.removeAttrs flakeArgs [ "self" ];
+        foundrixInputs = removeAttrs flakeArgs [ "self" ];
       };
       checks = forAllSystems (
         system:
@@ -270,9 +270,9 @@
         in
         lib.listToAttrs (
           map (
-            { path, name, ... }:
+            profileFile:
             let
-              profileName = lib.removeSuffix ".nix" name;
+              profileName = lib.removeSuffix ".nix" profileFile.name;
             in
             {
               name = "${profileName}-basic";
@@ -283,7 +283,7 @@
                 nodes.machine = {
                   imports = [
                     ./common
-                    path
+                    profileFile.path
                   ];
                 };
                 testScript = ''
