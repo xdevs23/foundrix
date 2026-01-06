@@ -100,11 +100,26 @@ let
     done
   '';
 
+  # Patch for wlserver lock race condition (upstream PR #2023)
+  # Fixes: Assertion 'wlserver_is_lock_held()' failed on second session start
+  wlserverLockPatch = pkgs.fetchurl {
+    url = "https://github.com/ValveSoftware/gamescope/pull/2023.patch";
+    hash = "sha256-I6CDtlEBOALo0FqsJDW2jjHxkla/GrBw8vlyUQ4zEdU=";
+  };
+
+  patchGamescope =
+    pkg:
+    pkg.overrideAttrs (old: {
+      patches = (old.patches or [ ]) ++ [ wlserverLockPatch ];
+    });
+
   defaultGamescopePackage =
-    if config.foundrix.hardware.gpu.usesUnstablePackages or false then
-      pkgsUnstable.gamescope
-    else
-      pkgs.gamescope;
+    patchGamescope (
+      if config.foundrix.hardware.gpu.usesUnstablePackages or false then
+        pkgsUnstable.gamescope
+      else
+        pkgs.gamescope
+    );
 
   # Detect best monitor: highest resolution, then highest refresh rate
   detectBestMonitor = pkgs.writeShellScript "detect-best-monitor" ''
@@ -387,7 +402,11 @@ in
 
     gamescopePackage = lib.mkOption {
       type = lib.types.package;
-      description = "Gamescope package to use";
+      description = ''
+        Gamescope package to use.
+        The default package includes a patch for the wlserver lock race condition
+        (upstream PR #2023) that fixes assertion failures on session restart.
+      '';
       default = defaultGamescopePackage;
     };
 
