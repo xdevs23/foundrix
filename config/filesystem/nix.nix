@@ -6,7 +6,7 @@
   ...
 }:
 let
-  homeManagerPresent = config.foundrix.traits.homeManager.present or false;
+  homeManagerPresent = (config.foundrix.traits.homeManager.method or null) != null;
 in
 {
   options = namespaced __curPos {

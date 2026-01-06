@@ -9,27 +9,8 @@ let
   bold = builtins.fromJSON "\"\\u001b[1m\"";
   reset = builtins.fromJSON "\"\\u001b[0m\"";
 
-  # Trait type constants (enum variants)
+  # Trait type constants (enum variants and descriptions)
   traitTypes = import ./framework/traits/types.nix;
-
-  # Trait descriptions
-  traitDescriptions = {
-    filesystem = {
-      rootType = {
-        description = "Root filesystem type - determines persistence and mutability characteristics";
-        variants = {
-          volatile = "tmpfs - state must be persisted elsewhere";
-          readonly = "erofs/squashfs - immutable root";
-          persistent = "btrfs/ext4 - normal persistent root";
-        };
-      };
-      readOnlyStore = "Nix store is read-only (erofs) and cannot be modified at runtime";
-    };
-    homeManager = {
-      present = "Home Manager module is imported and active";
-      prebuilt = "Home Manager configurations are pre-built and don't require runtime evaluation";
-    };
-  };
 
   # Check if a trait is an enum type (has variants in traitTypes)
   isEnumTrait = category: name: traitTypes ? ${category} && traitTypes.${category} ? ${name};
@@ -37,34 +18,33 @@ let
   # Common function to show traits
   # enabledOnly: if true, only show enabled traits; if false, show all
   mkShowTraits =
-    enabledOnly: config:
+    enabledOnly:
+    { config, options }:
     let
       traits = config.foundrix.traits or { };
+      traitOptions = options.foundrix.traits or { };
 
-      # Collect traits using traitDescriptions as source of truth
+      # Collect traits using options as source of truth
       collectTraits =
-        category: categoryDesc:
+        category: categoryOptions:
         builtins.filter (x: x != null) (
           builtins.attrValues (
             builtins.mapAttrs (
-              name: desc:
+              name: opt:
               let
                 isEnum = isEnumTrait category name;
                 # Get value from config (graceful non-existence)
                 value = traits.${category}.${name} or (if isEnum then null else false);
                 # For booleans: enabled = true, for enums: enabled = non-null
                 enabled = if isEnum then value != null else value == true;
+                # Get description from the option definition
+                description = opt.description or "No description";
               in
               if enabledOnly && !enabled then
                 null
               else
                 {
-                  inherit category name enabled isEnum value;
-                  description =
-                    if isEnum then
-                      (desc.description or "No description")
-                    else
-                      desc;
+                  inherit category name enabled isEnum value description;
                   variants =
                     if isEnum then
                       traitTypes.${category}.${name}
@@ -72,16 +52,16 @@ let
                       null;
                   variantDescriptions =
                     if isEnum then
-                      (desc.variants or { })
+                      (traitTypes.descriptions.${category}.${name} or { })
                     else
                       null;
                 }
-            ) categoryDesc
+            ) categoryOptions
           )
         );
 
       collectedTraits = builtins.concatLists (
-        builtins.attrValues (builtins.mapAttrs collectTraits traitDescriptions)
+        builtins.attrValues (builtins.mapAttrs collectTraits traitOptions)
       );
 
       formatTrait =
@@ -125,7 +105,9 @@ let
                 else if isSelected then "${green}●${reset}"
                 else "${dim}○${reset}";
               variantDesc = variantDescriptions.${variantName} or "";
-              descPart = if variantDesc != "" then " ${gray}(${variantDesc})${reset}" else "";
+              # Description is dim when trait is disabled, gray otherwise
+              descColor = if enabled then gray else dim;
+              descPart = if variantDesc != "" then " ${descColor}(${variantDesc})${reset}" else "";
               # Variant name is dim when trait is disabled, normal otherwise
               variantNameFormatted = if enabled then variantName else "${dim}${variantName}${reset}";
             in

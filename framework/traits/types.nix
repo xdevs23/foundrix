@@ -3,9 +3,32 @@
 {
   filesystem = {
     rootType = {
-      volatile = "volatile"; # tmpfs - state must be persisted elsewhere
-      readonly = "readonly"; # erofs/squashfs - immutable root
-      persistent = "persistent"; # btrfs/ext4 - normal persistent root
+      volatile = "volatile";
+      readonly = "readonly";
+      persistent = "persistent";
+    };
+  };
+  homeManager = {
+    method = {
+      prebuilt = "prebuilt";
+      runtime = "runtime";
+    };
+  };
+
+  # Variant descriptions for display purposes
+  descriptions = {
+    filesystem = {
+      rootType = {
+        volatile = "tmpfs - state must be persisted elsewhere";
+        readonly = "erofs/squashfs - immutable root";
+        persistent = "btrfs/ext4 - normal persistent root";
+      };
+    };
+    homeManager = {
+      method = {
+        prebuilt = "pre-built, no runtime evaluation needed";
+        runtime = "evaluated at runtime/activation";
+      };
     };
   };
 }

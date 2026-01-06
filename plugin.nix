@@ -122,8 +122,8 @@
       nixosModules = {
         foundrixSpecialArgs = defaultSpecialArgs;
       };
-      show-traits = builtins.mapAttrs (_: nixos: showOutputs.show-traits nixos.config) (self.nixosConfigurations or { });
-      show-all-traits = builtins.mapAttrs (_: nixos: showOutputs.show-all-traits nixos.config) (self.nixosConfigurations or { });
+      show-traits = builtins.mapAttrs (_: nixos: showOutputs.show-traits { inherit (nixos) config options; }) (self.nixosConfigurations or { });
+      show-all-traits = builtins.mapAttrs (_: nixos: showOutputs.show-all-traits { inherit (nixos) config options; }) (self.nixosConfigurations or { });
       packages = forAllSystems (
         system:
         let

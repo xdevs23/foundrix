@@ -15,6 +15,8 @@
     #./upstream-fixes.nix
     ./hardware.nix
     ./nixpkgs.nix
+    # Import all trait modules so options are available for show-traits
+    (foundrix + "/framework/traits")
   ];
 
   options = {

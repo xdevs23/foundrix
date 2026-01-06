@@ -5,6 +5,7 @@
   foundrixModules,
   foundrixPackages,
   foundrixInputs,
+  traitTypes,
   namespaced,
   namespacedCfg,
   ...
@@ -26,8 +27,8 @@
       cfg = namespacedCfg __curPos;
     in
     {
-      # Announce home-manager presence trait
-      foundrix.traits.homeManager.present = true;
+      # Announce home-manager method trait (runtime = evaluated at activation)
+      foundrix.traits.homeManager.method = traitTypes.homeManager.method.runtime;
 
       home-manager = {
         useGlobalPkgs = true;
