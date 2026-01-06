@@ -243,6 +243,138 @@ Always use stable device paths:
 
 Avoid `/dev/sdX` or `/dev/nvmeXnY` as these can change.
 
+## Nix Language Tips
+
+### Avoid Shadowing Builtins
+
+Don't use variable names that shadow Nix builtins like `path`, `map`, `toString`, etc.:
+
+```nix
+# BAD - shadows builtin
+map (path: { ... }) paths
+
+# GOOD - use descriptive names
+map (filePath: { ... }) paths
+map (modulePath: { ... }) modules
+map (dirPath: { ... }) directories
+```
+
+### Use Prelude Builtins Without Prefix
+
+These builtins are in the prelude and don't need the `builtins.` prefix:
+
+```nix
+# Unnecessary prefix
+builtins.map
+builtins.removeAttrs
+builtins.toString
+
+# Cleaner
+map
+removeAttrs
+toString
+```
+
+### Pattern Matching in Function Arguments
+
+Nix doesn't support renaming in pattern destructuring like `{ path = newName, ... }`. Instead:
+
+```nix
+# BAD - syntax error
+map ({ path = filePath, name, ... }: ...) items
+
+# GOOD - use the whole item
+map (item: let filePath = item.path; in ...) items
+
+# GOOD - or just use the original name if it doesn't shadow
+map ({ path, name, ... }: ...) items
+```
+
+### Circular Import Prevention
+
+When importing modules from `common/`, don't use `foundrixModules` as it wraps modules with common imports (circular dependency). Use direct paths instead:
+
+```nix
+# BAD - circular import
+imports = [ foundrixModules.framework.traits ];
+
+# GOOD - direct path
+imports = [ (foundrix + "/framework/traits") ];
+
+# GOOD - relative path within same repo
+imports = [ ./traits.nix ];
+```
+
+## Module System Tips
+
+### Passing Arguments to All Modules
+
+Use `_module.args` in `common/` to make values available to all modules:
+
+```nix
+# common/default.nix
+config._module.args.traitTypes = import (foundrix + "/framework/traits/types.nix");
+
+# Any module can then use it
+{ traitTypes, ... }:
+{
+  config.foo = traitTypes.filesystem.rootType.volatile;
+}
+```
+
+### Accessing Options vs Config
+
+- `config.foo.bar` - The resolved value after all modules are evaluated
+- `options.foo.bar` - The option definition (type, default, description)
+- `options.foo.bar.description` - Get the description string from an option
+
+### Enum Options with Null Default
+
+For optional enum traits, use `nullOr`:
+
+```nix
+type = lib.types.nullOr (lib.types.enum [ "a" "b" "c" ]);
+default = null;
+```
+
+This allows distinguishing "not set" from any valid enum value.
+
+## DRY Principles
+
+### Don't Duplicate Descriptions
+
+- **Option descriptions**: Define in the `lib.mkOption` call
+- **Enum variant descriptions**: Define in a central location (e.g., `traitTypes.descriptions`)
+- **Display logic**: Pull from source of truth, don't hardcode
+
+```nix
+# BAD - duplicated
+traitDescriptions = {
+  foo = "Description here";  # Duplicates option description
+};
+
+# GOOD - single source of truth
+# Description in option definition, display code reads from options
+description = options.foundrix.traits.foo.description;
+```
+
+### Constants Outside Option System
+
+For enum values used across modules, define constants separately from options:
+
+```nix
+# framework/traits/types.nix
+{
+  filesystem.rootType = {
+    volatile = "volatile";
+    readonly = "readonly";
+  };
+}
+
+# Passed via _module.args, used everywhere
+config.foo = traitTypes.filesystem.rootType.volatile;
+```
+
 ## File Structure Reference
 
 ```
