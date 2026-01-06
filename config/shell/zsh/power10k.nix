@@ -79,7 +79,7 @@
     let
       cfg = namespacedCfg __curPos;
 
-      zshCacheDir = "$XDG_CACHE_HOME/zsh";
+      zshCacheDir = "\${XDG_CACHE_HOME:-$HOME/.cache}/zsh";
       oh-my-zsh-plugin = name: {
         name = name;
         file = "plugins/${name}/${name}.plugin.zsh";
@@ -139,33 +139,36 @@
             ''
               mkdir -p "${zshCacheDir}"
               ZSH_CACHE_DIR="${zshCacheDir}"
-              ZSH_THEME="powerlevel10k/powerlevel10k"
-              if [ `tput colors` != "256" ] || [[ "$(tty)" == *"/tty"* ]]; then
-                export ZSH_THEME="clean"
-              fi
               DISABLE_AUTO_UPDATE="true"
               DISABLE_UPDATE_PROMPT="true"
               COMPLETION_WAITING_DOTS="true"
-              source "${p10kConfigFile}"
               alias ll='ls -alF'
               alias la='ls -A'
               alias l='ls -CF'
-              if [[ $COLORTERM =~ ^(truecolor|24bit)$ ]]; then
-                typeset -g POWERLEVEL9K_CUSTOM_OS_ICON_BACKGROUND="${cfg.colors.osIconBackground}"
-                typeset -g POWERLEVEL9K_HOST_BACKGROUND="${cfg.colors.hostBackground}"
-                typeset -g POWERLEVEL9K_USER_BACKGROUND="${cfg.colors.userBackground}"
-                typeset -g POWERLEVEL9K_DIR_BACKGROUND="${cfg.colors.dirBackground}"
-                typeset -g POWERLEVEL9K_DIR_ANCHOR_BACKGROUND="${cfg.colors.dirAnchorBackground}"
 
-                typeset -g POWERLEVEL9K_CUSTOM_OS_ICON_FOREGROUND="${cfg.colors.osIconForeground}"
-                typeset -g POWERLEVEL9K_HOST_FOREGROUND="${cfg.colors.hostForeground}"
-                typeset -g POWERLEVEL9K_USER_FOREGROUND="${cfg.colors.userForeground}"
-                typeset -g POWERLEVEL9K_DIR_FOREGROUND="${cfg.colors.dirForeground}"
-                typeset -g POWERLEVEL9K_DIR_ANCHOR_FOREGROUND="${cfg.colors.dirAnchorForeground}"
+              # Skip p10k on TTY or low-color terminals - use simple prompt instead
+              if [[ "$(tty)" == *"/tty"* ]] || [[ $(tput colors 2>/dev/null) -lt 256 ]]; then
+                autoload -Uz promptinit && promptinit
+                PROMPT='%F{green}%n@%m%f:%F{blue}%~%f$ '
+              else
+                source "${p10kConfigFile}"
+                if [[ $COLORTERM =~ ^(truecolor|24bit)$ ]]; then
+                  typeset -g POWERLEVEL9K_CUSTOM_OS_ICON_BACKGROUND="${cfg.colors.osIconBackground}"
+                  typeset -g POWERLEVEL9K_HOST_BACKGROUND="${cfg.colors.hostBackground}"
+                  typeset -g POWERLEVEL9K_USER_BACKGROUND="${cfg.colors.userBackground}"
+                  typeset -g POWERLEVEL9K_DIR_BACKGROUND="${cfg.colors.dirBackground}"
+                  typeset -g POWERLEVEL9K_DIR_ANCHOR_BACKGROUND="${cfg.colors.dirAnchorBackground}"
 
-                typeset -g POWERLEVEL9K_CUSTOM_OS_ICON="echo $'\u${cfg.osIconCodepoint}'"
+                  typeset -g POWERLEVEL9K_CUSTOM_OS_ICON_FOREGROUND="${cfg.colors.osIconForeground}"
+                  typeset -g POWERLEVEL9K_HOST_FOREGROUND="${cfg.colors.hostForeground}"
+                  typeset -g POWERLEVEL9K_USER_FOREGROUND="${cfg.colors.userForeground}"
+                  typeset -g POWERLEVEL9K_DIR_FOREGROUND="${cfg.colors.dirForeground}"
+                  typeset -g POWERLEVEL9K_DIR_ANCHOR_FOREGROUND="${cfg.colors.dirAnchorForeground}"
+
+                  typeset -g POWERLEVEL9K_CUSTOM_OS_ICON="echo $'\u${cfg.osIconCodepoint}'"
+                fi
+                source ${pkgs.zsh-powerlevel10k}/share/zsh-powerlevel10k/powerlevel10k.zsh-theme
               fi
-              source ${pkgs.zsh-powerlevel10k}/share/zsh-powerlevel10k/powerlevel10k.zsh-theme
               eval "$(pay-respects zsh --nocnf)"
               [[ -z "$ZSH_LAST_WORKING_DIRECTORY" ]] || return
               [[ "$PWD" == "$HOME" ]] || return
