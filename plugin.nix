@@ -9,6 +9,7 @@
     }@flakeArgs:
     let
       lib = nixpkgs.lib;
+      showOutputs = import (foundrix + "/show.nix") { nixosModules = foundrix.nixosModules; };
       forAllSystems = nixpkgs.lib.genAttrs nixpkgs.lib.systems.flakeExposed;
       foundrixPackages =
         pkgs: extraArgs:
@@ -121,6 +122,8 @@
       nixosModules = {
         foundrixSpecialArgs = defaultSpecialArgs;
       };
+      show-traits = builtins.mapAttrs (_: nixos: showOutputs.show-traits nixos.config) (self.nixosConfigurations or { });
+      show-all-traits = builtins.mapAttrs (_: nixos: showOutputs.show-all-traits nixos.config) (self.nixosConfigurations or { });
       packages = forAllSystems (
         system:
         let

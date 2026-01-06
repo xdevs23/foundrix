@@ -1,9 +1,13 @@
 {
+  config,
   lib,
   namespaced,
   namespacedCfg,
   ...
 }:
+let
+  homeManagerPresent = config.foundrix.traits.homeManager.present or false;
+in
 {
   options = namespaced __curPos {
     size = lib.mkOption {
@@ -31,6 +35,11 @@
           "noatime"
         ];
         neededForBoot = true;
+      };
+
+      # Add home.mount to home-manager setup requirements when home-manager is present
+      foundrix.config = lib.optionalAttrs homeManagerPresent {
+        home-manager.homeManagerUserSetupRequires = [ "home.mount" ];
       };
     };
 }

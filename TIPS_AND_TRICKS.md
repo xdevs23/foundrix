@@ -4,10 +4,21 @@ Tips, commands, and gotchas for working with the foundrix codebase. Useful for h
 
 ## Nix Commands for Development
 
+### Exploring the Flake
+
+See all available outputs (configurations, checks, packages, modules):
+```bash
+nix flake show path:.
+```
+
 ### Listing Available Modules
 
-Use the built-in `list-modules` output to see all available foundrix modules:
+Pretty tree view with colors:
+```bash
+nix eval --raw 'path:.#show-modules'
+```
 
+Flat list (useful for grepping):
 ```bash
 nix eval --raw 'path:.#list-modules'
 ```
@@ -15,6 +26,18 @@ nix eval --raw 'path:.#list-modules'
 Filter for specific modules:
 ```bash
 nix eval --raw 'path:.#list-modules' | grep image
+```
+
+### Showing Traits
+
+Show enabled traits for a configuration with descriptions:
+```bash
+nix eval --raw 'path:.#show-traits.smoke-test-server-writable'
+```
+
+Show all traits (enabled and disabled):
+```bash
+nix eval --raw 'path:.#show-all-traits.smoke-test-server-writable'
 ```
 
 ### Working with Uncommitted Changes

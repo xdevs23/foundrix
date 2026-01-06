@@ -108,6 +108,8 @@
             ./services
           ]
       );
+
+      showOutputs = import ./show.nix { nixosModules = foundrixNixosModules; };
     in
     pluggedInTo (flakeArgs // { foundrix = self; }) {
       lib = import ./lib/export.nix;
@@ -317,7 +319,9 @@
           '';
         };
       };
-      inherit (import ./show.nix { nixosModules = foundrixNixosModules; }) list-modules show-modules;
+      inherit (showOutputs) list-modules show-modules;
+      show-traits = builtins.mapAttrs (_: nixos: showOutputs.show-traits nixos.config) self.nixosConfigurations;
+      show-all-traits = builtins.mapAttrs (_: nixos: showOutputs.show-all-traits nixos.config) self.nixosConfigurations;
       formatter = forAllSystems (system: nixpkgs.legacyPackages.${system}.nixfmt-rfc-style);
     }
   );

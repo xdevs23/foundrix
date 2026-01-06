@@ -19,12 +19,16 @@
   };
   imports = [
     foundrixInputs.home-manager.nixosModules.home-manager
+    foundrixModules.framework.traits.home-manager
   ];
   config =
     let
       cfg = namespacedCfg __curPos;
     in
     {
+      # Announce home-manager presence trait
+      foundrix.traits.homeManager.present = true;
+
       home-manager = {
         useGlobalPkgs = true;
         useUserPackages = true;

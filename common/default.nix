@@ -91,5 +91,6 @@
     _module.args.foundrixPkgs = foundrixPackages pkgs {
       inherit pkgsUnstable;
     };
+    _module.args.traitTypes = import (foundrix + "/framework/traits/types.nix");
   };
 }

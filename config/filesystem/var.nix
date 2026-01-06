@@ -1,11 +1,17 @@
 {
+  config,
   lib,
   pkgs,
   namespaced,
   namespacedCfg,
+  traitTypes,
   ...
 }:
 let
+  # Check volatile root trait (graceful non-existence)
+  rootType = config.foundrix.traits.filesystem.rootType or null;
+  isVolatileRoot = rootType == traitTypes.filesystem.rootType.volatile;
+
   machineIdCreate = pkgs.writeShellScriptBin "machine-id-create" ''
     set -euo pipefail
     target="/sysroot/var/etc/machine-id"
@@ -43,17 +49,21 @@ in
     };
     persistMachineId = lib.mkOption {
       type = lib.types.bool;
-      default = false;
+      default = isVolatileRoot;
       description = ''
         Persist machine-id to /var/etc/machine-id and create it in initrd.
         Required for DHCP client when using tmpfs root.
         Implies neededForBoot.
+        Auto-enabled when foundrix.traits.filesystem.rootType is volatile.
       '';
     };
     persistSshHostKeys = lib.mkOption {
       type = lib.types.bool;
-      default = false;
-      description = "Persist SSH host keys to /var/etc/ssh";
+      default = isVolatileRoot;
+      description = ''
+        Persist SSH host keys to /var/etc/ssh.
+        Auto-enabled when foundrix.traits.filesystem.rootType is volatile.
+      '';
     };
   };
 

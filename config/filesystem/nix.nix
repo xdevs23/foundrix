@@ -1,10 +1,13 @@
 {
+  config,
   lib,
   namespaced,
   namespacedCfg,
   ...
 }:
-
+let
+  homeManagerPresent = config.foundrix.traits.homeManager.present or false;
+in
 {
   options = namespaced __curPos {
     device = lib.mkOption {
@@ -40,6 +43,11 @@
         device = cfg.device;
         fsType = cfg.fsType;
         options = cfg.fsOptions ++ [ "noatime" ];
+      };
+
+      # Add nix.mount to home-manager setup requirements when home-manager is present
+      foundrix.config = lib.optionalAttrs homeManagerPresent {
+        home-manager.homeManagerUserSetupRequires = [ "nix.mount" ];
       };
     };
 }
