@@ -49,6 +49,86 @@
         "ttm.pages_limit=${toString ttmPages}"
         "ttm.page_pool_size=${toString ttmPages}"
       ];
+      hardware.fw-fanctrl = {
+        enable = true;
+        config = {
+          defaultStrategy = "custom";
+          strategies.custom = {
+            fanSpeedUpdateFrequency = 1;
+            movingAverageInterval = 3;
+            speedCurve = [
+              {
+                temp = 0;
+                speed = 0;
+              }
+              {
+                temp = 49;
+                speed = 0;
+              }
+              {
+                temp = 50;
+                speed = 5;
+              }
+              {
+                temp = 55;
+                speed = 7;
+              }
+              {
+                temp = 60;
+                speed = 10;
+              }
+              {
+                temp = 65;
+                speed = 20;
+              }
+              {
+                temp = 70;
+                speed = 25;
+              }
+              {
+                temp = 75;
+                speed = 30;
+              }
+              {
+                temp = 80;
+                speed = 40;
+              }
+              {
+                temp = 81;
+                speed = 45;
+              }
+              {
+                temp = 82;
+                speed = 50;
+              }
+              {
+                temp = 83;
+                speed = 55;
+              }
+              {
+                temp = 84;
+                speed = 60;
+              }
+              {
+                temp = 85;
+                speed = 70;
+              }
+              {
+                temp = 90;
+                speed = 80;
+              }
+              {
+                temp = 95;
+                speed = 90;
+              }
+              {
+                temp = 100;
+                speed = 100;
+              }
+            ];
+          };
+        };
+      };
 
       # Support for framework keyboard backlight
       services.udev.extraRules = ''
