@@ -44,17 +44,16 @@ let
                 null
               else
                 {
-                  inherit category name enabled isEnum value description;
-                  variants =
-                    if isEnum then
-                      traitTypes.${category}.${name}
-                    else
-                      null;
-                  variantDescriptions =
-                    if isEnum then
-                      (traitTypes.descriptions.${category}.${name} or { })
-                    else
-                      null;
+                  inherit
+                    category
+                    name
+                    enabled
+                    isEnum
+                    value
+                    description
+                    ;
+                  variants = if isEnum then traitTypes.${category}.${name} else null;
+                  variantDescriptions = if isEnum then (traitTypes.descriptions.${category}.${name} or { }) else null;
                 }
             ) categoryOptions
           )
@@ -64,15 +63,16 @@ let
         builtins.attrValues (builtins.mapAttrs collectTraits traitOptions)
       );
 
-      formatTrait =
-        trait:
-        if trait.isEnum then
-          formatEnumTrait trait
-        else
-          formatBoolTrait trait;
+      formatTrait = trait: if trait.isEnum then formatEnumTrait trait else formatBoolTrait trait;
 
       formatBoolTrait =
-        { category, name, enabled, description, ... }:
+        {
+          category,
+          name,
+          enabled,
+          description,
+          ...
+        }:
         let
           indicator = if enabled then "${green}●${reset}" else "${red}○${reset}";
           status = if enabled then "" else " ${dim}(disabled)${reset}";
@@ -101,9 +101,12 @@ let
               isSelected = value == variantValue;
               # All variants dim/gray when trait is disabled, otherwise green for selected
               variantIndicator =
-                if !enabled then "${dim}○${reset}"
-                else if isSelected then "${green}●${reset}"
-                else "${dim}○${reset}";
+                if !enabled then
+                  "${dim}○${reset}"
+                else if isSelected then
+                  "${green}●${reset}"
+                else
+                  "${dim}○${reset}";
               variantDesc = variantDescriptions.${variantName} or "";
               # Description is dim when trait is disabled, gray otherwise
               descColor = if enabled then gray else dim;
@@ -122,7 +125,9 @@ let
     if collectedTraits == [ ] then
       "${dim}${emptyMsg}${reset}\n"
     else
-      "${bold}${cyan}${title}${reset}\n\n" + builtins.concatStringsSep "\n\n" (map formatTrait collectedTraits) + "\n";
+      "${bold}${cyan}${title}${reset}\n\n"
+      + builtins.concatStringsSep "\n\n" (map formatTrait collectedTraits)
+      + "\n";
 in
 {
   # Show enabled traits for a configuration

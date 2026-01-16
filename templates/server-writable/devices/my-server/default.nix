@@ -22,8 +22,8 @@
     ./filesystems.nix
 
     # Foundrix image modules
-    foundrixModules.profiles.image.server-writable  # btrfs store + UEFI/BIOS boot
-    foundrixModules.config.runtime.repart.var       # runtime /var partition
+    foundrixModules.profiles.image.server-writable # btrfs store + UEFI/BIOS boot
+    foundrixModules.config.runtime.repart.var # runtime /var partition
   ];
 
   # Device configuration like name, platforms etc.

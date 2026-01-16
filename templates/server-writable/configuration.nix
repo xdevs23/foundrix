@@ -48,7 +48,10 @@ in
   users.users.root.openssh.authorizedKeys.keys =
     config.users.users.${userName}.openssh.authorizedKeys.keys;
 
-  nix.settings.trusted-users = [ "root" "@wheel" ];
+  nix.settings.trusted-users = [
+    "root"
+    "@wheel"
+  ];
 
   # Image identification
   boot.uki.name = "my-server";

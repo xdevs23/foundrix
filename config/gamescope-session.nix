@@ -113,13 +113,12 @@ let
       patches = (old.patches or [ ]) ++ [ wlserverLockPatch ];
     });
 
-  defaultGamescopePackage =
-    patchGamescope (
-      if config.foundrix.hardware.gpu.usesUnstablePackages or false then
-        pkgsUnstable.gamescope
-      else
-        pkgs.gamescope
-    );
+  defaultGamescopePackage = patchGamescope (
+    if config.foundrix.hardware.gpu.usesUnstablePackages or false then
+      pkgsUnstable.gamescope
+    else
+      pkgs.gamescope
+  );
 
   # Detect best monitor: highest resolution, then highest refresh rate
   detectBestMonitor = pkgs.writeShellScript "detect-best-monitor" ''

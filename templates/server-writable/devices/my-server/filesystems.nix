@@ -7,11 +7,11 @@
 }:
 {
   imports = [
-    foundrixModules.config.filesystem.root-tmpfs   # Ephemeral root on tmpfs
-    foundrixModules.config.filesystem.esp          # EFI System Partition
-    foundrixModules.config.filesystem.nix          # /nix mount (auto-configured by image module)
-    foundrixModules.config.filesystem.var          # /var mount (auto-configured by runtime module)
-    foundrixModules.config.filesystem.home-tmpfs   # Ephemeral /home on tmpfs
+    foundrixModules.config.filesystem.root-tmpfs # Ephemeral root on tmpfs
+    foundrixModules.config.filesystem.esp # EFI System Partition
+    foundrixModules.config.filesystem.nix # /nix mount (auto-configured by image module)
+    foundrixModules.config.filesystem.var # /var mount (auto-configured by runtime module)
+    foundrixModules.config.filesystem.home-tmpfs # Ephemeral /home on tmpfs
   ];
 
   # Persist identity across reboots
