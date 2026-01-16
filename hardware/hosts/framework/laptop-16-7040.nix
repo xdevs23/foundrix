@@ -48,6 +48,8 @@
       boot.kernelParams = [
         "ttm.pages_limit=${toString ttmPages}"
         "ttm.page_pool_size=${toString ttmPages}"
+        # Use 0x410 instead of 0x10 to also disable Panel Replay (fixes green artifacts)
+        "amdgpu.dcdebugmask=0x410"
       ];
       hardware.fw-fanctrl = {
         enable = true;
