@@ -22,6 +22,12 @@
   options = {
     nixpkgs-unstable = lib.recursiveUpdate options.nixpkgs { overlays.default = [ ]; };
     nixpkgs-master = lib.recursiveUpdate options.nixpkgs { overlays.default = [ ]; };
+
+    # Define foundrix namespace containers so lib.optionalAttrs can safely merge
+    # even when no modules from that namespace are imported
+    foundrix.framework = { };
+    foundrix.config = { };
+    foundrix.components = { };
   };
 
   config = {

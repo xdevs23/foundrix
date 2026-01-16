@@ -57,10 +57,11 @@
       cfg = namespacedCfg __curPos;
       sys = config.system;
       artifacts = cfg.artifacts;
+      imageId = if sys.image.id != null then sys.image.id else config.boot.uki.name;
     in
     {
       system.build.otaUpdate =
-        pkgs.runCommand "update-${sys.image.id}-${sys.image.version}"
+        pkgs.runCommand "update-${imageId}-${sys.image.version}"
           {
             allowSubstitutes = false;
             dontFixup = true;
@@ -84,7 +85,7 @@
           '';
 
       system.build.compressedOtaUpdate =
-        pkgs.runCommand "compressed-update-${sys.image.id}-${sys.image.version}"
+        pkgs.runCommand "compressed-update-${imageId}-${sys.image.version}"
           {
             allowSubstitutes = false;
             dontFixup = true;

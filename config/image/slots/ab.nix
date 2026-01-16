@@ -9,6 +9,7 @@
   namespaced,
   namespacedCfg,
   foundrixModules,
+  traitTypes,
   ...
 }:
 let
@@ -19,6 +20,7 @@ in
 {
   imports = [
     ../partition-ids.nix
+    foundrixModules.framework.ota-build
   ];
 
   options = namespaced __curPos {
@@ -34,6 +36,9 @@ in
       cfg = namespacedCfg __curPos;
     in
     {
+      # Indicate A/B updates are enabled
+      foundrix.traits.image.updateMethod = traitTypes.image.updateMethod.systemd-sysupdate;
+
       image.repart.partitions.${partitionIds.storeEmpty} = {
         repartConfig = {
           Type = lib.toLower storeTypeGuid;

@@ -2,6 +2,8 @@
   pkgs,
   lib,
   customLib,
+  foundrixModules,
+  foundrix,
   ...
 }:
 let
@@ -10,13 +12,97 @@ let
   platformModules = builtins.filter (f: lib.hasSuffix ".nix" f) platformFiles;
   mkPlatformName =
     path:
-    lib.concatStringsSep "." (
-      lib.lists.dropEnd 1 (lib.strings.splitString "." (builtins.baseNameOf path))
-    );
-  platformNames = builtins.map mkPlatformName platformModules;
+    lib.concatStringsSep "." (lib.lists.dropEnd 1 (lib.strings.splitString "." (baseNameOf path)));
+  platformNames = map mkPlatformName platformModules;
   inherit (customLib.deviceFramework) mkDeviceFrameworkModules mkFinalConfiguration;
+
+  # Create a flasher system for a target configuration
+  # Mirrors the flow of regular configs: nixosSystem + device framework + device config
+  mkFlasherSystem =
+    {
+      targetConfig,
+      targetPlatformConfiguration,
+      deviceConfiguration,
+      extraModules ? [ ],
+    }:
+    lib.nixosSystem {
+      specialArgs = foundrixModules.foundrixSpecialArgs // {
+        inherit targetConfig;
+      };
+      modules = [
+        (foundrix + "/common")
+        foundrixModules.config.recipes.flasher
+        # Device framework (inlined from mkDeviceFrameworkModules + mkFinalConfiguration)
+        ./device-specific.nix
+        targetPlatformConfiguration
+        deviceConfiguration
+      ]
+      ++ extraModules;
+    };
+
+  # Create an updater system for a target configuration (A/B updates)
+  # Mirrors the flow of regular configs: nixosSystem + device framework + device config
+  mkUpdaterSystem =
+    {
+      targetConfig,
+      targetPlatformConfiguration,
+      deviceConfiguration,
+      extraModules ? [ ],
+    }:
+    lib.nixosSystem {
+      specialArgs = foundrixModules.foundrixSpecialArgs // {
+        inherit targetConfig;
+      };
+      modules = [
+        (foundrix + "/common")
+        foundrixModules.config.recipes.updater
+        # Device framework (inlined from mkDeviceFrameworkModules + mkFinalConfiguration)
+        ./device-specific.nix
+        targetPlatformConfiguration
+        deviceConfiguration
+      ]
+      ++ extraModules;
+    };
+
+  # Build the final flasher image
+  mkFlasherImage =
+    {
+      targetConfig,
+      targetPlatformConfiguration,
+      deviceConfiguration,
+    }:
+    let
+      flasherSystem = mkFlasherSystem {
+        inherit targetConfig targetPlatformConfiguration deviceConfiguration;
+      };
+      flasherBuild = flasherSystem.config.system.build;
+    in
+    flasherBuild.image or null;
+
+  # Build the final updater image
+  mkUpdaterImage =
+    {
+      targetConfig,
+      targetPlatformConfiguration,
+      deviceConfiguration,
+    }:
+    let
+      updaterSystem = mkUpdaterSystem {
+        inherit targetConfig targetPlatformConfiguration deviceConfiguration;
+      };
+      updaterBuild = updaterSystem.config.system.build;
+    in
+    updaterBuild.image or null;
 in
 rec {
+  # Export helper functions for manual flasher/updater creation
+  inherit
+    mkFlasherSystem
+    mkUpdaterSystem
+    mkFlasherImage
+    mkUpdaterImage
+    ;
+
   mkTargetOutputList =
     { nixosConfiguration, ... }@args:
     lib.optionals
@@ -77,7 +163,7 @@ rec {
                   modules = (mkDeviceFrameworkModules targetPlatformConfiguration) ++ [
                     ../device-parts/qemu.nix
                     (
-                      if finalConfiguration.config ? home-manager then
+                      if finalConfiguration.options ? home-manager then
                         (
                           { foundrixModules, ... }:
                           {
@@ -98,6 +184,10 @@ rec {
                     }
                   ];
                 };
+            # Check if this is an image-based system and if A/B updates are enabled
+            hasImage = (buildCfg.finalImage or buildCfg.image or null) != null;
+            hasAbUpdates =
+              (finalConfiguration.config.foundrix.traits.image.updateMethod or null) == "systemd-sysupdate";
             outputs = {
               image = buildCfg.finalImage or buildCfg.image or null;
               update = buildCfg.otaUpdate or null;
@@ -115,6 +205,26 @@ rec {
                   in
                   customLib.qemu-launch {
                     systemDisk = "${buildCfg.finalImage or qemuBuildCfg.image}/${qemuCfg.config.image.fileName}";
+                  }
+                else
+                  null;
+              # Flasher for any image-based system
+              flasher =
+                if hasImage then
+                  mkFlasherImage {
+                    targetConfig = finalConfiguration.config;
+                    inherit targetPlatformConfiguration;
+                    deviceConfiguration = args.deviceConfiguration;
+                  }
+                else
+                  null;
+              # Updater only for A/B systems
+              updater =
+                if hasImage && hasAbUpdates then
+                  mkUpdaterImage {
+                    targetConfig = finalConfiguration.config;
+                    inherit targetPlatformConfiguration;
+                    deviceConfiguration = args.deviceConfiguration;
                   }
                 else
                   null;
@@ -155,7 +265,6 @@ rec {
           acc:
           {
             arch,
-            finalConfiguration,
             outputs,
             ...
           }:

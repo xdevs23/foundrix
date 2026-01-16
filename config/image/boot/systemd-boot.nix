@@ -4,11 +4,14 @@
   lib,
   namespaced,
   namespacedCfg,
+  traitTypes,
   ...
 }:
 let
   efiArch = pkgs.stdenv.hostPlatform.efiArch;
   partitionIds = config.foundrix.config.image.partition-ids;
+  updateMethod = config.foundrix.traits.image.updateMethod;
+  hasVersionedUpdates = updateMethod == traitTypes.image.updateMethod.systemd-sysupdate;
 in
 {
   imports = [
@@ -55,6 +58,13 @@ in
           Format = "vfat";
           SizeMinBytes = "512M";
           SplitName = "esp";
+        };
+      };
+
+      # Configure OTA artifact for UKI when A/B updates enabled
+      foundrix.framework = lib.optionalAttrs hasVersionedUpdates {
+        ota-build.artifacts."${config.boot.uki.name}_${config.system.image.version}.efi" = {
+          source = "${config.system.build.uki}/${config.system.boot.loader.ukiFile}";
         };
       };
     };

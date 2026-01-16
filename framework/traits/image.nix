@@ -1,0 +1,14 @@
+{
+  lib,
+  traitTypes,
+  ...
+}:
+{
+  options.foundrix.traits.image = {
+    updateMethod = lib.mkOption {
+      type = lib.types.nullOr (lib.types.enum (builtins.attrValues traitTypes.image.updateMethod));
+      default = null;
+      description = "Image update mechanism - determines partition labeling strategy";
+    };
+  };
+}

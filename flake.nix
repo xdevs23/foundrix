@@ -47,6 +47,23 @@
         };
       traverseDirectory = import ./lib/traverse-directory.nix { inherit lib; };
 
+      # Flatten nested package attrsets for flake packages output
+      # e.g. { foo = { bar = <drv>; }; } -> { "foo.bar" = <drv>; }
+      flattenPackages =
+        prefix: attrs:
+        lib.concatMapAttrs (
+          name: value:
+          let
+            newName = if prefix == "" then name else "${prefix}.${name}";
+          in
+          if lib.isDerivation value then
+            { ${newName} = value; }
+          else if builtins.isAttrs value then
+            flattenPackages newName value
+          else
+            { }
+        ) attrs;
+
       collectNixFiles =
         dir:
         traverseDirectory {
@@ -97,7 +114,8 @@
       foundrixNixosModules = lib.attrsets.mergeAttrsList (
         map
           (dirPath: {
-            ${baseNameOf dirPath} = if builtins.pathExists dirPath then modulesFromDirectoryRecursive dirPath else { };
+            ${baseNameOf dirPath} =
+              if builtins.pathExists dirPath then modulesFromDirectoryRecursive dirPath else { };
           })
           [
             ./components
@@ -174,7 +192,7 @@
             buildPlatformPkgsStable = import nixpkgs-stable { inherit system; };
           in
           (builtins.addErrorContext "while constructing packages for system ${system}" (
-            foundrixPackages buildPlatformPkgs { pkgsUnstable = buildPlatformPkgs; }
+            flattenPackages "" (foundrixPackages buildPlatformPkgs { pkgsUnstable = buildPlatformPkgs; })
           ))
           // {
             docs =
@@ -320,8 +338,12 @@
         };
       };
       inherit (showOutputs) list-modules show-modules;
-      show-traits = builtins.mapAttrs (_: nixos: showOutputs.show-traits { inherit (nixos) config options; }) self.nixosConfigurations;
-      show-all-traits = builtins.mapAttrs (_: nixos: showOutputs.show-all-traits { inherit (nixos) config options; }) self.nixosConfigurations;
+      show-traits = builtins.mapAttrs (
+        _: nixos: showOutputs.show-traits { inherit (nixos) config options; }
+      ) self.nixosConfigurations;
+      show-all-traits = builtins.mapAttrs (
+        _: nixos: showOutputs.show-all-traits { inherit (nixos) config options; }
+      ) self.nixosConfigurations;
       formatter = forAllSystems (system: nixpkgs.legacyPackages.${system}.nixfmt-rfc-style);
     }
   );

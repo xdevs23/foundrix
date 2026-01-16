@@ -6,11 +6,14 @@
   namespaced,
   namespacedCfg,
   foundrixModules,
+  traitTypes,
   ...
 }:
 let
   partitionIds = config.foundrix.config.image.partition-ids;
   storePartitionLabel = config.image.repart.partitions.${partitionIds.store}.repartConfig.Label;
+  updateMethod = config.foundrix.traits.image.updateMethod;
+  hasVersionedUpdates = updateMethod == traitTypes.image.updateMethod.systemd-sysupdate;
 in
 {
   imports = [
@@ -36,7 +39,7 @@ in
     labelPrefix = lib.mkOption {
       type = lib.types.str;
       default = "store";
-      description = "Label prefix for the store partition (version will be appended for A/B)";
+      description = "Label for the store partition (version appended when image.updateMethod is systemd-sysupdate)";
     };
   };
 
@@ -45,6 +48,12 @@ in
       cfg = namespacedCfg __curPos;
       # Custom partition type GUID for nix store
       storeTypeGuid = "00000000-0000-4000-9000-000000000040";
+      # Version suffix only for A/B update schemes
+      partitionLabel =
+        if hasVersionedUpdates then
+          "${cfg.labelPrefix}_${config.system.image.version}"
+        else
+          cfg.labelPrefix;
     in
     {
       image.repart.partitions.${partitionIds.store} = {
@@ -54,7 +63,7 @@ in
 
         repartConfig = {
           Type = lib.toLower storeTypeGuid;
-          Label = "${cfg.labelPrefix}_${config.system.image.version}";
+          Label = partitionLabel;
           UUID = lib.toLower "00000000-0000-4000-9000-100000000040";
           Format = "erofs";
           Compression = cfg.compression;
@@ -73,5 +82,12 @@ in
 
       boot.initrd.supportedFilesystems.erofs = true;
       boot.supportedFilesystems.erofs = true;
+
+      # Configure OTA artifact for store partition when A/B updates enabled
+      foundrix.framework = lib.optionalAttrs hasVersionedUpdates {
+        ota-build.artifacts."store_${config.system.image.version}.img" = {
+          source = "${config.system.build.image}/${config.image.baseName}.store.raw";
+        };
+      };
     };
 }

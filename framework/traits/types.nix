@@ -14,6 +14,13 @@
       runtime = "runtime";
     };
   };
+  image = {
+    updateMethod = {
+      none = "none";
+      systemd-sysupdate = "systemd-sysupdate";
+      # Future: could add other update mechanisms
+    };
+  };
 
   # Variant descriptions for display purposes
   descriptions = {
@@ -28,6 +35,12 @@
       method = {
         prebuilt = "pre-built, no runtime evaluation needed";
         runtime = "evaluated at runtime/activation";
+      };
+    };
+    image = {
+      updateMethod = {
+        none = "no system updates - static partition labels";
+        systemd-sysupdate = "A/B updates with versioned partition labels";
       };
     };
   };

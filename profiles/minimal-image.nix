@@ -12,7 +12,6 @@
     framework.repart-disk-image
   ];
   boot.initrd.systemd.enable = true;
-  boot.loader.timeout = 0;
   system.forbiddenDependenciesRegexes = lib.mkForce [ ];
   system.stateVersion = lib.mkDefault (builtins.substring 0 5 lib.version);
 }
