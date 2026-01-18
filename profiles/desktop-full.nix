@@ -25,6 +25,7 @@
   xdg.icons.enable = lib.mkDefault true;
 
   services.gvfs.enable = true;
+  services.upower.enable = true;
   programs.dconf.enable = true;
 
   services.printing.enable = lib.mkDefault true;
