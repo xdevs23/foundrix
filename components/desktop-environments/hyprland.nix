@@ -255,6 +255,20 @@
                     sleep 5
                   done
                 '';
+                collapseVirtualWorkspace = pkgs.writeShellScript "collapse-virtual-workspace" ''
+                  current_ws=$(hyprctl activeworkspace -j | ${lib.getExe pkgs.jq} '.id')
+                  virtual=$((((current_ws - 1) % 10) + 1))
+
+                  hyprctl clients -j | ${lib.getExe pkgs.jq} -r --argjson current "$current_ws" --argjson virtual "$virtual" '
+                    .[] |
+                    select(.workspace.id > 0) |
+                    select(((.workspace.id - 1) % 10) + 1 == $virtual) |
+                    select(.workspace.id != $current) |
+                    .address
+                  ' | while read -r addr; do
+                    hyprctl dispatch movetoworkspace "$current_ws,address:$addr"
+                  done
+                '';
                 loginctl = lib.getExe' pkgs.systemd "loginctl";
                 ydotool = lib.getExe pkgs.ydotool;
                 hyprshot = lib.getExe pkgs.hyprshot;
@@ -422,6 +436,7 @@
                   "$mainMod, up, movefocus, u"
                   "$mainMod, down, movefocus, d"
                   "$mainMod, L, exec, ${loginctl} lock-session"
+                  "$mainMod, C, exec, ${collapseVirtualWorkspace}"
                 ]
                 ++ (
                   if hasMultipleMonitors then
