@@ -354,7 +354,7 @@
                   "ALT SHIFT, KP_Begin, exec, ${ydotool} click C0"
                   "ALT SHIFT, KP_Begin, exec, ${ydotool} click C0"
                   "$mainMod SHIFT, PRINT, exec, ${hyprshot} -m window -m active -o $screenShotDir"
-                  "$mainMod, PRINT, exec, ${hyprshot} -m output -o $screenShotDir"
+                  "$mainMod, PRINT, exec, ${hyprshot} -m output -m active -o $screenShotDir"
                   ", PRINT, exec, ${hyprshot} -m region -o $screenShotDir"
                   '', XF86AudioRaiseVolume, exec, ${wpctl} set-volume -l 1.0 @DEFAULT_AUDIO_SINK@ 5%+''
                   '', XF86AudioLowerVolume, exec, ${wpctl} set-volume -l 1.0 @DEFAULT_AUDIO_SINK@ 5%-''
