@@ -30,6 +30,7 @@ Formula: `workspace_id = (monitor_id * 10) + virtual_workspace` (monitor 0 uses 
 - **Monitor hotplug**: Automatically reassigns workspaces when monitors are added/removed
 - **Fast IPC**: Daemon stays resident; keybinds just send commands via Unix socket
 - **Collapse**: Pull windows from the same virtual workspace on other monitors to the current one
+- **Pinned windows**: Pin windows (by class, title, etc.) so they follow workspace switches
 
 ## Installation
 
@@ -50,6 +51,12 @@ in {
       "$mainMod SHIFT, 2, exec, ${lib.getExe hyprWorkspaced} move 2"
       # ... etc
       "$mainMod, C, exec, ${lib.getExe hyprWorkspaced} collapse"
+    ];
+
+    # Pin windows to follow workspace switches (runs once at startup)
+    exec-once = [
+      "${lib.getExe hyprWorkspaced} daemon"
+      "${lib.getExe hyprWorkspaced} pin class:Mattermost"  # Always visible
     ];
   };
 }
@@ -72,7 +79,25 @@ hypr-workspaced next                # Switch to next virtual workspace (wraps 9 
 hypr-workspaced prev                # Switch to previous virtual workspace (wraps 1 -> 9)
 hypr-workspaced collapse            # Move all windows from same virtual WS to current monitor
 hypr-workspaced assign              # Manually reassign workspaces (usually automatic)
+hypr-workspaced pin <pattern>       # Pin windows matching pattern to follow workspace switches
+hypr-workspaced unpin <pattern>     # Remove a pinned pattern
+hypr-workspaced pins                # List all pinned patterns
 ```
+
+### Window Patterns
+
+The `pin` and `unpin` commands accept patterns using Hyprland's window identifier syntax:
+
+| Pattern | Description | Example |
+|---------|-------------|---------|
+| `class:<string>` | Match window class (substring) | `class:Firefox` |
+| `title:<string>` | Match window title (substring) | `title:YouTube` |
+| `pid:<number>` | Match process ID | `pid:1234` |
+| `address:<hex>` | Match window address | `address:0x12345678` |
+| `floating:<bool>` | Match floating state | `floating:true` |
+| `fullscreen:<bool>` | Match fullscreen state | `fullscreen:false` |
+
+Pinned windows will automatically move to the target virtual workspace when you switch workspaces. They stay on their current monitor — only the workspace changes.
 
 ## IPC Socket
 
@@ -90,6 +115,9 @@ The daemon listens on a Unix socket for commands from the CLI.
 | `prev\n` | `ok\n` or `error: message\n` |
 | `collapse\n` | `ok\n` or `error: message\n` |
 | `assign\n` | `ok\n` or `error: message\n` |
+| `pin class:Firefox\n` | `ok\n` or `error: message\n` |
+| `unpin class:Firefox\n` | `ok\n` or `error: message\n` |
+| `pins\n` | `data: class:Firefox\nclass:Mattermost\n` |
 
 You can interact directly via socat if needed:
 
@@ -309,6 +337,7 @@ src/
 ├── daemon.rs      # Daemon mode: event loop, IPC server, Hyprland events
 ├── client.rs      # Client mode: connect to daemon, send command
 ├── workspace.rs   # WorkspaceManager: all business logic
+├── window.rs      # WindowPattern: pattern matching for pinned windows
 ├── ipc.rs         # Command/Response enums, protocol parsing
 └── error.rs       # Custom error types
 ```

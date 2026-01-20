@@ -17,6 +17,9 @@ pub enum Command {
     Navigate(Direction),
     Collapse,
     Assign,
+    Pin(String),
+    Unpin(String),
+    Pins,
 }
 
 impl Command {
@@ -33,7 +36,8 @@ impl FromStr for Command {
     type Err = Error;
 
     fn from_str(s: &str) -> Result<Self> {
-        let parts: Vec<&str> = s.trim().split_whitespace().collect();
+        let trimmed = s.trim();
+        let parts: Vec<&str> = trimmed.split_whitespace().collect();
 
         match parts.as_slice() {
             ["switch", n] => {
@@ -48,6 +52,13 @@ impl FromStr for Command {
             ["prev"] => Ok(Command::Navigate(Direction::Prev)),
             ["collapse"] => Ok(Command::Collapse),
             ["assign"] => Ok(Command::Assign),
+            ["pin", pattern @ ..] if !pattern.is_empty() => {
+                Ok(Command::Pin(pattern.join(" ")))
+            }
+            ["unpin", pattern @ ..] if !pattern.is_empty() => {
+                Ok(Command::Unpin(pattern.join(" ")))
+            }
+            ["pins"] => Ok(Command::Pins),
             _ => Err(Error::InvalidCommand(s.to_string())),
         }
     }
@@ -62,6 +73,9 @@ impl std::fmt::Display for Command {
             Command::Navigate(Direction::Prev) => write!(f, "prev"),
             Command::Collapse => write!(f, "collapse"),
             Command::Assign => write!(f, "assign"),
+            Command::Pin(pattern) => write!(f, "pin {pattern}"),
+            Command::Unpin(pattern) => write!(f, "unpin {pattern}"),
+            Command::Pins => write!(f, "pins"),
         }
     }
 }
@@ -74,6 +88,7 @@ pub fn socket_path() -> PathBuf {
 #[derive(Debug)]
 pub enum Response {
     Ok,
+    Data(String),
     Error(String),
 }
 
@@ -86,6 +101,8 @@ impl FromStr for Response {
             Ok(Response::Ok)
         } else if let Some(msg) = trimmed.strip_prefix("error: ") {
             Ok(Response::Error(msg.to_string()))
+        } else if let Some(data) = trimmed.strip_prefix("data: ") {
+            Ok(Response::Data(data.to_string()))
         } else {
             Err(Error::InvalidCommand(format!("Invalid response: {s}")))
         }
@@ -96,6 +113,7 @@ impl std::fmt::Display for Response {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Response::Ok => write!(f, "ok"),
+            Response::Data(data) => write!(f, "data: {data}"),
             Response::Error(msg) => write!(f, "error: {msg}"),
         }
     }

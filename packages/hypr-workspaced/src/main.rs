@@ -2,6 +2,7 @@ mod client;
 mod daemon;
 mod error;
 mod ipc;
+mod window;
 mod workspace;
 
 use clap::{Parser, Subcommand};
@@ -41,6 +42,18 @@ enum Commands {
     Collapse,
     /// Reassign workspaces to monitors (useful after hotplug)
     Assign,
+    /// Pin a window pattern to follow virtual workspace switches
+    Pin {
+        /// Window pattern (e.g., class:Firefox, title:YouTube)
+        pattern: Vec<String>,
+    },
+    /// Unpin a window pattern
+    Unpin {
+        /// Window pattern to unpin
+        pattern: Vec<String>,
+    },
+    /// List all pinned window patterns
+    Pins,
 }
 
 #[tokio::main]
@@ -78,5 +91,14 @@ async fn main() -> Result<()> {
         Commands::Assign => {
             client::send_command(Command::Assign).await
         }
+        Commands::Pin { pattern } => {
+            let pattern = pattern.join(" ");
+            client::send_command(Command::Pin(pattern)).await
+        }
+        Commands::Unpin { pattern } => {
+            let pattern = pattern.join(" ");
+            client::send_command(Command::Unpin(pattern)).await
+        }
+        Commands::Pins => client::send_command_with_output(Command::Pins).await,
     }
 }

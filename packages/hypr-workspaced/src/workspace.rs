@@ -1,4 +1,4 @@
-use hyprland::data::{Clients, Monitor, Monitors, Workspace};
+use hyprland::data::{Client, Clients, Monitor, Monitors, Workspace};
 use hyprland::dispatch::{Dispatch, DispatchType, MonitorIdentifier, WindowIdentifier, WorkspaceIdentifierWithSpecial};
 use hyprland::keyword::Keyword;
 use hyprland::shared::{HyprData, HyprDataActive, WorkspaceId};
@@ -6,12 +6,17 @@ use tracing::{debug, info, warn};
 
 use crate::error::{Error, Result};
 use crate::ipc::Direction;
+use crate::window::WindowPattern;
 
-pub struct WorkspaceManager;
+pub struct WorkspaceManager {
+    pinned_patterns: Vec<WindowPattern>,
+}
 
 impl WorkspaceManager {
     pub fn new() -> Self {
-        Self
+        Self {
+            pinned_patterns: Vec::new(),
+        }
     }
 
     fn workspace_id(virtual_ws: u8, monitor_id: i128) -> WorkspaceId {
@@ -28,6 +33,95 @@ impl WorkspaceManager {
 
     fn is_special_workspace(workspace_id: WorkspaceId) -> bool {
         workspace_id < 0
+    }
+
+    pub fn pin(&mut self, pattern_str: &str) -> Result<()> {
+        let pattern = WindowPattern::parse(pattern_str)
+            .ok_or_else(|| Error::InvalidWindowPattern(pattern_str.to_string()))?;
+
+        if !self.pinned_patterns.contains(&pattern) {
+            info!("Pinning windows matching: {pattern}");
+            self.pinned_patterns.push(pattern);
+        }
+        Ok(())
+    }
+
+    pub fn unpin(&mut self, pattern_str: &str) -> Result<()> {
+        let pattern = WindowPattern::parse(pattern_str)
+            .ok_or_else(|| Error::InvalidWindowPattern(pattern_str.to_string()))?;
+
+        if let Some(pos) = self.pinned_patterns.iter().position(|p| p == &pattern) {
+            info!("Unpinning windows matching: {pattern}");
+            self.pinned_patterns.remove(pos);
+        }
+        Ok(())
+    }
+
+    pub fn pins(&self) -> Vec<String> {
+        self.pinned_patterns.iter().map(|p| p.to_string()).collect()
+    }
+
+    fn is_pinned(&self, client: &Client) -> bool {
+        self.pinned_patterns.iter().any(|p| p.matches(client))
+    }
+
+    async fn find_monitor_for_client(client: &Client, monitors: &[Monitor]) -> Option<i128> {
+        // Client has monitor field which is Option<MonitorId>
+        // MonitorId is i128
+        client.monitor.or_else(|| {
+            // Fallback: find monitor by workspace
+            monitors
+                .iter()
+                .find(|m| m.active_workspace.id == client.workspace.id)
+                .map(|m| m.id)
+        })
+    }
+
+    async fn move_pinned_windows(&self, virtual_ws: u8) -> Result<()> {
+        if self.pinned_patterns.is_empty() {
+            return Ok(());
+        }
+
+        let clients: Vec<_> = Clients::get_async().await?.into_iter().collect();
+        let monitors: Vec<_> = Monitors::get_async().await?.into_iter().collect();
+
+        for client in &clients {
+            if !self.is_pinned(client) {
+                continue;
+            }
+
+            let client_ws_id = client.workspace.id;
+            if Self::is_special_workspace(client_ws_id) {
+                continue;
+            }
+
+            // Find which monitor this client is on
+            let monitor_id = match Self::find_monitor_for_client(client, &monitors).await {
+                Some(id) => id,
+                None => {
+                    warn!("Could not determine monitor for pinned client {}", client.address);
+                    continue;
+                }
+            };
+
+            // Calculate target workspace for this monitor
+            let target_ws = Self::workspace_id(virtual_ws, monitor_id);
+
+            // Only move if not already there
+            if client_ws_id != target_ws {
+                debug!(
+                    "Moving pinned window {} ({}) from workspace {} to {}",
+                    client.class, client.address, client_ws_id, target_ws
+                );
+                Dispatch::call_async(DispatchType::MoveToWorkspaceSilent(
+                    WorkspaceIdentifierWithSpecial::Id(target_ws),
+                    Some(WindowIdentifier::Address(client.address.clone())),
+                ))
+                .await?;
+            }
+        }
+
+        Ok(())
     }
 
     pub async fn assign_workspaces(&self) -> Result<()> {
@@ -118,6 +212,9 @@ impl WorkspaceManager {
             )))
             .await?;
         }
+
+        // Move pinned windows to the new virtual workspace
+        self.move_pinned_windows(virtual_ws).await?;
 
         if let Some(ref name) = focused_name {
             Dispatch::call_async(DispatchType::FocusMonitor(MonitorIdentifier::Name(name)))

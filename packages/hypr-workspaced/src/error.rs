@@ -17,6 +17,9 @@ pub enum Error {
     #[error("Invalid virtual workspace: {0} (must be 1-9)")]
     InvalidVirtualWorkspace(u8),
 
+    #[error("Invalid window pattern: {0}")]
+    InvalidWindowPattern(String),
+
     #[error("Daemon not running or socket not found")]
     DaemonNotRunning,
 

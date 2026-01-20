@@ -49,7 +49,7 @@ pub async fn run() -> Result<()> {
         }
     });
 
-    let manager = WorkspaceManager::new();
+    let mut manager = WorkspaceManager::new();
 
     info!("Performing initial workspace assignment");
     if let Err(e) = manager.assign_workspaces().await {
@@ -60,11 +60,7 @@ pub async fn run() -> Result<()> {
         match rx.recv().await {
             Some(Event::Command(cmd, reply)) => {
                 debug!("Received command: {cmd}");
-                let result = handle_command(&manager, cmd).await;
-                let response = match result {
-                    Ok(()) => Response::Ok,
-                    Err(e) => Response::Error(e.to_string()),
-                };
+                let response = handle_command(&mut manager, cmd).await;
                 let _ = reply.send(response);
             }
             Some(Event::MonitorChanged) => {
@@ -148,12 +144,23 @@ async fn handle_client(stream: UnixStream, tx: mpsc::Sender<Event>) {
     }
 }
 
-async fn handle_command(manager: &WorkspaceManager, cmd: Command) -> Result<()> {
-    match cmd {
+async fn handle_command(manager: &mut WorkspaceManager, cmd: Command) -> Response {
+    let result = match cmd {
         Command::Switch(ws) => manager.switch_virtual(ws).await,
         Command::MoveTo(ws) => manager.move_to_virtual(ws).await,
         Command::Navigate(dir) => manager.navigate(dir).await,
         Command::Collapse => manager.collapse().await,
         Command::Assign => manager.assign_workspaces().await,
+        Command::Pin(pattern) => manager.pin(&pattern),
+        Command::Unpin(pattern) => manager.unpin(&pattern),
+        Command::Pins => {
+            let pins = manager.pins();
+            return Response::Data(pins.join("\n"));
+        }
+    };
+
+    match result {
+        Ok(()) => Response::Ok,
+        Err(e) => Response::Error(e.to_string()),
     }
 }
