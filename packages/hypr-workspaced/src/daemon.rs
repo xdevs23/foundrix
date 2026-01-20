@@ -3,7 +3,7 @@ use std::time::Duration;
 use hyprland::event_listener::AsyncEventListener;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{UnixListener, UnixStream};
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, watch};
 use tracing::{debug, error, info, warn};
 
 use crate::error::Result;
@@ -13,6 +13,13 @@ use crate::workspace::WorkspaceManager;
 enum Event {
     Command(Command, tokio::sync::oneshot::Sender<Response>),
     MonitorChanged,
+}
+
+/// Workspace sync state - uses watch channel so only latest value matters
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct SyncState {
+    workspace_id: i32,
+    generation: u64, // Incremented on each change to detect updates
 }
 
 pub async fn run() -> Result<()> {
@@ -25,15 +32,29 @@ pub async fn run() -> Result<()> {
     let listener = UnixListener::bind(&path)?;
     info!("Listening on {}", path.display());
 
+    // Channel for commands and monitor events (need reliable delivery)
     let (tx, mut rx) = mpsc::channel::<Event>(32);
 
+    // Watch channel for workspace sync (only latest value matters)
+    let (sync_tx, mut sync_rx) = watch::channel(SyncState {
+        workspace_id: 0,
+        generation: 0,
+    });
+
+    // Hyprland event listener with auto-restart
     let tx_hyprland = tx.clone();
     let hyprland_task = tokio::spawn(async move {
-        if let Err(e) = run_hyprland_listener(tx_hyprland).await {
-            error!("Hyprland event listener failed: {e}");
+        loop {
+            info!("Starting Hyprland event listener");
+            if let Err(e) = run_hyprland_listener(tx_hyprland.clone(), sync_tx.clone()).await {
+                error!("Hyprland event listener failed: {e}");
+            }
+            warn!("Hyprland listener stopped, restarting in 1s...");
+            tokio::time::sleep(Duration::from_secs(1)).await;
         }
     });
 
+    // IPC server
     let tx_ipc = tx.clone();
     let ipc_task = tokio::spawn(async move {
         loop {
@@ -50,6 +71,7 @@ pub async fn run() -> Result<()> {
     });
 
     let mut manager = WorkspaceManager::new();
+    let mut last_synced_generation: u64 = 0;
 
     info!("Performing initial workspace assignment");
     if let Err(e) = manager.assign_workspaces().await {
@@ -57,22 +79,45 @@ pub async fn run() -> Result<()> {
     }
 
     loop {
-        match rx.recv().await {
-            Some(Event::Command(cmd, reply)) => {
-                debug!("Received command: {cmd}");
-                let response = handle_command(&mut manager, cmd).await;
-                let _ = reply.send(response);
-            }
-            Some(Event::MonitorChanged) => {
-                info!("Monitor configuration changed, reassigning workspaces");
-                tokio::time::sleep(Duration::from_millis(500)).await;
-                if let Err(e) = manager.assign_workspaces().await {
-                    error!("Workspace reassignment failed: {e}");
+        tokio::select! {
+            // Handle commands and monitor events
+            event = rx.recv() => {
+                match event {
+                    Some(Event::Command(cmd, reply)) => {
+                        debug!("Received command: {cmd}");
+                        let response = handle_command(&mut manager, cmd).await;
+                        let _ = reply.send(response);
+                    }
+                    Some(Event::MonitorChanged) => {
+                        info!("Monitor configuration changed, reassigning workspaces");
+                        tokio::time::sleep(Duration::from_millis(500)).await;
+                        if let Err(e) = manager.assign_workspaces().await {
+                            error!("Workspace reassignment failed: {e}");
+                        }
+                    }
+                    None => {
+                        warn!("Event channel closed");
+                        break;
+                    }
                 }
             }
-            None => {
-                warn!("Event channel closed");
-                break;
+
+            // Handle workspace sync (watch channel - only latest matters)
+            _ = sync_rx.changed() => {
+                let state = *sync_rx.borrow();
+
+                // Skip if we already processed this generation
+                if state.generation <= last_synced_generation {
+                    continue;
+                }
+                last_synced_generation = state.generation;
+
+                if let Some(virtual_ws) = WorkspaceManager::virtual_from_workspace_id(state.workspace_id) {
+                    debug!("Workspace changed to {} (virtual {}), syncing monitors", state.workspace_id, virtual_ws);
+                    if let Err(e) = manager.sync_monitors(virtual_ws).await {
+                        error!("Monitor sync failed: {e}");
+                    }
+                }
             }
         }
     }
@@ -83,7 +128,10 @@ pub async fn run() -> Result<()> {
     Ok(())
 }
 
-async fn run_hyprland_listener(tx: mpsc::Sender<Event>) -> Result<()> {
+async fn run_hyprland_listener(
+    tx: mpsc::Sender<Event>,
+    sync_tx: watch::Sender<SyncState>,
+) -> Result<()> {
     let mut listener = AsyncEventListener::new();
 
     let tx_added = tx.clone();
@@ -101,6 +149,19 @@ async fn run_hyprland_listener(tx: mpsc::Sender<Event>) -> Result<()> {
         Box::pin(async move {
             info!("Monitor removed: {monitor_name}");
             let _ = tx.send(Event::MonitorChanged).await;
+        })
+    });
+
+    // Use watch channel for workspace events - only latest value matters
+    listener.add_workspace_changed_handler(move |data| {
+        let sync_tx = sync_tx.clone();
+        Box::pin(async move {
+            debug!("Workspace changed event: id={}", data.id);
+            // Update with new workspace, increment generation
+            sync_tx.send_modify(|state| {
+                state.workspace_id = data.id;
+                state.generation = state.generation.wrapping_add(1);
+            });
         })
     });
 

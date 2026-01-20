@@ -182,33 +182,54 @@ impl WorkspaceManager {
     }
 
     pub async fn switch_virtual(&self, virtual_ws: u8) -> Result<()> {
+        let focused = Monitor::get_active_async().await?;
+        let wsid = Self::workspace_id(virtual_ws, focused.id);
+
+        debug!("Switching focused monitor to virtual workspace {virtual_ws} (workspace {wsid})");
+
+        // Only switch the focused monitor - the event handler will sync the rest
+        Dispatch::call_async(DispatchType::Workspace(WorkspaceIdentifierWithSpecial::Id(
+            wsid,
+        )))
+        .await?;
+
+        Ok(())
+    }
+
+    /// Sync all monitors to the given virtual workspace.
+    /// Called by the event handler when a workspace change is detected.
+    pub async fn sync_monitors(&self, virtual_ws: u8) -> Result<()> {
         let monitors: Vec<_> = Monitors::get_async().await?.into_iter().collect();
 
         if monitors.is_empty() {
-            return Err(Error::NoMonitors);
+            return Ok(());
         }
 
-        let focused = monitors.iter().find(|m| m.focused);
-        let focused_name = focused.map(|m| m.name.clone());
+        let focused_name = monitors.iter().find(|m| m.focused).map(|m| m.name.clone());
 
-        debug!("Switching to virtual workspace {virtual_ws}");
-
-        if let Some(ref focused_mon) = focused {
-            let wsid = Self::workspace_id(virtual_ws, focused_mon.id);
-            Dispatch::call_async(DispatchType::Workspace(WorkspaceIdentifierWithSpecial::Id(
-                wsid,
-            )))
-            .await?;
-        }
+        debug!("Syncing all monitors to virtual workspace {virtual_ws}");
 
         for monitor in &monitors {
-            if focused.is_some() && monitor.focused {
+            let target_wsid = Self::workspace_id(virtual_ws, monitor.id);
+
+            // Skip if already on the correct workspace
+            if monitor.active_workspace.id == target_wsid {
                 continue;
             }
 
-            let wsid = Self::workspace_id(virtual_ws, monitor.id);
+            debug!(
+                "Syncing monitor {} from workspace {} to {}",
+                monitor.name, monitor.active_workspace.id, target_wsid
+            );
+
+            // Focus this monitor, switch workspace
+            Dispatch::call_async(DispatchType::FocusMonitor(MonitorIdentifier::Name(
+                &monitor.name,
+            )))
+            .await?;
+
             Dispatch::call_async(DispatchType::Workspace(WorkspaceIdentifierWithSpecial::Id(
-                wsid,
+                target_wsid,
             )))
             .await?;
         }
@@ -216,12 +237,21 @@ impl WorkspaceManager {
         // Move pinned windows to the new virtual workspace
         self.move_pinned_windows(virtual_ws).await?;
 
+        // Restore focus to the originally focused monitor
         if let Some(ref name) = focused_name {
             Dispatch::call_async(DispatchType::FocusMonitor(MonitorIdentifier::Name(name)))
                 .await?;
         }
 
         Ok(())
+    }
+
+    /// Get the virtual workspace number from a workspace ID.
+    pub fn virtual_from_workspace_id(workspace_id: WorkspaceId) -> Option<u8> {
+        if workspace_id <= 0 {
+            return None; // Special workspace
+        }
+        Some(Self::virtual_from_workspace(workspace_id))
     }
 
     pub async fn move_to_virtual(&self, virtual_ws: u8) -> Result<()> {
@@ -232,13 +262,15 @@ impl WorkspaceManager {
             "Moving active window to workspace {wsid} (virtual {virtual_ws})"
         );
 
+        // MoveToWorkspace moves the window AND switches to that workspace
+        // The workspace change event will trigger sync_monitors
         Dispatch::call_async(DispatchType::MoveToWorkspace(
             WorkspaceIdentifierWithSpecial::Id(wsid),
             None,
         ))
         .await?;
 
-        self.switch_virtual(virtual_ws).await
+        Ok(())
     }
 
     pub async fn navigate(&self, direction: Direction) -> Result<()> {
