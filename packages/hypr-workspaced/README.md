@@ -1,0 +1,318 @@
+# hypr-workspaced
+
+A Rust daemon for managing synchronized virtual workspaces across multiple Hyprland monitors.
+
+## The Problem
+
+Hyprland assigns workspaces to individual monitors. With multiple monitors, pressing `Super+3` only switches the *focused* monitor to workspace 3, leaving other monitors unchanged. This creates a fragmented experience where you can't think of "workspace 3" as a unified context across all displays.
+
+**Before:** Each monitor has independent workspaces. Super+3 on monitor A does nothing to monitor B.
+
+**After:** All monitors switch together. Super+3 puts monitor 0 on workspace 3, monitor 1 on workspace 13, monitor 2 on workspace 23, etc. — a unified "virtual workspace 3" across all displays.
+
+## How It Works
+
+The daemon implements a **virtual workspace** abstraction:
+
+| Virtual WS | Monitor 0 | Monitor 1 | Monitor 2 |
+|------------|-----------|-----------|-----------|
+| 1          | 1         | 11        | 21        |
+| 2          | 2         | 12        | 22        |
+| 3          | 3         | 13        | 23        |
+| ...        | ...       | ...       | ...       |
+| 9          | 9         | 19        | 29        |
+
+Formula: `workspace_id = (monitor_id * 10) + virtual_workspace` (monitor 0 uses 1-9 directly)
+
+## Features
+
+- **Synchronized switching**: All monitors switch to the same virtual workspace
+- **Monitor hotplug**: Automatically reassigns workspaces when monitors are added/removed
+- **Fast IPC**: Daemon stays resident; keybinds just send commands via Unix socket
+- **Collapse**: Pull windows from the same virtual workspace on other monitors to the current one
+
+## Installation
+
+### NixOS
+
+```nix
+# In your hyprland config
+let
+  hyprWorkspaced = pkgs.callPackage ./path/to/hypr-workspaced { };
+in {
+  wayland.windowManager.hyprland.settings = {
+    exec-once = [ "${lib.getExe hyprWorkspaced} daemon" ];
+    bind = [
+      "$mainMod, 1, exec, ${lib.getExe hyprWorkspaced} switch 1"
+      "$mainMod, 2, exec, ${lib.getExe hyprWorkspaced} switch 2"
+      # ... etc
+      "$mainMod SHIFT, 1, exec, ${lib.getExe hyprWorkspaced} move 1"
+      "$mainMod SHIFT, 2, exec, ${lib.getExe hyprWorkspaced} move 2"
+      # ... etc
+      "$mainMod, C, exec, ${lib.getExe hyprWorkspaced} collapse"
+    ];
+  };
+}
+```
+
+### Manual
+
+```bash
+cargo build --release
+./target/release/hypr-workspaced daemon &
+```
+
+## Commands
+
+```bash
+hypr-workspaced daemon              # Start the daemon (foreground, for exec-once)
+hypr-workspaced switch <1-9>        # Switch all monitors to virtual workspace
+hypr-workspaced move <1-9>          # Move active window to virtual workspace, then switch
+hypr-workspaced next                # Switch to next virtual workspace (wraps 9 -> 1)
+hypr-workspaced prev                # Switch to previous virtual workspace (wraps 1 -> 9)
+hypr-workspaced collapse            # Move all windows from same virtual WS to current monitor
+hypr-workspaced assign              # Manually reassign workspaces (usually automatic)
+```
+
+## IPC Socket
+
+The daemon listens on a Unix socket for commands from the CLI.
+
+**Location:** `$XDG_RUNTIME_DIR/hypr-workspaced.sock`
+
+**Protocol:** Line-based text protocol.
+
+| Request | Response |
+|---------|----------|
+| `switch 3\n` | `ok\n` or `error: message\n` |
+| `move 5\n` | `ok\n` or `error: message\n` |
+| `next\n` | `ok\n` or `error: message\n` |
+| `prev\n` | `ok\n` or `error: message\n` |
+| `collapse\n` | `ok\n` or `error: message\n` |
+| `assign\n` | `ok\n` or `error: message\n` |
+
+You can interact directly via socat if needed:
+
+```bash
+echo "switch 3" | socat - UNIX-CONNECT:$XDG_RUNTIME_DIR/hypr-workspaced.sock
+```
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                      hypr-workspaced daemon                     │
+│                                                                 │
+│  ┌─────────────────┐    ┌──────────────────┐    ┌───────────┐  │
+│  │   hyprland-rs   │    │ WorkspaceManager │    │ IpcServer │  │
+│  │                 │◄──►│                  │◄──►│           │  │
+│  │ - Monitors::get │    │ - assign_all()   │    │ - socket  │  │
+│  │ - Dispatch::call│    │ - switch(n)      │    │ - Command │  │
+│  │ - EventListener │    │ - move_to(n)     │    │   parsing │  │
+│  └────────┬────────┘    └────────┬─────────┘    └─────┬─────┘  │
+│           │                      │                    │        │
+│           └──────────────────────┼────────────────────┘        │
+│                                  ▼                             │
+│                          ┌──────────────┐                      │
+│                          │ tokio select │                      │
+│                          │  event loop  │                      │
+│                          └──────────────┘                      │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+# Development
+
+## Dependencies
+
+| Crate | Version | Purpose |
+|-------|---------|---------|
+| `hyprland` | 0.4.0-beta.3 | Hyprland IPC (data queries, dispatches, events) |
+| `tokio` | 1.49 | Async runtime |
+| `clap` | 4.5 | CLI argument parsing |
+| `thiserror` | 2.0 | Error type derivation |
+| `tracing` | 0.1 | Structured logging |
+| `tracing-subscriber` | 0.3 | Log output formatting |
+
+## hyprland-rs API Learnings
+
+### Data Types
+
+The hyprland-rs types are not always what you'd expect from the docs:
+
+```rust
+// Workspace ID is just i32
+pub type WorkspaceId = i32;
+
+// WorkspaceBasic contains id and name
+pub struct WorkspaceBasic {
+    pub id: WorkspaceId,  // i32
+    pub name: String,
+}
+
+// Monitor.active_workspace is WorkspaceBasic, not WorkspaceId
+pub struct Monitor {
+    pub active_workspace: WorkspaceBasic,
+    pub id: i128,  // Note: monitor ID is i128!
+    pub name: String,
+    pub focused: bool,
+    // ...
+}
+
+// Client.workspace is also WorkspaceBasic
+pub struct Client {
+    pub workspace: WorkspaceBasic,
+    pub address: Address,
+    // ...
+}
+```
+
+### Collection Types
+
+`Monitors`, `Clients`, `Workspaces` are **not** `Vec` — they implement `IntoIterator`:
+
+```rust
+// WRONG
+let monitors = Monitors::get_async().await?;
+if monitors.is_empty() { ... }  // Error: no method `is_empty`
+
+// CORRECT
+let monitors: Vec<_> = Monitors::get_async().await?.into_iter().collect();
+if monitors.is_empty() { ... }
+```
+
+### Dispatch Types
+
+`MonitorIdentifier::Name` takes a borrowed `&str`, not `String`:
+
+```rust
+// WRONG
+let name: String = monitor.name.clone();
+Dispatch::call_async(DispatchType::FocusMonitor(MonitorIdentifier::Name(name))).await?;
+
+// CORRECT
+Dispatch::call_async(DispatchType::FocusMonitor(MonitorIdentifier::Name(&name))).await?;
+```
+
+### Event Handlers
+
+Event handlers must return `Pin<Box<dyn Future<...>>>`:
+
+```rust
+// WRONG
+listener.add_monitor_added_handler(move |data| {
+    async move { /* ... */ }  // Error: expected Pin<Box<...>>
+});
+
+// CORRECT
+listener.add_monitor_added_handler(move |data| {
+    Box::pin(async move { /* ... */ })
+});
+```
+
+### Event Data Types
+
+Monitor event data types differ:
+
+```rust
+// MonitorAddedEventData has fields: id, name, description
+listener.add_monitor_added_handler(move |data| {
+    println!("Added: {}", data.name);  // NOT data.monitor_name
+});
+
+// MonitorRemovedEventData is just a String (the monitor name)
+listener.add_monitor_removed_handler(move |monitor_name| {
+    println!("Removed: {monitor_name}");
+});
+```
+
+### Error Type Location
+
+`HyprError` is in `hyprland::error`, not `hyprland::shared`:
+
+```rust
+// WRONG
+use hyprland::shared::HyprError;
+
+// CORRECT
+use hyprland::error::HyprError;
+```
+
+## Best Practices
+
+### Keep the Daemon Resident
+
+Spawning a process per keybind adds latency. A resident daemon with IPC is much faster:
+
+- **Bash script per keybind:** ~50-100ms (fork + shell + hyprctl calls)
+- **Daemon + IPC:** ~1-5ms (socket write + existing process)
+
+### Use Batch Operations Sparingly
+
+`hyprctl --batch` can help, but with hyprland-rs you're better off making individual async calls. The library handles connection management efficiently.
+
+### Handle Special Workspaces
+
+Special workspaces have negative IDs. Always check:
+
+```rust
+fn is_special_workspace(id: WorkspaceId) -> bool {
+    id < 0
+}
+```
+
+### Monitor IDs vs Monitor Names
+
+Monitor IDs are assigned by Hyprland at runtime and can change on hotplug. Monitor names (like `DP-1`, `eDP-1`) are stable. Use names for workspace rules, IDs for runtime logic.
+
+### Orphan Workspace Cleanup
+
+Hyprland may create orphan workspaces (0, 10, 20, ...) before your daemon starts. Clean them up by moving windows to valid workspaces.
+
+## Debugging
+
+### Check if daemon is running
+
+```bash
+pgrep -a hypr-workspaced
+ls -la $XDG_RUNTIME_DIR/hypr-workspaced.sock
+```
+
+### View daemon logs
+
+Start in foreground:
+
+```bash
+RUST_LOG=debug hypr-workspaced daemon
+```
+
+### Test IPC manually
+
+```bash
+echo "switch 3" | socat - UNIX-CONNECT:$XDG_RUNTIME_DIR/hypr-workspaced.sock
+```
+
+### Query Hyprland state
+
+```bash
+hyprctl monitors -j | jq .
+hyprctl workspaces -j | jq .
+hyprctl clients -j | jq .
+```
+
+## Project Structure
+
+```
+src/
+├── main.rs        # CLI entry point (clap subcommands)
+├── daemon.rs      # Daemon mode: event loop, IPC server, Hyprland events
+├── client.rs      # Client mode: connect to daemon, send command
+├── workspace.rs   # WorkspaceManager: all business logic
+├── ipc.rs         # Command/Response enums, protocol parsing
+└── error.rs       # Custom error types
+```
+
+## License
+
+GPL-3.0-only

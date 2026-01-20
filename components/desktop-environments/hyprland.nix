@@ -89,107 +89,16 @@
     let
       cfg = namespacedCfg __curPos;
 
-      # Extract monitor identifier (part before first comma) from monitor config strings
-      getMonitorId = monitorStr: builtins.head (lib.strings.splitString "," monitorStr);
-      monitorIds = map getMonitorId cfg.monitors;
-      monitorCount = builtins.length monitorIds;
-      hasMultipleMonitors = monitorCount > 1;
+      # Workspace daemon for synchronized virtual workspaces across monitors
+      hyprWorkspaced = pkgs.callPackage ../../packages/hypr-workspaced { };
 
-      # Workspace ID for a given virtual workspace number (1-9) and monitor index
-      # Monitor 0: 1-9, Monitor 1: 11-19, Monitor 2: 21-29, etc.
-      workspaceId =
-        virtualWs: monitorIndex: if monitorIndex == 0 then virtualWs else (monitorIndex * 10) + virtualWs;
-
-      # Generate workspace rules: bind workspaces to monitors with persistent flag
-      workspaceRulesForMonitor =
-        monitorIndex: monitorId:
-        map (
-          n:
-          "${toString (workspaceId n monitorIndex)}, monitor:${monitorId}, persistent:true, default:${
-            if n == 1 then "true" else "false"
-          }"
-        ) (lib.range 1 9);
-      workspaceRules = lib.flatten (lib.imap0 workspaceRulesForMonitor monitorIds);
-
-      # Synchronized workspace switching: switch all monitors, focused monitor last for proper keyboard focus
-      # Detects focused monitor, then orders dispatches so its workspace is switched last
-      switchAllWorkspaces =
-        n:
-        let
-          # Generate dispatch order with focusedIdx last
-          dispatchesForFocused =
-            focusedIdx:
-            let
-              otherMonitors = lib.filter (i: i != focusedIdx) (lib.range 0 (monitorCount - 1));
-              orderedMonitors = otherMonitors ++ [ focusedIdx ];
-            in
-            lib.concatStringsSep "; " (
-              map (i: "dispatch workspace ${toString (workspaceId n i)}") orderedMonitors
-            );
-          # Generate shell case for each possible focused monitor
-          cases = lib.concatStringsSep " " (
-            map (i: "${toString i}) hyprctl --batch \"${dispatchesForFocused i}\" ;;") (
-              lib.range 0 (monitorCount - 1)
-            )
-          );
-        in
-        "case $(hyprctl monitors -j | jq -r '.[] | select(.focused==true) | .id') in ${cases} esac";
-      synchronizedWorkspaceBinds = map (n: "$mainMod, ${toString n}, exec, ${switchAllWorkspaces n}") (
+      # Keybindings using workspace daemon
+      dynamicWorkspaceBinds = map (n: "$mainMod, ${toString n}, exec, ${lib.getExe hyprWorkspaced} switch ${toString n}") (
         lib.range 1 9
       );
-
-      # Move to workspace: move window, switch all monitors, focused monitor last for proper keyboard focus
-      moveToWorkspace =
-        n:
-        let
-          dispatchesForFocused =
-            focusedIdx:
-            let
-              otherMonitors = lib.filter (i: i != focusedIdx) (lib.range 0 (monitorCount - 1));
-              orderedMonitors = otherMonitors ++ [ focusedIdx ];
-            in
-            lib.concatStringsSep "; " (
-              map (i: "dispatch workspace ${toString (workspaceId n i)}") orderedMonitors
-            );
-          cases = lib.concatStringsSep " " (
-            map (i: "${toString i}) hyprctl --batch \"${dispatchesForFocused i}\" ;;") (
-              lib.range 0 (monitorCount - 1)
-            )
-          );
-        in
-        "hyprctl dispatch movetoworkspace m~${toString n}; case $(hyprctl monitors -j | jq -r '.[] | select(.focused==true) | .id') in ${cases} esac";
-      moveToWorkspaceBinds = map (n: "$mainMod SHIFT, ${toString n}, exec, ${moveToWorkspace n}") (
+      dynamicMoveBinds = map (n: "$mainMod SHIFT, ${toString n}, exec, ${lib.getExe hyprWorkspaced} move ${toString n}") (
         lib.range 1 9
       );
-
-      # Single monitor: use simple workspace bindings
-      singleMonitorWorkspaceBinds = map (n: "$mainMod, ${toString n}, workspace, ${toString n}") (
-        lib.range 1 9
-      );
-      singleMonitorMoveBinds = map (n: "$mainMod SHIFT, ${toString n}, movetoworkspace, ${toString n}") (
-        lib.range 1 9
-      );
-
-      # Multi-monitor: commands to switch all monitors to next/previous virtual workspace
-      # Orders dispatches so focused monitor's workspace is switched last for proper keyboard focus
-      dispatchAllMonitorsForFocused =
-        focusedIdx:
-        let
-          otherMonitors = lib.filter (i: i != focusedIdx) (lib.range 0 (monitorCount - 1));
-          orderedMonitors = otherMonitors ++ [ focusedIdx ];
-        in
-        lib.concatStringsSep "; " (
-          map (
-            i: "dispatch workspace $(( NEW${if i == 0 then "" else " + ${toString (i * 10)}"} ))"
-          ) orderedMonitors
-        );
-      dispatchAllMonitorsCases = lib.concatStringsSep " " (
-        map (i: "${toString i}) hyprctl --batch \"${dispatchAllMonitorsForFocused i}\" ;;") (
-          lib.range 0 (monitorCount - 1)
-        )
-      );
-      virtualWorkspaceNext = "CURR=$(hyprctl monitors -j | jq '.[] | select(.id==0) | .activeWorkspace.id'); NEW=$(( (CURR % 9) + 1 )); case $(hyprctl monitors -j | jq -r '.[] | select(.focused==true) | .id') in ${dispatchAllMonitorsCases} esac";
-      virtualWorkspacePrev = "CURR=$(hyprctl monitors -j | jq '.[] | select(.id==0) | .activeWorkspace.id'); NEW=$(( ((CURR - 2 + 9) % 9) + 1 )); case $(hyprctl monitors -j | jq -r '.[] | select(.focused==true) | .id') in ${dispatchAllMonitorsCases} esac";
     in
     lib.mkIf
       ((if foundrixIgnoreMissingInputs then (c: _: c) else lib.asserts.assertMsg) (
@@ -255,20 +164,6 @@
                     sleep 5
                   done
                 '';
-                collapseVirtualWorkspace = pkgs.writeShellScript "collapse-virtual-workspace" ''
-                  current_ws=$(hyprctl activeworkspace -j | ${lib.getExe pkgs.jq} '.id')
-                  virtual=$((((current_ws - 1) % 10) + 1))
-
-                  hyprctl clients -j | ${lib.getExe pkgs.jq} -r --argjson current "$current_ws" --argjson virtual "$virtual" '
-                    .[] |
-                    select(.workspace.id > 0) |
-                    select(((.workspace.id - 1) % 10) + 1 == $virtual) |
-                    select(.workspace.id != $current) |
-                    .address
-                  ' | while read -r addr; do
-                    hyprctl dispatch movetoworkspace "$current_ws,address:$addr"
-                  done
-                '';
                 loginctl = lib.getExe' pkgs.systemd "loginctl";
                 ydotool = lib.getExe pkgs.ydotool;
                 hyprshot = lib.getExe pkgs.hyprshot;
@@ -286,8 +181,10 @@
                 monitor = cfg.monitors ++ [
                   ",highres,auto,auto,vrr,1"
                 ];
-                workspace = lib.mkIf hasMultipleMonitors workspaceRules;
+                # Workspaces are managed by hypr-workspaced daemon
                 exec-once = [
+                  # Workspace daemon handles assignment and monitor hotplug
+                  "${lib.getExe hyprWorkspaced} daemon"
                   # For text
                   "${wlPaste} --type text --watch ${cliphist} store -max-dedupe-search 40 -max-items 100"
                   # For images
@@ -379,9 +276,7 @@
                     "4, down, close" # Swipe down with 4 fingers to close window
                     "3, horizontal, mod: SUPER, move" # Hold Super + swipe to move window
                     "3, vertical, mod: SUPER, resize" # Hold Super + vertical swipe to resize
-                  ]
-                  # Workspace swipe gestures only work on single monitor (gestures don't support exec dispatcher)
-                  ++ lib.optionals (!hasMultipleMonitors) [
+                    # Workspace swipe gestures (only affects current monitor, not synchronized)
                     "3, left, workspace, +1"
                     "3, right, workspace, -1"
                   ];
@@ -435,15 +330,12 @@
                   "$mainMod, right, movefocus, r"
                   "$mainMod, up, movefocus, u"
                   "$mainMod, down, movefocus, d"
-                  "$mainMod, L, exec, ${loginctl} lock-session"
-                  "$mainMod, C, exec, ${collapseVirtualWorkspace}"
+                  "$mainMod, L, exec, ${loginctl} lock-session; sleep 0.2; pidof hyprlock || hyprlock"
+                  "$mainMod, C, exec, ${lib.getExe hyprWorkspaced} collapse"
                 ]
-                ++ (
-                  if hasMultipleMonitors then
-                    synchronizedWorkspaceBinds ++ moveToWorkspaceBinds
-                  else
-                    singleMonitorWorkspaceBinds ++ singleMonitorMoveBinds
-                )
+                # Dynamic workspace switching and moving (works with any number of monitors)
+                ++ dynamicWorkspaceBinds
+                ++ dynamicMoveBinds
                 ++ [
                   ''$mainMod SHIFT, V, exec, ${cliphist} list | $menu --dmenu -p "Search clipboard history…" -M multi-contains -i | ${cliphist} decode | ${wlCopy}''
                   ''$mainMod SHIFT, E, exec, ${wlCopy} -c''
@@ -453,18 +345,11 @@
                   ''$mainMod+ALT SHIFT, 9, exec, $menu --dmenu -p "Enter process string to kill…" --exec-search --lines 1 -b | xargs pkill -9''
                   ''$mainMod+ALT SHIFT, 5, exec, $menu --dmenu -p "Enter process string to terminate…" --exec-search --lines 1 -b | xargs pkill -9''
                 ]
-                ++ (
-                  if hasMultipleMonitors then
-                    [
-                      "$mainMod, mouse_left, exec, ${virtualWorkspacePrev}"
-                      "$mainMod, mouse_right, exec, ${virtualWorkspaceNext}"
-                    ]
-                  else
-                    [
-                      "$mainMod, mouse_left, workspace, e-1"
-                      "$mainMod, mouse_right, workspace, e+1"
-                    ]
-                )
+                ++ [
+                  # Mouse side buttons for virtual workspace navigation
+                  "$mainMod, mouse_left, exec, ${lib.getExe hyprWorkspaced} prev"
+                  "$mainMod, mouse_right, exec, ${lib.getExe hyprWorkspaced} next"
+                ]
                 ++ [
                   "ALT SHIFT, KP_Begin, exec, ${ydotool} click C0"
                   "ALT SHIFT, KP_Begin, exec, ${ydotool} click C0"
@@ -638,6 +523,11 @@
             MOZ_DBUS_REMOTE = "1";
             MOZ_USE_XINPUT2 = "1";
           };
+          home.packages = [
+            hyprWorkspaced
+            pkgs.cava
+            inputs.quickshell.packages.${pkgs.stdenv.hostPlatform.system}.default
+          ];
           services.gnome-keyring.enable = true;
         };
       };
