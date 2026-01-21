@@ -5,10 +5,14 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::{mpsc, watch};
 use tracing::{debug, error, info, warn};
+use tracing_subscriber::reload::Handle;
+use tracing_subscriber::EnvFilter;
 
 use crate::error::Result;
 use crate::ipc::{socket_path, Command, Response};
 use crate::workspace::WorkspaceManager;
+
+type LogReloadHandle = Handle<EnvFilter, tracing_subscriber::Registry>;
 
 enum Event {
     Command(Command, tokio::sync::oneshot::Sender<Response>),
@@ -22,7 +26,8 @@ struct SyncState {
     generation: u64, // Incremented on each change to detect updates
 }
 
-pub async fn run() -> Result<()> {
+
+pub async fn run(log_handle: LogReloadHandle) -> Result<()> {
     let path = socket_path();
 
     if path.exists() {
@@ -31,6 +36,10 @@ pub async fn run() -> Result<()> {
 
     let listener = UnixListener::bind(&path)?;
     info!("Listening on {}", path.display());
+
+    // Signal systemd that we're ready to accept connections
+    let _ = sd_notify::notify(true, &[sd_notify::NotifyState::Ready]);
+    info!("Notified systemd of readiness");
 
     // Channel for commands and monitor events (need reliable delivery)
     let (tx, mut rx) = mpsc::channel::<Event>(32);
@@ -80,12 +89,11 @@ pub async fn run() -> Result<()> {
 
     loop {
         tokio::select! {
-            // Handle commands and monitor events
             event = rx.recv() => {
                 match event {
                     Some(Event::Command(cmd, reply)) => {
                         debug!("Received command: {cmd}");
-                        let response = handle_command(&mut manager, cmd).await;
+                        let response = handle_command(&mut manager, cmd, &log_handle).await;
                         let _ = reply.send(response);
                     }
                     Some(Event::MonitorChanged) => {
@@ -102,21 +110,22 @@ pub async fn run() -> Result<()> {
                 }
             }
 
-            // Handle workspace sync (watch channel - only latest matters)
             _ = sync_rx.changed() => {
                 let state = *sync_rx.borrow();
 
-                // Skip if we already processed this generation
                 if state.generation <= last_synced_generation {
                     continue;
                 }
                 last_synced_generation = state.generation;
 
-                if let Some(virtual_ws) = WorkspaceManager::virtual_from_workspace_id(state.workspace_id) {
-                    debug!("Workspace changed to {} (virtual {}), syncing monitors", state.workspace_id, virtual_ws);
-                    if let Err(e) = manager.sync_monitors(virtual_ws).await {
-                        error!("Monitor sync failed: {e}");
-                    }
+                // Skip special workspaces
+                if state.workspace_id <= 0 {
+                    continue;
+                }
+
+                debug!("Workspace changed to {}, syncing monitors", state.workspace_id);
+                if let Err(e) = manager.sync_monitors(state.workspace_id).await {
+                    error!("Monitor sync failed: {e}");
                 }
             }
         }
@@ -152,12 +161,10 @@ async fn run_hyprland_listener(
         })
     });
 
-    // Use watch channel for workspace events - only latest value matters
     listener.add_workspace_changed_handler(move |data| {
         let sync_tx = sync_tx.clone();
         Box::pin(async move {
-            debug!("Workspace changed event: id={}", data.id);
-            // Update with new workspace, increment generation
+            debug!("Workspace changed event: {}", data.id);
             sync_tx.send_modify(|state| {
                 state.workspace_id = data.id;
                 state.generation = state.generation.wrapping_add(1);
@@ -205,7 +212,11 @@ async fn handle_client(stream: UnixStream, tx: mpsc::Sender<Event>) {
     }
 }
 
-async fn handle_command(manager: &mut WorkspaceManager, cmd: Command) -> Response {
+async fn handle_command(
+    manager: &mut WorkspaceManager,
+    cmd: Command,
+    log_handle: &LogReloadHandle,
+) -> Response {
     let result = match cmd {
         Command::Switch(ws) => manager.switch_virtual(ws).await,
         Command::MoveTo(ws) => manager.move_to_virtual(ws).await,
@@ -214,9 +225,16 @@ async fn handle_command(manager: &mut WorkspaceManager, cmd: Command) -> Respons
         Command::Assign => manager.assign_workspaces().await,
         Command::Pin(pattern) => manager.pin(&pattern),
         Command::Unpin(pattern) => manager.unpin(&pattern),
-        Command::Pins => {
-            let pins = manager.pins();
-            return Response::Data(pins.join("\n"));
+        Command::Pins => return Response::Data(manager.pins().join("\n")),
+        Command::Debug(enabled) => {
+            let level = if enabled { "debug" } else { "info" };
+            match log_handle.reload(EnvFilter::new(level)) {
+                Ok(()) => {
+                    info!("Log level set to {level}");
+                    return Response::Ok;
+                }
+                Err(e) => return Response::Error(format!("Failed to set log level: {e}")),
+            }
         }
     };
 

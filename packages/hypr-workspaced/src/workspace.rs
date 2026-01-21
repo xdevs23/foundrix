@@ -1,7 +1,8 @@
-use hyprland::data::{Client, Clients, Monitor, Monitors, Workspace};
-use hyprland::dispatch::{Dispatch, DispatchType, MonitorIdentifier, WindowIdentifier, WorkspaceIdentifierWithSpecial};
+use hyprland::data::{Client, Clients, CursorPosition, Monitor, Monitors, Workspace};
+use hyprland::dispatch::{Dispatch, DispatchType, WindowIdentifier, WorkspaceIdentifierWithSpecial};
 use hyprland::keyword::Keyword;
 use hyprland::shared::{HyprData, HyprDataActive, WorkspaceId};
+use tokio::sync::Mutex;
 use tracing::{debug, info, warn};
 
 use crate::error::{Error, Result};
@@ -10,12 +11,15 @@ use crate::window::WindowPattern;
 
 pub struct WorkspaceManager {
     pinned_patterns: Vec<WindowPattern>,
+    /// Lock to serialize IPC operations and prevent race conditions during workspace transitions
+    ipc_lock: Mutex<()>,
 }
 
 impl WorkspaceManager {
     pub fn new() -> Self {
         Self {
             pinned_patterns: Vec::new(),
+            ipc_lock: Mutex::new(()),
         }
     }
 
@@ -125,6 +129,8 @@ impl WorkspaceManager {
     }
 
     pub async fn assign_workspaces(&self) -> Result<()> {
+        let _guard = self.ipc_lock.lock().await;
+
         let monitors: Vec<_> = Monitors::get_async().await?.into_iter().collect();
 
         if monitors.is_empty() {
@@ -182,12 +188,13 @@ impl WorkspaceManager {
     }
 
     pub async fn switch_virtual(&self, virtual_ws: u8) -> Result<()> {
+        let _guard = self.ipc_lock.lock().await;
+
         let focused = Monitor::get_active_async().await?;
         let wsid = Self::workspace_id(virtual_ws, focused.id);
 
-        debug!("Switching focused monitor to virtual workspace {virtual_ws} (workspace {wsid})");
+        debug!("Switching to virtual workspace {virtual_ws} (workspace {wsid} on {})", focused.name);
 
-        // Only switch the focused monitor - the event handler will sync the rest
         Dispatch::call_async(DispatchType::Workspace(WorkspaceIdentifierWithSpecial::Id(
             wsid,
         )))
@@ -196,65 +203,80 @@ impl WorkspaceManager {
         Ok(())
     }
 
-    /// Sync all monitors to the given virtual workspace.
+    /// Sync all monitors to match the workspace that triggered the event.
     /// Called by the event handler when a workspace change is detected.
-    pub async fn sync_monitors(&self, virtual_ws: u8) -> Result<()> {
+    pub async fn sync_monitors(&self, trigger_workspace_id: WorkspaceId) -> Result<()> {
+        let _guard = self.ipc_lock.lock().await;
+
+        let virtual_ws = Self::virtual_from_workspace(trigger_workspace_id);
         let monitors: Vec<_> = Monitors::get_async().await?.into_iter().collect();
 
-        if monitors.is_empty() {
+        if monitors.len() <= 1 {
             return Ok(());
         }
 
-        let focused_name = monitors.iter().find(|m| m.focused).map(|m| m.name.clone());
+        debug!("Syncing monitors to virtual workspace {virtual_ws} (triggered by ws {trigger_workspace_id})");
 
-        debug!("Syncing all monitors to virtual workspace {virtual_ws}");
-
+        // Switch all OTHER monitors to their target workspace
         for monitor in &monitors {
             let target_wsid = Self::workspace_id(virtual_ws, monitor.id);
-
-            // Skip if already on the correct workspace
-            if monitor.active_workspace.id == target_wsid {
-                continue;
+            if target_wsid == trigger_workspace_id {
+                continue; // Skip the workspace that triggered the event
             }
 
-            debug!(
-                "Syncing monitor {} from workspace {} to {}",
-                monitor.name, monitor.active_workspace.id, target_wsid
-            );
-
-            // Focus this monitor, switch workspace
-            Dispatch::call_async(DispatchType::FocusMonitor(MonitorIdentifier::Name(
-                &monitor.name,
-            )))
-            .await?;
-
+            debug!("Switching {} to workspace {target_wsid}", monitor.name);
             Dispatch::call_async(DispatchType::Workspace(WorkspaceIdentifierWithSpecial::Id(
                 target_wsid,
             )))
             .await?;
         }
 
-        // Move pinned windows to the new virtual workspace
+        // Move pinned windows
         self.move_pinned_windows(virtual_ws).await?;
 
-        // Restore focus to the originally focused monitor
-        if let Some(ref name) = focused_name {
-            Dispatch::call_async(DispatchType::FocusMonitor(MonitorIdentifier::Name(name)))
-                .await?;
+        // Refocus the trigger workspace (restores focus to original monitor)
+        Dispatch::call_async(DispatchType::Workspace(WorkspaceIdentifierWithSpecial::Id(
+            trigger_workspace_id,
+        )))
+        .await?;
+
+        // Focus window under cursor (if any)
+        self.focus_window_under_cursor(trigger_workspace_id).await?;
+
+        Ok(())
+    }
+
+    /// Find and focus the window under the cursor on the given workspace.
+    async fn focus_window_under_cursor(&self, workspace_id: WorkspaceId) -> Result<()> {
+        let cursor = CursorPosition::get_async().await?;
+        let clients: Vec<_> = Clients::get_async().await?.into_iter().collect();
+
+        // Find window on this workspace that contains the cursor
+        let window_under_cursor = clients.iter().find(|c| {
+            if c.workspace.id != workspace_id {
+                return false;
+            }
+            let (wx, wy) = c.at;
+            let (ww, wh) = c.size;
+            let cx = cursor.x as i16;
+            let cy = cursor.y as i16;
+            cx >= wx && cx < wx + ww && cy >= wy && cy < wy + wh
+        });
+
+        if let Some(client) = window_under_cursor {
+            debug!("Focusing window under cursor: {}", client.class);
+            Dispatch::call_async(DispatchType::FocusWindow(WindowIdentifier::Address(
+                client.address.clone(),
+            )))
+            .await?;
         }
 
         Ok(())
     }
 
-    /// Get the virtual workspace number from a workspace ID.
-    pub fn virtual_from_workspace_id(workspace_id: WorkspaceId) -> Option<u8> {
-        if workspace_id <= 0 {
-            return None; // Special workspace
-        }
-        Some(Self::virtual_from_workspace(workspace_id))
-    }
-
     pub async fn move_to_virtual(&self, virtual_ws: u8) -> Result<()> {
+        let _guard = self.ipc_lock.lock().await;
+
         let focused = Monitor::get_active_async().await?;
         let wsid = Self::workspace_id(virtual_ws, focused.id);
 
@@ -306,6 +328,8 @@ impl WorkspaceManager {
     }
 
     pub async fn collapse(&self) -> Result<()> {
+        let _guard = self.ipc_lock.lock().await;
+
         let active_ws = Workspace::get_active_async().await?;
         let current_ws_id = active_ws.id;
 

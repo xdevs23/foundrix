@@ -20,6 +20,7 @@ pub enum Command {
     Pin(String),
     Unpin(String),
     Pins,
+    Debug(bool),
 }
 
 impl Command {
@@ -59,6 +60,8 @@ impl FromStr for Command {
                 Ok(Command::Unpin(pattern.join(" ")))
             }
             ["pins"] => Ok(Command::Pins),
+            ["debug", "on" | "true" | "1"] => Ok(Command::Debug(true)),
+            ["debug", "off" | "false" | "0"] => Ok(Command::Debug(false)),
             _ => Err(Error::InvalidCommand(s.to_string())),
         }
     }
@@ -76,6 +79,7 @@ impl std::fmt::Display for Command {
             Command::Pin(pattern) => write!(f, "pin {pattern}"),
             Command::Unpin(pattern) => write!(f, "unpin {pattern}"),
             Command::Pins => write!(f, "pins"),
+            Command::Debug(on) => write!(f, "debug {}", if *on { "on" } else { "off" }),
         }
     }
 }

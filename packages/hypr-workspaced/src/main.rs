@@ -6,7 +6,9 @@ mod window;
 mod workspace;
 
 use clap::{Parser, Subcommand};
-use tracing_subscriber::EnvFilter;
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
+use tracing_subscriber::{reload, EnvFilter};
 
 use crate::error::Result;
 use crate::ipc::{Command, Direction};
@@ -54,6 +56,20 @@ enum Commands {
     },
     /// List all pinned window patterns
     Pins,
+    /// Toggle debug logging
+    Debug {
+        /// Enable or disable debug logging
+        #[arg(value_parser = parse_bool_arg)]
+        enabled: bool,
+    },
+}
+
+fn parse_bool_arg(s: &str) -> std::result::Result<bool, String> {
+    match s.to_lowercase().as_str() {
+        "on" | "true" | "1" => Ok(true),
+        "off" | "false" | "0" => Ok(false),
+        _ => Err(format!("expected on/off, true/false, or 1/0, got '{s}'")),
+    }
 }
 
 #[tokio::main]
@@ -62,14 +78,16 @@ async fn main() -> Result<()> {
 
     match cli.command {
         Commands::Daemon => {
-            tracing_subscriber::fmt()
-                .with_env_filter(
-                    EnvFilter::try_from_default_env()
-                        .unwrap_or_else(|_| EnvFilter::new("info")),
-                )
+            let filter = EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| EnvFilter::new("info"));
+            let (filter_layer, reload_handle) = reload::Layer::new(filter);
+
+            tracing_subscriber::registry()
+                .with(filter_layer)
+                .with(tracing_subscriber::fmt::layer())
                 .init();
 
-            daemon::run().await
+            daemon::run(reload_handle).await
         }
         Commands::Switch { workspace } => {
             let cmd = Command::Switch(Command::validate_workspace(workspace)?);
@@ -100,5 +118,6 @@ async fn main() -> Result<()> {
             client::send_command(Command::Unpin(pattern)).await
         }
         Commands::Pins => client::send_command_with_output(Command::Pins).await,
+        Commands::Debug { enabled } => client::send_command(Command::Debug(enabled)).await,
     }
 }

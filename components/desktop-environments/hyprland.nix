@@ -83,6 +83,11 @@
       default = "";
       description = "Verbatim extra config";
     };
+    hyprWorkspacedPins = lib.mkOption {
+      type = with lib.types; listOf str;
+      default = [ ];
+      description = "Window matchers to pin to workspaces (e.g. 'class:Mattermost')";
+    };
   };
 
   config =
@@ -135,6 +140,25 @@
           };
         };
         home-manager = applyHomeManagerUsers cfg.users {
+          systemd.user.services.hypr-workspaced = {
+            Unit = {
+              Description = "Hyprland workspace daemon for synchronized virtual workspaces";
+              PartOf = [ "graphical-session.target" ];
+              After = [ "graphical-session.target" ];
+            };
+            Service = {
+              Type = "notify";
+              ExecStart = "${lib.getExe hyprWorkspaced} daemon";
+              ExecStartPost =
+                [ "${lib.getExe hyprWorkspaced} assign" ]
+                ++ map (pin: "${lib.getExe hyprWorkspaced} pin ${pin}") cfg.hyprWorkspacedPins;
+              Restart = "on-failure";
+              RestartSec = 1;
+            };
+            Install = {
+              WantedBy = [ "graphical-session.target" ];
+            };
+          };
           xdg.portal.extraPortals = [
             config.programs.hyprland.portalPackage
             pkgs.xdg-desktop-portal-gtk
@@ -181,10 +205,7 @@
                 monitor = cfg.monitors ++ [
                   ",highres,auto,auto,vrr,1"
                 ];
-                # Workspaces are managed by hypr-workspaced daemon
                 exec-once = [
-                  # Workspace daemon handles assignment and monitor hotplug
-                  "${lib.getExe hyprWorkspaced} daemon"
                   # For text
                   "${wlPaste} --type text --watch ${cliphist} store -max-dedupe-search 40 -max-items 100"
                   # For images
