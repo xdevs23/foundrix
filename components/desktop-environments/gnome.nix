@@ -98,15 +98,7 @@
       services.gnome.gnome-keyring.enable = true;
       nixpkgs.overlays = overlays;
       nixpkgs-unstable.overlays = overlays;
-    }
-    // (lib.optionalAttrs (lib.versionOlder lib.version "25.10") {
-      services.xserver = {
-        displayManager.gdm.enable = cfg.useGdm;
-        desktopManager.gnome.enable = true;
-      };
-    })
-    // (lib.optionalAttrs (lib.versionAtLeast lib.version "25.10") {
       services.desktopManager.gnome.enable = true;
       services.displayManager.gdm.enable = cfg.useGdm;
-    });
+    };
 }

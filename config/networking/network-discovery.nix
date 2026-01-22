@@ -1,3 +1,4 @@
+{ lib, ... }:
 {
   services.avahi = {
     enable = true;
@@ -7,5 +8,9 @@
   services.rpcbind.enable = true;
 
   # Disable mDNS in resolved (avahi handles it)
-  services.resolved.extraConfig = "MulticastDNS=no";
+  services.resolved =
+    if lib.versionAtLeast lib.version "26.05" then
+      { settings.Resolve.MulticastDNS = "no"; }
+    else
+      { extraConfig = "MulticastDNS=no"; };
 }

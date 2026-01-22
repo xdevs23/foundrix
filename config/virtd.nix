@@ -29,16 +29,6 @@
         package = pkgs.qemu_kvm;
         runAsRoot = true;
         swtpm.enable = true;
-        # From 25.11, OVMF is distributed with qemu by default
-        ovmf = lib.mkIf (lib.versionOlder lib.version "25.10") {
-          enable = true;
-          packages = [
-            (pkgs.OVMF.override {
-              secureBoot = true;
-              tpmSupport = true;
-            }).fd
-          ];
-        };
       };
     };
     home-manager = applyHomeManagerUsers (namespacedCfg __curPos).users {

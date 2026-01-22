@@ -170,17 +170,5 @@
           ];
         };
       }
-      (lib.mkIf (lib.versionOlder pkgs.lib.version "25.10") {
-        # amdvlk is removed from 25.11 and this part is for pre-25.11
-        # to enable RADV
-        hardware.amdgpu.amdvlk = {
-          enable = false;
-          support32Bit.enable = false;
-        };
-
-        environment.variables = {
-          AMD_VULKAN_ICD = "RADV";
-        };
-      })
     ];
 }
