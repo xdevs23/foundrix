@@ -25,7 +25,11 @@ struct Cli {
 #[derive(Subcommand)]
 enum Commands {
     /// Start the daemon (foreground)
-    Daemon,
+    Daemon {
+        /// Restart a systemd user service when Hyprland IPC reconnects after disconnection
+        #[arg(long)]
+        on_hypr_ipc_reconnect_restart: Option<String>,
+    },
     /// Switch all monitors to a virtual workspace (1-9)
     Switch {
         /// Virtual workspace number (1-9)
@@ -77,7 +81,7 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Daemon => {
+        Commands::Daemon { on_hypr_ipc_reconnect_restart } => {
             let filter = EnvFilter::try_from_default_env()
                 .unwrap_or_else(|_| EnvFilter::new("info"));
             let (filter_layer, reload_handle) = reload::Layer::new(filter);
@@ -87,7 +91,7 @@ async fn main() -> Result<()> {
                 .with(tracing_subscriber::fmt::layer())
                 .init();
 
-            daemon::run(reload_handle).await
+            daemon::run(reload_handle, on_hypr_ipc_reconnect_restart).await
         }
         Commands::Switch { workspace } => {
             let cmd = Command::Switch(Command::validate_workspace(workspace)?);

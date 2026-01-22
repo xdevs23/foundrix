@@ -1,6 +1,7 @@
 use std::time::Duration;
 
 use hyprland::event_listener::AsyncEventListener;
+use hyprland::shared::HyprData;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::{mpsc, watch};
@@ -27,7 +28,7 @@ struct SyncState {
 }
 
 
-pub async fn run(log_handle: LogReloadHandle) -> Result<()> {
+pub async fn run(log_handle: LogReloadHandle, on_reconnect_restart: Option<String>) -> Result<()> {
     let path = socket_path();
 
     if path.exists() {
@@ -53,11 +54,42 @@ pub async fn run(log_handle: LogReloadHandle) -> Result<()> {
     // Hyprland event listener with auto-restart
     let tx_hyprland = tx.clone();
     let hyprland_task = tokio::spawn(async move {
+        let mut had_successful_connection = false;
+        let mut pending_service_restart = false;
         loop {
             info!("Starting Hyprland event listener");
+            let start_time = std::time::Instant::now();
+
             if let Err(e) = run_hyprland_listener(tx_hyprland.clone(), sync_tx.clone()).await {
-                error!("Hyprland event listener failed: {e}");
+                let ran_for = start_time.elapsed();
+
+                // If listener ran for at least 2 seconds, it was connected
+                if ran_for >= Duration::from_secs(2) {
+                    info!("Hyprland connection lost after {:?}", ran_for);
+                    had_successful_connection = true;
+                    pending_service_restart = true;
+                } else {
+                    // Failed quickly - connection refused or similar
+                    error!("Hyprland event listener failed: {e}");
+                }
             }
+
+            // On successful reconnection after a disconnection, restart the service
+            if pending_service_restart && had_successful_connection {
+                // Try to connect briefly to verify Hyprland is back
+                if hyprland::data::Monitors::get_async().await.is_ok() {
+                    // Hyprland is back
+                    if let Some(ref service) = on_reconnect_restart {
+                        info!("Hyprland IPC reconnected, restarting service: {service}");
+                        match restart_user_service(service).await {
+                            Ok(()) => info!("Successfully restarted {service}"),
+                            Err(e) => error!("Failed to restart {service}: {e}"),
+                        }
+                    }
+                    pending_service_restart = false;
+                }
+            }
+
             warn!("Hyprland listener stopped, restarting in 1s...");
             tokio::time::sleep(Duration::from_secs(1)).await;
         }
@@ -81,6 +113,9 @@ pub async fn run(log_handle: LogReloadHandle) -> Result<()> {
 
     let mut manager = WorkspaceManager::new();
     let mut last_synced_generation: u64 = 0;
+    let mut last_sync_time = std::time::Instant::now();
+    let mut last_synced_workspace: i32 = 0;
+    const MIN_SYNC_INTERVAL: Duration = Duration::from_millis(100);
 
     info!("Performing initial workspace assignment");
     if let Err(e) = manager.assign_workspaces().await {
@@ -123,9 +158,21 @@ pub async fn run(log_handle: LogReloadHandle) -> Result<()> {
                     continue;
                 }
 
+                // Rate limit: skip if same workspace and too soon
+                let now = std::time::Instant::now();
+                if state.workspace_id == last_synced_workspace
+                    && now.duration_since(last_sync_time) < MIN_SYNC_INTERVAL
+                {
+                    debug!("Skipping rapid sync for workspace {}", state.workspace_id);
+                    continue;
+                }
+
                 debug!("Workspace changed to {}, syncing monitors", state.workspace_id);
                 if let Err(e) = manager.sync_monitors(state.workspace_id).await {
                     error!("Monitor sync failed: {e}");
+                } else {
+                    last_synced_workspace = state.workspace_id;
+                    last_sync_time = now;
                 }
             }
         }
@@ -210,6 +257,25 @@ async fn handle_client(stream: UnixStream, tx: mpsc::Sender<Event>) {
     if let Err(e) = writer.write_all(msg.as_bytes()).await {
         error!("Failed to write response: {e}");
     }
+}
+
+/// Restart a systemd user service via D-Bus
+async fn restart_user_service(service: &str) -> std::result::Result<(), zbus::Error> {
+    let connection = zbus::Connection::session().await?;
+    let proxy = zbus::proxy::Proxy::new(
+        &connection,
+        "org.freedesktop.systemd1",
+        "/org/freedesktop/systemd1",
+        "org.freedesktop.systemd1.Manager",
+    )
+    .await?;
+
+    // RestartUnit(name: s, mode: s) -> job: o
+    let _job: zbus::zvariant::OwnedObjectPath = proxy
+        .call("RestartUnit", &(service, "replace"))
+        .await?;
+
+    Ok(())
 }
 
 async fn handle_command(

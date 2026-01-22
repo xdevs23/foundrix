@@ -88,6 +88,11 @@
       default = [ ];
       description = "Window matchers to pin to workspaces (e.g. 'class:Mattermost')";
     };
+    hyprWorkspacedOnReconnectRestart = lib.mkOption {
+      type = with lib.types; nullOr str;
+      default = null;
+      description = "Systemd user service to restart when Hyprland IPC reconnects (e.g. 'quickshell-topbar.service')";
+    };
   };
 
   config =
@@ -148,7 +153,9 @@
             };
             Service = {
               Type = "notify";
-              ExecStart = "${lib.getExe hyprWorkspaced} daemon";
+              ExecStart = "${lib.getExe hyprWorkspaced} daemon"
+                + lib.optionalString (cfg.hyprWorkspacedOnReconnectRestart != null)
+                  " --on-hypr-ipc-reconnect-restart ${cfg.hyprWorkspacedOnReconnectRestart}";
               ExecStartPost =
                 [ "${lib.getExe hyprWorkspaced} assign" ]
                 ++ map (pin: "${lib.getExe hyprWorkspaced} pin ${pin}") cfg.hyprWorkspacedPins;
