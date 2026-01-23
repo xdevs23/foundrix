@@ -359,7 +359,8 @@
                   "$mainMod, up, movefocus, u"
                   "$mainMod, down, movefocus, d"
                   "$mainMod, L, exec, ${loginctl} lock-session; sleep 0.2; pidof hyprlock || hyprlock"
-                  "$mainMod, C, exec, ${lib.getExe hyprWorkspaced} collapse"
+                  "$mainMod, C, exec, ${lib.getExe hyprWorkspaced} collapse invisible"
+                  "$mainMod SHIFT, C, exec, ${lib.getExe hyprWorkspaced} collapse all"
                 ]
                 # Dynamic workspace switching and moving (works with any number of monitors)
                 ++ dynamicWorkspaceBinds

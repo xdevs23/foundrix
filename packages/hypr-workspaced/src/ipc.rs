@@ -4,10 +4,24 @@ use std::str::FromStr;
 
 use crate::error::{Error, Result};
 
+pub fn parse_bool_arg(s: &str) -> std::result::Result<bool, String> {
+    match s.to_lowercase().as_str() {
+        "on" | "true" | "1" => Ok(true),
+        "off" | "false" | "0" => Ok(false),
+        _ => Err(format!("expected on/off, true/false, or 1/0, got '{s}'")),
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Direction {
     Next,
     Prev,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CollapseMode {
+    All,
+    Invisible,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -15,7 +29,7 @@ pub enum Command {
     Switch(u8),
     MoveTo(u8),
     Navigate(Direction),
-    Collapse,
+    Collapse(CollapseMode),
     Assign,
     Pin(String),
     Unpin(String),
@@ -51,7 +65,8 @@ impl FromStr for Command {
             }
             ["next"] => Ok(Command::Navigate(Direction::Next)),
             ["prev"] => Ok(Command::Navigate(Direction::Prev)),
-            ["collapse"] => Ok(Command::Collapse),
+            ["collapse", "all"] => Ok(Command::Collapse(CollapseMode::All)),
+            ["collapse", "invisible"] => Ok(Command::Collapse(CollapseMode::Invisible)),
             ["assign"] => Ok(Command::Assign),
             ["pin", pattern @ ..] if !pattern.is_empty() => {
                 Ok(Command::Pin(pattern.join(" ")))
@@ -60,8 +75,9 @@ impl FromStr for Command {
                 Ok(Command::Unpin(pattern.join(" ")))
             }
             ["pins"] => Ok(Command::Pins),
-            ["debug", "on" | "true" | "1"] => Ok(Command::Debug(true)),
-            ["debug", "off" | "false" | "0"] => Ok(Command::Debug(false)),
+            ["debug", val] => parse_bool_arg(val)
+                .map(Command::Debug)
+                .map_err(|_| Error::InvalidCommand(s.to_string())),
             _ => Err(Error::InvalidCommand(s.to_string())),
         }
     }
@@ -74,7 +90,8 @@ impl std::fmt::Display for Command {
             Command::MoveTo(ws) => write!(f, "move {ws}"),
             Command::Navigate(Direction::Next) => write!(f, "next"),
             Command::Navigate(Direction::Prev) => write!(f, "prev"),
-            Command::Collapse => write!(f, "collapse"),
+            Command::Collapse(CollapseMode::All) => write!(f, "collapse all"),
+            Command::Collapse(CollapseMode::Invisible) => write!(f, "collapse invisible"),
             Command::Assign => write!(f, "assign"),
             Command::Pin(pattern) => write!(f, "pin {pattern}"),
             Command::Unpin(pattern) => write!(f, "unpin {pattern}"),
@@ -139,7 +156,14 @@ mod tests {
             "prev".parse::<Command>().unwrap(),
             Command::Navigate(Direction::Prev)
         );
-        assert_eq!("collapse".parse::<Command>().unwrap(), Command::Collapse);
+        assert_eq!(
+            "collapse all".parse::<Command>().unwrap(),
+            Command::Collapse(CollapseMode::All)
+        );
+        assert_eq!(
+            "collapse invisible".parse::<Command>().unwrap(),
+            Command::Collapse(CollapseMode::Invisible)
+        );
         assert_eq!("assign".parse::<Command>().unwrap(), Command::Assign);
     }
 

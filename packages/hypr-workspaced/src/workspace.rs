@@ -6,7 +6,7 @@ use tokio::sync::Mutex;
 use tracing::{debug, info, warn};
 
 use crate::error::{Error, Result};
-use crate::ipc::Direction;
+use crate::ipc::{CollapseMode, Direction};
 use crate::window::WindowPattern;
 
 pub struct WorkspaceManager {
@@ -37,6 +37,30 @@ impl WorkspaceManager {
 
     fn is_special_workspace(workspace_id: WorkspaceId) -> bool {
         workspace_id < 0
+    }
+
+    /// Check if a workspace ID is valid for the given number of monitors.
+    /// A workspace is valid if:
+    /// - Its virtual workspace (1-9) is in range
+    /// - Its monitor ID exists
+    fn is_valid_workspace(workspace_id: WorkspaceId, num_monitors: usize) -> bool {
+        if workspace_id <= 0 {
+            return false;
+        }
+
+        let vspace = Self::virtual_from_workspace(workspace_id);
+        if vspace < 1 || vspace > 9 {
+            return false;
+        }
+
+        // Calculate monitor ID from workspace
+        let monitor_id = if workspace_id < 10 {
+            0
+        } else {
+            workspace_id / 10
+        };
+
+        (monitor_id as usize) < num_monitors
     }
 
     pub fn pin(&mut self, pattern_str: &str) -> Result<()> {
@@ -145,7 +169,7 @@ impl WorkspaceManager {
                 let is_default = ws == 1;
 
                 let rule = format!(
-                    "{wsid}, monitor:{}, persistent:true, default:{is_default}",
+                    "{wsid},monitor:{},persistent:true,default:{is_default}",
                     monitor.name
                 );
 
@@ -155,6 +179,22 @@ impl WorkspaceManager {
         }
 
         self.cleanup_orphan_workspaces().await?;
+
+        // Switch all monitors to their correct default workspace (vspace 1)
+        // This is needed because Hyprland may have created incorrect default workspaces
+        // before hypr-workspaced started
+        for monitor in &monitors {
+            let default_wsid = Self::workspace_id(1, monitor.id);
+            // Skip if already on the target workspace (avoids "Previous workspace doesn't exist" error)
+            if monitor.active_workspace.id == default_wsid {
+                continue;
+            }
+            debug!("Switching {} to default workspace {}", monitor.name, default_wsid);
+            Dispatch::call_async(DispatchType::Workspace(WorkspaceIdentifierWithSpecial::Id(
+                default_wsid,
+            )))
+            .await?;
+        }
 
         info!("Workspace assignment complete");
         Ok(())
@@ -220,8 +260,9 @@ impl WorkspaceManager {
         // Switch all OTHER monitors to their target workspace
         for monitor in &monitors {
             let target_wsid = Self::workspace_id(virtual_ws, monitor.id);
-            if target_wsid == trigger_workspace_id {
-                continue; // Skip the workspace that triggered the event
+            // Skip if this is the trigger workspace or already on target
+            if target_wsid == trigger_workspace_id || monitor.active_workspace.id == target_wsid {
+                continue;
             }
 
             debug!("Switching {} to workspace {target_wsid}", monitor.name);
@@ -235,25 +276,36 @@ impl WorkspaceManager {
         self.move_pinned_windows(virtual_ws).await?;
 
         // Refocus the trigger workspace (restores focus to original monitor)
-        Dispatch::call_async(DispatchType::Workspace(WorkspaceIdentifierWithSpecial::Id(
-            trigger_workspace_id,
-        )))
-        .await?;
+        // Only if we're not already on it (avoids "Previous workspace doesn't exist" error)
+        let active_ws = Workspace::get_active_async().await?;
+        if active_ws.id != trigger_workspace_id {
+            Dispatch::call_async(DispatchType::Workspace(WorkspaceIdentifierWithSpecial::Id(
+                trigger_workspace_id,
+            )))
+            .await?;
+        }
 
         // Focus window under cursor (if any)
-        self.focus_window_under_cursor(trigger_workspace_id).await?;
+        self.focus_window_under_cursor(virtual_ws).await?;
 
         Ok(())
     }
 
-    /// Find and focus the window under the cursor on the given workspace.
-    async fn focus_window_under_cursor(&self, workspace_id: WorkspaceId) -> Result<()> {
+    /// Find and focus the window under the cursor on the current virtual workspace.
+    async fn focus_window_under_cursor(&self, virtual_ws: u8) -> Result<()> {
         let cursor = CursorPosition::get_async().await?;
         let clients: Vec<_> = Clients::get_async().await?.into_iter().collect();
+        let monitors: Vec<_> = Monitors::get_async().await?.into_iter().collect();
 
-        // Find window on this workspace that contains the cursor
+        // Build set of valid workspace IDs for this virtual workspace
+        let valid_workspaces: Vec<WorkspaceId> = monitors
+            .iter()
+            .map(|m| Self::workspace_id(virtual_ws, m.id))
+            .collect();
+
+        // Find window on any workspace of this virtual workspace that contains the cursor
         let window_under_cursor = clients.iter().find(|c| {
-            if c.workspace.id != workspace_id {
+            if !valid_workspaces.contains(&c.workspace.id) {
                 return false;
             }
             let (wx, wy) = c.at;
@@ -327,7 +379,7 @@ impl WorkspaceManager {
         self.switch_virtual(new_virtual).await
     }
 
-    pub async fn collapse(&self) -> Result<()> {
+    pub async fn collapse(&self, mode: CollapseMode) -> Result<()> {
         let _guard = self.ipc_lock.lock().await;
 
         let active_ws = Workspace::get_active_async().await?;
@@ -339,9 +391,12 @@ impl WorkspaceManager {
 
         let virtual_ws = Self::virtual_from_workspace(current_ws_id);
         let clients = Clients::get_async().await?;
+        let monitors: Vec<_> = Monitors::get_async().await?.into_iter().collect();
+        let num_monitors = monitors.len();
 
         debug!(
-            "Collapsing virtual workspace {virtual_ws} to workspace {current_ws_id}"
+            "Collapsing {:?} to workspace {current_ws_id} (virtual {virtual_ws})",
+            mode
         );
 
         for client in clients.iter() {
@@ -351,9 +406,19 @@ impl WorkspaceManager {
                 continue;
             }
 
-            let client_virtual = Self::virtual_from_workspace(client_ws_id);
+            let should_move = match mode {
+                CollapseMode::All => {
+                    // Move all windows from same virtual workspace
+                    let client_virtual = Self::virtual_from_workspace(client_ws_id);
+                    client_virtual == virtual_ws && client_ws_id != current_ws_id
+                }
+                CollapseMode::Invisible => {
+                    // Only move windows from orphan/invalid workspaces
+                    !Self::is_valid_workspace(client_ws_id, num_monitors)
+                }
+            };
 
-            if client_virtual == virtual_ws && client_ws_id != current_ws_id {
+            if should_move {
                 debug!(
                     "Moving client {} from workspace {client_ws_id} to {current_ws_id}",
                     client.address

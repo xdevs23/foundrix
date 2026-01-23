@@ -11,7 +11,7 @@ use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{reload, EnvFilter};
 
 use crate::error::Result;
-use crate::ipc::{Command, Direction};
+use crate::ipc::{parse_bool_arg, CollapseMode, Command, Direction};
 
 #[derive(Parser)]
 #[command(name = "hypr-workspaced")]
@@ -44,8 +44,11 @@ enum Commands {
     Next,
     /// Switch to previous virtual workspace
     Prev,
-    /// Collapse windows from same virtual workspace to current monitor
-    Collapse,
+    /// Collapse windows to current monitor
+    Collapse {
+        /// Mode: 'all' (same virtual workspace) or 'invisible' (orphan workspaces only)
+        mode: String,
+    },
     /// Reassign workspaces to monitors (useful after hotplug)
     Assign,
     /// Pin a window pattern to follow virtual workspace switches
@@ -62,19 +65,11 @@ enum Commands {
     Pins,
     /// Toggle debug logging
     Debug {
-        /// Enable or disable debug logging
-        #[arg(value_parser = parse_bool_arg)]
-        enabled: bool,
+        /// Enable or disable debug logging (on/off, true/false, 1/0)
+        enabled: String,
     },
 }
 
-fn parse_bool_arg(s: &str) -> std::result::Result<bool, String> {
-    match s.to_lowercase().as_str() {
-        "on" | "true" | "1" => Ok(true),
-        "off" | "false" | "0" => Ok(false),
-        _ => Err(format!("expected on/off, true/false, or 1/0, got '{s}'")),
-    }
-}
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -107,8 +102,16 @@ async fn main() -> Result<()> {
         Commands::Prev => {
             client::send_command(Command::Navigate(Direction::Prev)).await
         }
-        Commands::Collapse => {
-            client::send_command(Command::Collapse).await
+        Commands::Collapse { mode } => {
+            let mode = match mode.as_str() {
+                "all" => CollapseMode::All,
+                "invisible" => CollapseMode::Invisible,
+                _ => {
+                    eprintln!("Invalid collapse mode: {mode}. Use 'all' or 'invisible'.");
+                    std::process::exit(1);
+                }
+            };
+            client::send_command(Command::Collapse(mode)).await
         }
         Commands::Assign => {
             client::send_command(Command::Assign).await
@@ -122,6 +125,15 @@ async fn main() -> Result<()> {
             client::send_command(Command::Unpin(pattern)).await
         }
         Commands::Pins => client::send_command_with_output(Command::Pins).await,
-        Commands::Debug { enabled } => client::send_command(Command::Debug(enabled)).await,
+        Commands::Debug { enabled } => {
+            let enabled = match parse_bool_arg(&enabled) {
+                Ok(b) => b,
+                Err(e) => {
+                    eprintln!("{e}");
+                    std::process::exit(1);
+                }
+            };
+            client::send_command(Command::Debug(enabled)).await
+        }
     }
 }
