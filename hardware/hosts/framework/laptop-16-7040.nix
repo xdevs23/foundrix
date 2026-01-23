@@ -117,10 +117,14 @@
               }
               {
                 temp = 90;
-                speed = 80;
+                speed = 75;
               }
               {
-                temp = 95;
+                temp = 92;
+                speed = 78;
+              }
+              {
+                temp = 96;
                 speed = 90;
               }
               {
