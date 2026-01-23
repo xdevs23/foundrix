@@ -48,6 +48,7 @@
     build.instances = lib.mapAttrs (name: cfg: {
       package = pkgs.writeShellScriptBin "quickshell-wrapped" ''
         export QS_NO_RELOAD_POPUP=1
+        export QS_NO_WATCH=1
         ${lib.getExe cfg.package} \
           -c "${cfg.configPath}" ${cfg.additionalArgs}
       '';
