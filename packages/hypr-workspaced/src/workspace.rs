@@ -258,6 +258,7 @@ impl WorkspaceManager {
         debug!("Syncing monitors to virtual workspace {virtual_ws} (triggered by ws {trigger_workspace_id})");
 
         // Switch all OTHER monitors to their target workspace
+        // Continue on errors to ensure all monitors get synced even if one fails
         for monitor in &monitors {
             let target_wsid = Self::workspace_id(virtual_ws, monitor.id);
             // Skip if this is the trigger workspace or already on target
@@ -266,27 +267,37 @@ impl WorkspaceManager {
             }
 
             debug!("Switching {} to workspace {target_wsid}", monitor.name);
-            Dispatch::call_async(DispatchType::Workspace(WorkspaceIdentifierWithSpecial::Id(
-                target_wsid,
-            )))
-            .await?;
+            if let Err(e) = Dispatch::call_async(DispatchType::Workspace(
+                WorkspaceIdentifierWithSpecial::Id(target_wsid),
+            ))
+            .await
+            {
+                warn!("Failed to switch {} to workspace {target_wsid}: {e}", monitor.name);
+            }
         }
 
         // Move pinned windows
-        self.move_pinned_windows(virtual_ws).await?;
+        if let Err(e) = self.move_pinned_windows(virtual_ws).await {
+            warn!("Failed to move pinned windows: {e}");
+        }
 
         // Refocus the trigger workspace (restores focus to original monitor)
         // Only if we're not already on it (avoids "Previous workspace doesn't exist" error)
         let active_ws = Workspace::get_active_async().await?;
         if active_ws.id != trigger_workspace_id {
-            Dispatch::call_async(DispatchType::Workspace(WorkspaceIdentifierWithSpecial::Id(
-                trigger_workspace_id,
-            )))
-            .await?;
+            if let Err(e) = Dispatch::call_async(DispatchType::Workspace(
+                WorkspaceIdentifierWithSpecial::Id(trigger_workspace_id),
+            ))
+            .await
+            {
+                warn!("Failed to refocus trigger workspace {trigger_workspace_id}: {e}");
+            }
         }
 
         // Focus window under cursor (if any)
-        self.focus_window_under_cursor(virtual_ws).await?;
+        if let Err(e) = self.focus_window_under_cursor(virtual_ws).await {
+            warn!("Failed to focus window under cursor: {e}");
+        }
 
         Ok(())
     }
