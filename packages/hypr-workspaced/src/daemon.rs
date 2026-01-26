@@ -207,6 +207,17 @@ async fn run_hyprland_listener(
         })
     });
 
+    let tx_config = tx.clone();
+    listener.add_config_reloaded_handler(move || {
+        let tx = tx_config.clone();
+        Box::pin(async move {
+            info!("Hyprland config reloaded, reassigning workspaces");
+            if let Err(e) = tx.send(Event::MonitorChanged).await {
+                warn!("Failed to send config reload event: {e}");
+            }
+        })
+    });
+
     listener.add_workspace_changed_handler(move |data| {
         let sync_tx = sync_tx.clone();
         Box::pin(async move {
