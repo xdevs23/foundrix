@@ -53,6 +53,11 @@
       default = null;
       description = "Topbar package to use (you probably want to make a custom package)";
     };
+    lockscreen = lib.mkOption {
+      type = lib.types.package;
+      default = pkgs.hyprlock;
+      description = "Lockscreen package (e.g. hyprlock or quickshell-lockscreen)";
+    };
     execOnce = lib.mkOption {
       type = with lib.types; listOf str;
       default = [ ];
@@ -358,7 +363,7 @@
                   "$mainMod, right, movefocus, r"
                   "$mainMod, up, movefocus, u"
                   "$mainMod, down, movefocus, d"
-                  "$mainMod, L, exec, ${loginctl} lock-session; sleep 0.2; pidof hyprlock || hyprlock"
+                  "$mainMod, L, exec, ${loginctl} lock-session"
                   "$mainMod, C, exec, ${lib.getExe hyprWorkspaced} collapse invisible"
                   "$mainMod SHIFT, C, exec, ${lib.getExe hyprWorkspaced} collapse all"
                 ]
@@ -430,7 +435,7 @@
                 general = {
                   after_sleep_cmd = "hyprctl dispatch dpms on";
                   ignore_dbus_inhibit = false;
-                  lock_cmd = "pidof hyprlock || hyprlock";
+                  lock_cmd = lib.getExe cfg.lockscreen;
                 };
 
                 listener = [
