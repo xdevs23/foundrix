@@ -58,6 +58,11 @@ in
               default = true;
               description = "Whether to create a systemd user service for this instance";
             };
+            environment = lib.mkOption {
+              type = lib.types.attrsOf lib.types.str;
+              default = { };
+              description = "Environment variables to set when running quickshell";
+            };
           };
         }
       );
@@ -93,6 +98,7 @@ in
           package = pkgs.writeShellScriptBin "quickshell-${name}" ''
             export QS_NO_RELOAD_POPUP=1
             export QS_NO_WATCH=1
+            ${lib.concatStringsSep "\n" (lib.mapAttrsToList (k: v: "export ${k}=${lib.escapeShellArg v}") instanceCfg.environment)}
             ${lib.getExe instanceCfg.package} \
               -c "${configDir}" ${instanceCfg.additionalArgs}
           '';
