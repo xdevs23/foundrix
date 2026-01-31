@@ -111,13 +111,6 @@ rec {
         # And some architectures have broken packages
         pkgs.stdenv.buildPlatform.isLinux
         && (pkgs.stdenv.buildPlatform.isx86_64 || pkgs.stdenv.buildPlatform.isAarch64)
-        # Device is not allowed to be specified in the commonized configuration.
-        # In such a case, this configuration is likely device-specific and thus should not have
-        # images generated. For generating images, the device framework should be used.
-        # Note that using the device framework and having device-specific configs is not mutually exclusive.
-        # You can still have your commonized configs and then manually combine them into a separate config,
-        # for example in the case of nixos-rebuild.
-        && !(nixosConfiguration.deviceSpecific or false)
         && !(nixosConfiguration.disableTargetOutputs or false)
       )
       (
@@ -125,15 +118,20 @@ rec {
           platformFile:
           let
             arch = lib.removeSuffix ".nix" platformFile;
+            isDeviceSpecific = nixosConfiguration.deviceSpecific or false;
             targetPlatformConfiguration = {
               imports = [ (platformDir + "/${platformFile}") ];
               nixpkgs.buildPlatform = pkgs.stdenv.buildPlatform.system;
             };
-            finalConfiguration = mkFinalConfiguration (args // { inherit targetPlatformConfiguration; });
+            finalConfiguration =
+              if isDeviceSpecific then nixosConfiguration
+              else mkFinalConfiguration (args // { inherit targetPlatformConfiguration; });
             buildCfg =
               if
+                # Device-specific configs only build on matching platforms
+                !(isDeviceSpecific && nixosConfiguration.pkgs.stdenv.hostPlatform.system != pkgs.stdenv.buildPlatform.system)
                 # Again, just avoiding broken packages
-                (
+                && (
                   finalConfiguration.pkgs.stdenv.hostPlatform.isx86_64
                   || finalConfiguration.pkgs.stdenv.hostPlatform.isAarch64
                 )
@@ -241,6 +239,7 @@ rec {
     }:
     let
       targetName = name;
+      isDeviceSpecific = nixosConfiguration.deviceSpecific or false;
       maybeOutputs = mkTargetOutputList {
         inherit deviceConfiguration nixosConfiguration;
       };
@@ -248,7 +247,9 @@ rec {
     let
       # Get device name from first output (all outputs have same device name)
       deviceName =
-        if maybeOutputs == [ ] then
+        if isDeviceSpecific then
+          nixosConfiguration.config.device.name
+        else if maybeOutputs == [ ] then
           null
         else
           (builtins.head maybeOutputs).finalConfiguration.config.device.name;
@@ -270,8 +271,13 @@ rec {
           }:
           let
             filtered = lib.filterAttrs (_: value: value != null) outputs;
+            # Device-specific configs use simplified naming (no device name suffix)
             renamed = lib.mapAttrs' (artifact: output: {
-              name = "${targetName}/${artifact}:${deviceName}:${arch}";
+              name =
+                if isDeviceSpecific then
+                  "${targetName}/${artifact}:${arch}"
+                else
+                  "${targetName}/${artifact}:${deviceName}:${arch}";
               value = output;
             }) filtered;
           in
