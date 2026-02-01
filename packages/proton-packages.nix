@@ -5,11 +5,11 @@
       prev: final: {
         # chore: update from https://github.com/CachyOS/proton-cachyos/releases
         src = pkgsUnstable.fetchzip {
-          url = "https://github.com/CachyOS/proton-cachyos/releases/download/cachyos-10.0-20251222-slr/proton-cachyos-10.0-20251222-slr-x86_64_v3.tar.xz";
-          hash = "sha512-O03PrU0i3A6ghXtXaRGq3DDeNbWXxMhF8BXB3hgt/2OaCsELLcA6mLywgy2vttywwhBCbKO8P4HBdkWycwTUsQ==";
+          url = "https://github.com/CachyOS/proton-cachyos/releases/download/cachyos-10.0-20260127-slr/proton-cachyos-10.0-20260127-slr-x86_64_v3.tar.xz";
+          hash = "sha512-AOE5RctR/Y93WutlNxoWADc/z3bEQFSTZG8isV21E58mTKZ+L9eL2ErLtVkUFT/7SMJVyA3Rqy8AHn4GJsp7fw==";
         };
         pname = "proton-cachyos";
-        version = "proton-cachyos-10.0-20251222-slr-x86_64_v3";
+        version = "proton-cachyos-10.0-20260127-slr-x86_64_v3";
       }
     )).override
       { steamDisplayName = "Proton-CachyOS x86_64_v3"; };
@@ -18,11 +18,11 @@
       prev: final: {
         # chore: update from https://github.com/CachyOS/proton-cachyos/releases
         src = pkgsUnstable.fetchzip {
-          url = "https://github.com/CachyOS/proton-cachyos/releases/download/cachyos-10.0-20251222-slr/proton-cachyos-10.0-20251222-slr-x86_64_v4.tar.xz";
-          hash = "sha512-bK6G7kbPJCQIYIPbKYSqDTMlM1rwGk9wOm6ZPR3TZ1lXv7sQOgSOtLRaSCCGo8GUFu3azT15j+G98WY6Zr1F8A==";
+          url = "https://github.com/CachyOS/proton-cachyos/releases/download/cachyos-10.0-20260127-slr/proton-cachyos-10.0-20260127-slr-x86_64_v4.tar.xz";
+          hash = "sha512-EcPs/sp6Y5p9VUi933iwwPqLO2NjXkKlHwZtCVcN2QXQMeNT85b/YafJly9Oe8M1XsSo0FiMdiDynI2Uo/RWGw==";
         };
         pname = "proton-cachyos";
-        version = "proton-cachyos-10.0-20251222-slr-x86_64_v4";
+        version = "proton-cachyos-10.0-20260127-slr-x86_64_v4";
       }
     )).override
       { steamDisplayName = "Proton-CachyOS x86_64_v4"; };
