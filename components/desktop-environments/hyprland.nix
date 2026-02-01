@@ -319,7 +319,7 @@
                 };
                 misc = {
                   force_default_wallpaper = false;
-                  new_window_takes_over_fullscreen = 1;
+                  on_focus_under_fullscreen = 1;
                   middle_click_paste = false;
                   mouse_move_enables_dpms = true;
                   key_press_enables_dpms = true;
@@ -330,20 +330,15 @@
                   vrr = true;
                 };
                 layerrule = [
-                  "ignorealpha, topbar"
-                  "blur, topbar"
-                  "xray on, topbar"
-                  "ignorealpha, quickshell"
-                  "blur, quickshell"
-                  "xray on, quickshell"
+                  "ignore_alpha 0, blur on, xray on, match:namespace topbar"
+                  "ignore_alpha 0, blur on, xray on, match:namespace quickshell"
                 ];
-                windowrulev2 = [
-                  "float, title:^(Picture-in-Picture)$"
-                  "size 640 360, title:^(Picture-in-Picture)$"
-                  "float, class:^(org.kde.polkit-kde-authentication-agent.*)$"
-                  "noblur, xwayland:1"
-                  "suppressevent maximize, class:.*"
-                  "stayfocused, class:^(wofi)$"
+                windowrule = [
+                  "float on, size 640 360, match:title ^(Picture-in-Picture)$"
+                  "float on, match:class ^(org.kde.polkit-kde-authentication-agent.*)$"
+                  "no_blur on, match:xwayland 1"
+                  "suppress_event maximize, match:class .*"
+                  "stay_focused on, match:class ^(wofi)$"
                 ];
                 "$mainMod" = cfg.mainMod;
                 "$screenShotDir" = "~/Pictures/Screenshots";
