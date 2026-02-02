@@ -2,6 +2,7 @@
   inputs,
   pkgs,
   lib,
+  config,
   namespaced,
   namespacedCfg,
   mkConfigurableUsersOption,
@@ -48,7 +49,7 @@ in
             pamConfig = lib.mkOption {
               type = lib.types.lines;
               default = ''
-                auth sufficient pam_fprintd.so
+                ${lib.optionalString config.services.fprintd.enable "auth sufficient pam_fprintd.so"}
                 auth required pam_unix.so
               '';
               description = "PAM configuration (only used when lockscreen = true)";
@@ -98,6 +99,9 @@ in
           package = pkgs.writeShellScriptBin "quickshell-${name}" ''
             export QS_NO_RELOAD_POPUP=1
             export QS_NO_WATCH=1
+            ${lib.optionalString (instanceCfg.lockscreen && config.services.fprintd.enable) ''
+              export LOCKSCREEN_FINGERPRINT_ENABLED=1
+            ''}
             ${lib.concatStringsSep "\n" (lib.mapAttrsToList (k: v: "export ${k}=${lib.escapeShellArg v}") instanceCfg.environment)}
             ${lib.getExe instanceCfg.package} \
               -c "${configDir}" ${instanceCfg.additionalArgs}
