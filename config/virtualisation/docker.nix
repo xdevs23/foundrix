@@ -33,5 +33,6 @@
         fixed-cidr-v6 = "fd00::/80";
       };
       virtualisation.containers.enable = true;
+      environment.sessionVariables.COMPOSE_BAKE = "false";
     };
 }
