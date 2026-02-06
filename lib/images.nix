@@ -192,9 +192,9 @@ rec {
               "update@compressed" = buildCfg.compressedOtaUpdate or null;
               toplevel = buildCfg.toplevel or null;
               qemu-launch =
-                if (qemuCfg.config.system.build.toplevelClosure or null) != null then
+                if (qemuCfg.config.system.build.closureInfo or null) != null then
                   customLib.qemu-launch-closure {
-                    closure = qemuCfg.config.system.build.toplevelClosure;
+                    closureInfo = qemuCfg.config.system.build.closureInfo;
                     uki = "${qemuCfg.config.system.build.uki}/${qemuCfg.config.system.boot.loader.ukiFile}";
                   }
                 else if (buildCfg.finalImage or buildCfg.image or null) != null then

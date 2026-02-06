@@ -23,7 +23,9 @@
       options = [
         "trans=virtio"
         "version=9p2000.L"
+        "msize=104857600"
         "cache=loose"
+        "ro"
       ];
       neededForBoot = true;
     };

@@ -1,6 +1,6 @@
 { pkgs, lib, ... }:
 {
-  closure,
+  closureInfo,
   uki,
   additionalDisks ? [ ],
   serialShellPath ? null,
@@ -8,12 +8,53 @@
   hostForwards ? [ ],
   ...
 }:
+let
+  espDir = pkgs.runCommandLocal "esp-dir" { } ''
+    mkdir -p $out/EFI/BOOT
+    cp --reflink=auto ${uki} $out/EFI/BOOT/BOOT${pkgs.stdenv.hostPlatform.efiArch}.efi
+  '';
+in
 pkgs.writeShellScriptBin "launch-qemu-closure-${pkgs.stdenv.hostPlatform.qemuArch}" ''
+  set -euo pipefail
+
+  storePath="''${XDG_DATA_HOME:-$HOME/.local/share}/foundrix/vms/nix-store"
+
   qemu_command="qemu-system-${pkgs.stdenv.hostPlatform.qemuArch}"
-  if ! command -V $qemu_command 2>/dev/null >/dev/null; then
+  if ! command -v "$qemu_command" &>/dev/null; then
     qemu_command="${lib.getExe' pkgs.qemu_kvm "qemu-system-${pkgs.stdenv.hostPlatform.qemuArch}"}"
   fi
-  $qemu_command \
+
+  mkdir -p "$storePath"
+
+  # The closureInfo nix path is content-addressed — same closure = same path
+  if [ -f "$storePath/.closure-ref" ] && [ "$(cat "$storePath/.closure-ref")" = "${closureInfo}" ]; then
+    echo "Nix store up to date ($(wc -l < ${closureInfo}/store-paths) paths)"
+  else
+    requiredPaths=$(sed 's|/nix/store/||' ${closureInfo}/store-paths | sort)
+    currentPaths=$(find "$storePath" -maxdepth 1 -mindepth 1 -not -name '.*' -printf '%f\n' 2>/dev/null | sort)
+
+    toDelete=$(comm -23 <(echo "$currentPaths") <(echo "$requiredPaths"))
+    toAdd=$(comm -13 <(echo "$currentPaths") <(echo "$requiredPaths"))
+
+    deleteCount=$(echo "$toDelete" | grep -c . || true)
+    addCount=$(echo "$toAdd" | grep -c . || true)
+    echo "Syncing nix store: +$addCount -$deleteCount ($(wc -l < ${closureInfo}/store-paths) total)"
+
+    for path in $toDelete; do
+      [ -n "$path" ] || continue
+      chmod -R u+w "''${storePath:?}/$path" 2>/dev/null || true
+      rm -rf "''${storePath:?}/$path"
+    done
+
+    for path in $toAdd; do
+      [ -n "$path" ] || continue
+      cp --reflink=auto -a "/nix/store/$path" "$storePath/"
+    done
+
+    echo "${closureInfo}" > "$storePath/.closure-ref"
+  fi
+
+  exec "$qemu_command" \
     ${lib.optionalString pkgs.stdenv.hostPlatform.isx86_64 ''
       -M q35,nvdimm=on \
       -M accel=kvm:tcg \
@@ -35,13 +76,8 @@ pkgs.writeShellScriptBin "launch-qemu-closure-${pkgs.stdenv.hostPlatform.qemuArc
     -smp sockets=1,dies=1,cores=4,threads=1 \
     -device qemu-xhci,id=xhci \
     -device usb-tablet,bus=xhci.0 \
-    -drive file=fat:ro:${
-      pkgs.runCommandLocal "" { } ''
-        mkdir -p $out/EFI/BOOT
-        cp --reflink=auto ${uki} $out/EFI/BOOT/BOOT${pkgs.stdenv.hostPlatform.efiArch}.efi
-      ''
-    },format=raw \
-    -virtfs local,path=${closure},mount_tag=store,security_model=none \
+    -drive file=fat:ro:${espDir},format=raw \
+    -virtfs local,path="$storePath",mount_tag=store,security_model=none,readonly=on \
     ${lib.concatMapStringsSep " " (disk: "-drive ${lib.escapeShellArg disk}") additionalDisks} \
     -chardev stdio,id=stdio0 \
     -serial chardev:stdio0 \
