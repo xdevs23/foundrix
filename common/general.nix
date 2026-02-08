@@ -20,6 +20,22 @@
         });
         default = [ ];
       };
+      qemu.dataDevice = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+      };
+      qemu.disks = lib.mkOption {
+        type = lib.types.listOf (lib.types.submodule {
+          options = {
+            name = lib.mkOption { type = lib.types.strMatching "[a-zA-Z0-9_-]+"; };
+            size = lib.mkOption {
+              type = lib.types.str;
+              default = "40G";
+            };
+          };
+        });
+        default = [ ];
+      };
     };
   };
 }

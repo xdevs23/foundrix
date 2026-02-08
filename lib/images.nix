@@ -186,9 +186,11 @@ rec {
             hasImage = (buildCfg.finalImage or buildCfg.image or null) != null;
             hasAbUpdates =
               (finalConfiguration.config.foundrix.traits.image.updateMethod or null) == "systemd-sysupdate";
+            qemuGeneralCfg = qemuCfg.config.foundrix.general.qemu or { };
             qemuPortForwards = map
               (fwd: "tcp::${toString fwd.host}-:${toString fwd.guest}")
-              (qemuCfg.config.foundrix.general.qemu.portForwards or [ ]);
+              (qemuGeneralCfg.portForwards or [ ]);
+            qemuDisks = qemuGeneralCfg.disks or [ ];
             outputs = {
               image = buildCfg.finalImage or buildCfg.image or null;
               update = buildCfg.otaUpdate or null;
@@ -200,6 +202,7 @@ rec {
                     closureInfo = qemuCfg.config.system.build.closureInfo;
                     uki = "${qemuCfg.config.system.build.uki}/${qemuCfg.config.system.boot.loader.ukiFile}";
                     hostForwards = qemuPortForwards;
+                    persistentDisks = qemuDisks;
                   }
                 else if (buildCfg.finalImage or buildCfg.image or null) != null then
                   let

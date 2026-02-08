@@ -3,6 +3,7 @@
   closureInfo,
   uki,
   additionalDisks ? [ ],
+  persistentDisks ? [ ],
   serialShellPath ? null,
   journalShellPath ? null,
   hostForwards ? [ ],
@@ -17,16 +18,27 @@ in
 pkgs.writeShellScriptBin "launch-qemu-closure-${pkgs.stdenv.hostPlatform.qemuArch}" ''
   set -euo pipefail
 
-  storePath="''${XDG_DATA_HOME:-$HOME/.local/share}/foundrix/vms/nix-store"
+  DATA_DIR="''${XDG_DATA_HOME:-$HOME/.local/share}/foundrix/vms"
+  storePath="$DATA_DIR/nix-store"
+  espPath="$DATA_DIR/esp"
 
-  qemu_command="qemu-system-${pkgs.stdenv.hostPlatform.qemuArch}"
-  if ! command -v "$qemu_command" &>/dev/null; then
+  if command -v qemu-system-${pkgs.stdenv.hostPlatform.qemuArch} &>/dev/null; then
+    qemu_command=qemu-system-${pkgs.stdenv.hostPlatform.qemuArch}
+    qemu_img=qemu-img
+  else
     qemu_command="${lib.getExe' pkgs.qemu_kvm "qemu-system-${pkgs.stdenv.hostPlatform.qemuArch}"}"
+    qemu_img="${lib.getExe' pkgs.qemu_kvm "qemu-img"}"
   fi
 
   mkdir -p "$storePath"
 
-  # The closureInfo nix path is content-addressed — same closure = same path
+  rm -rf "''${espPath:?}"
+  cp -r ${espDir} "$espPath"
+  chmod -R +w "$espPath"
+
+  ${lib.concatMapStringsSep "\n  " (disk: ''
+    [ -f "$DATA_DIR/${disk.name}.qcow2" ] || "$qemu_img" create -f qcow2 "$DATA_DIR/${disk.name}.qcow2" ${disk.size}'') persistentDisks}
+
   if [ -f "$storePath/.closure-ref" ] && [ "$(cat "$storePath/.closure-ref")" = "${closureInfo}" ]; then
     echo "Nix store up to date ($(wc -l < ${closureInfo}/store-paths) paths)"
   else
@@ -40,10 +52,13 @@ pkgs.writeShellScriptBin "launch-qemu-closure-${pkgs.stdenv.hostPlatform.qemuArc
     addCount=$(echo "$toAdd" | grep -c . || true)
     echo "Syncing nix store: +$addCount -$deleteCount ($(wc -l < ${closureInfo}/store-paths) total)"
 
+    resolvedDataDir=$(realpath "''${DATA_DIR:?}")
     for path in $toDelete; do
       [ -n "$path" ] || continue
-      chmod -R u+w "''${storePath:?}/$path" 2>/dev/null || true
-      rm -rf "''${storePath:?}/$path"
+      target=$(realpath -m "''${storePath:?}/$path")
+      [[ "$target" == "$resolvedDataDir"/* ]] || continue
+      chmod -R u+w "$target" 2>/dev/null || true
+      rm -rf "$target"
     done
 
     for path in $toAdd; do
@@ -76,8 +91,9 @@ pkgs.writeShellScriptBin "launch-qemu-closure-${pkgs.stdenv.hostPlatform.qemuArc
     -smp sockets=1,dies=1,cores=4,threads=1 \
     -device qemu-xhci,id=xhci \
     -device usb-tablet,bus=xhci.0 \
-    -drive file=fat:ro:${espDir},format=raw \
+    -drive file=fat:rw:"$espPath",format=raw \
     -virtfs local,path="$storePath",mount_tag=store,security_model=none,readonly=on \
+    ${lib.concatMapStringsSep " \\\n    " (disk: ''-drive format=qcow2,file="$DATA_DIR/${disk.name}.qcow2"'') persistentDisks} \
     ${lib.concatMapStringsSep " " (disk: "-drive ${lib.escapeShellArg disk}") additionalDisks} \
     -chardev stdio,id=stdio0 \
     -serial chardev:stdio0 \
@@ -110,6 +126,5 @@ pkgs.writeShellScriptBin "launch-qemu-closure-${pkgs.stdenv.hostPlatform.qemuArc
         ++ (lib.map (fwd: "hostfwd=${fwd}") hostForwards)
       )
     } \
-    -boot c \
-    -snapshot
+    -boot c
 ''
