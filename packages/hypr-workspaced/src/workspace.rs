@@ -180,18 +180,25 @@ impl WorkspaceManager {
 
         self.cleanup_orphan_workspaces().await?;
 
-        // Switch all monitors to their correct default workspace (vspace 1)
-        // This is needed because Hyprland may have created incorrect default workspaces
-        // before hypr-workspaced started
+        // Determine the target virtual workspace: use the focused monitor's current
+        // virtual workspace, falling back to 1 if it's on an invalid workspace
+        let focused = Monitor::get_active_async().await?;
+        let focused_ws = focused.active_workspace.id;
+        let target_virtual = if focused_ws <= 0 || focused_ws % 10 == 0 {
+            1u8
+        } else {
+            Self::virtual_from_workspace(focused_ws)
+        };
+
+        // Sync all monitors to the target virtual workspace
         for monitor in &monitors {
-            let default_wsid = Self::workspace_id(1, monitor.id);
-            // Skip if already on the target workspace (avoids "Previous workspace doesn't exist" error)
-            if monitor.active_workspace.id == default_wsid {
+            let target_wsid = Self::workspace_id(target_virtual, monitor.id);
+            if monitor.active_workspace.id == target_wsid {
                 continue;
             }
-            debug!("Switching {} to default workspace {}", monitor.name, default_wsid);
+            debug!("Syncing {} to workspace {target_wsid} (virtual {target_virtual})", monitor.name);
             Dispatch::call_async(DispatchType::Workspace(WorkspaceIdentifierWithSpecial::Id(
-                default_wsid,
+                target_wsid,
             )))
             .await?;
         }
