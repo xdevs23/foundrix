@@ -83,26 +83,34 @@ in
   };
   config = lib.mkMerge [
     (namespaced __curPos {
-      build.instances = lib.mapAttrs (name: instanceCfg:
+      build.instances = lib.mapAttrs (
+        name: instanceCfg:
         let
           configDir =
-            if instanceCfg.modules == { } then instanceCfg.configPath
-            else pkgs.runCommand "quickshell-${name}-config" { } ''
-              mkdir -p $out
-              cp -r ${instanceCfg.configPath}/* $out/
-              ${lib.concatStringsSep "\n" (lib.mapAttrsToList (modName: modPath: ''
-                rm -rf $out/${modName}
-                ln -s ${modPath} $out/${modName}
-              '') instanceCfg.modules)}
-            '';
-        in {
+            if instanceCfg.modules == { } then
+              instanceCfg.configPath
+            else
+              pkgs.runCommand "quickshell-${name}-config" { } ''
+                mkdir -p $out
+                cp -r ${instanceCfg.configPath}/* $out/
+                ${lib.concatStringsSep "\n" (
+                  lib.mapAttrsToList (modName: modPath: ''
+                    rm -rf $out/${modName}
+                    ln -s ${modPath} $out/${modName}
+                  '') instanceCfg.modules
+                )}
+              '';
+        in
+        {
           package = pkgs.writeShellScriptBin "quickshell-${name}" ''
             export QS_NO_RELOAD_POPUP=1
             export QS_NO_WATCH=1
             ${lib.optionalString (instanceCfg.lockscreen && config.services.fprintd.enable) ''
               export LOCKSCREEN_FINGERPRINT_ENABLED=1
             ''}
-            ${lib.concatStringsSep "\n" (lib.mapAttrsToList (k: v: "export ${k}=${lib.escapeShellArg v}") instanceCfg.environment)}
+            ${lib.concatStringsSep "\n" (
+              lib.mapAttrsToList (k: v: "export ${k}=${lib.escapeShellArg v}") instanceCfg.environment
+            )}
             ${lib.getExe instanceCfg.package} \
               -c "${configDir}" ${instanceCfg.additionalArgs}
           '';
@@ -111,7 +119,8 @@ in
     })
     {
       security.pam.services = lib.mkMerge (
-        lib.mapAttrsToList (name: instanceCfg:
+        lib.mapAttrsToList (
+          name: instanceCfg:
           lib.mkIf instanceCfg.lockscreen { "quickshell-${name}".text = instanceCfg.pamConfig; }
         ) cfg.instances
       );
@@ -119,7 +128,8 @@ in
     {
       home-manager = applyHomeManagerUsers cfg.users {
         systemd.user.services = lib.mkMerge (
-          lib.mapAttrsToList (name: instanceCfg:
+          lib.mapAttrsToList (
+            name: instanceCfg:
             lib.mkIf instanceCfg.service.enable {
               "quickshell-${name}" = {
                 Unit = rec {

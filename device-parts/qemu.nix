@@ -32,8 +32,7 @@
       };
     }
     (lib.mkIf (config.foundrix.general.qemu.dataDevice != null) {
-      foundrix.config.image.device.dataDevice =
-        lib.mkForce config.foundrix.general.qemu.dataDevice;
+      foundrix.config.image.device.dataDevice = lib.mkForce config.foundrix.general.qemu.dataDevice;
     })
   ];
 }

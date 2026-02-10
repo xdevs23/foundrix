@@ -124,12 +124,17 @@ rec {
               nixpkgs.buildPlatform = pkgs.stdenv.buildPlatform.system;
             };
             finalConfiguration =
-              if isDeviceSpecific then nixosConfiguration
-              else mkFinalConfiguration (args // { inherit targetPlatformConfiguration; });
+              if isDeviceSpecific then
+                nixosConfiguration
+              else
+                mkFinalConfiguration (args // { inherit targetPlatformConfiguration; });
             buildCfg =
               if
                 # Device-specific configs only build on matching platforms
-                !(isDeviceSpecific && nixosConfiguration.pkgs.stdenv.hostPlatform.system != pkgs.stdenv.buildPlatform.system)
+                !(
+                  isDeviceSpecific
+                  && nixosConfiguration.pkgs.stdenv.hostPlatform.system != pkgs.stdenv.buildPlatform.system
+                )
                 # Again, just avoiding broken packages
                 && (
                   finalConfiguration.pkgs.stdenv.hostPlatform.isx86_64
@@ -187,9 +192,9 @@ rec {
             hasAbUpdates =
               (finalConfiguration.config.foundrix.traits.image.updateMethod or null) == "systemd-sysupdate";
             qemuGeneralCfg = qemuCfg.config.foundrix.general.qemu or { };
-            qemuPortForwards = map
-              (fwd: "tcp::${toString fwd.host}-:${toString fwd.guest}")
-              (qemuGeneralCfg.portForwards or [ ]);
+            qemuPortForwards = map (fwd: "tcp::${toString fwd.host}-:${toString fwd.guest}") (
+              qemuGeneralCfg.portForwards or [ ]
+            );
             qemuDisks = qemuGeneralCfg.disks or [ ];
             outputs = {
               image = buildCfg.finalImage or buildCfg.image or null;

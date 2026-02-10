@@ -36,8 +36,10 @@ pkgs.writeShellScriptBin "launch-qemu-closure-${pkgs.stdenv.hostPlatform.qemuArc
   cp -r ${espDir} "$espPath"
   chmod -R +w "$espPath"
 
-  ${lib.concatMapStringsSep "\n  " (disk: ''
-    [ -f "$DATA_DIR/${disk.name}.qcow2" ] || "$qemu_img" create -f qcow2 "$DATA_DIR/${disk.name}.qcow2" ${disk.size}'') persistentDisks}
+  ${lib.concatMapStringsSep "\n  " (
+    disk:
+    ''[ -f "$DATA_DIR/${disk.name}.qcow2" ] || "$qemu_img" create -f qcow2 "$DATA_DIR/${disk.name}.qcow2" ${disk.size}''
+  ) persistentDisks}
 
   if [ -f "$storePath/.closure-ref" ] && [ "$(cat "$storePath/.closure-ref")" = "${closureInfo}" ]; then
     echo "Nix store up to date ($(wc -l < ${closureInfo}/store-paths) paths)"
@@ -93,7 +95,11 @@ pkgs.writeShellScriptBin "launch-qemu-closure-${pkgs.stdenv.hostPlatform.qemuArc
     -device usb-tablet,bus=xhci.0 \
     -drive file=fat:rw:"$espPath",format=raw \
     -virtfs local,path="$storePath",mount_tag=store,security_model=none,readonly=on \
-    ${lib.concatMapStringsSep " \\\n    " (disk: ''-drive format=qcow2,file="$DATA_DIR/${disk.name}.qcow2"'') persistentDisks} \
+    ${
+      lib.concatMapStringsSep " \\\n    " (
+        disk: ''-drive format=qcow2,file="$DATA_DIR/${disk.name}.qcow2"''
+      ) persistentDisks
+    } \
     ${lib.concatMapStringsSep " " (disk: "-drive ${lib.escapeShellArg disk}") additionalDisks} \
     -chardev stdio,id=stdio0 \
     -serial chardev:stdio0 \

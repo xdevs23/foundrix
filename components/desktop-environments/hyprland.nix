@@ -108,12 +108,12 @@
       hyprWorkspaced = pkgs.callPackage ../../packages/hypr-workspaced { };
 
       # Keybindings using workspace daemon
-      dynamicWorkspaceBinds = map (n: "$mainMod, ${toString n}, exec, ${lib.getExe hyprWorkspaced} switch ${toString n}") (
-        lib.range 1 9
-      );
-      dynamicMoveBinds = map (n: "$mainMod SHIFT, ${toString n}, exec, ${lib.getExe hyprWorkspaced} move ${toString n}") (
-        lib.range 1 9
-      );
+      dynamicWorkspaceBinds = map (
+        n: "$mainMod, ${toString n}, exec, ${lib.getExe hyprWorkspaced} switch ${toString n}"
+      ) (lib.range 1 9);
+      dynamicMoveBinds = map (
+        n: "$mainMod SHIFT, ${toString n}, exec, ${lib.getExe hyprWorkspaced} move ${toString n}"
+      ) (lib.range 1 9);
     in
     lib.mkIf
       ((if foundrixIgnoreMissingInputs then (c: _: c) else lib.asserts.assertMsg) (
@@ -158,12 +158,15 @@
             };
             Service = {
               Type = "notify";
-              ExecStart = "${lib.getExe hyprWorkspaced} daemon"
-                + lib.optionalString (cfg.hyprWorkspacedOnReconnectRestart != null)
-                  " --on-hypr-ipc-reconnect-restart ${cfg.hyprWorkspacedOnReconnectRestart}";
-              ExecStartPost =
-                [ "${lib.getExe hyprWorkspaced} assign" ]
-                ++ map (pin: "${lib.getExe hyprWorkspaced} pin ${pin}") cfg.hyprWorkspacedPins;
+              ExecStart =
+                "${lib.getExe hyprWorkspaced} daemon"
+                + lib.optionalString (
+                  cfg.hyprWorkspacedOnReconnectRestart != null
+                ) " --on-hypr-ipc-reconnect-restart ${cfg.hyprWorkspacedOnReconnectRestart}";
+              ExecStartPost = [
+                "${lib.getExe hyprWorkspaced} assign"
+              ]
+              ++ map (pin: "${lib.getExe hyprWorkspaced} pin ${pin}") cfg.hyprWorkspacedPins;
               Restart = "on-failure";
               RestartSec = 1;
             };
@@ -367,8 +370,8 @@
                 ++ dynamicMoveBinds
                 ++ [
                   ''$mainMod SHIFT, V, exec, ${cliphist} list | $menu --dmenu -p "Search clipboard history…" -M multi-contains -i | ${cliphist} decode | ${wlCopy}''
-                  ''$mainMod SHIFT, E, exec, ${wlCopy} -c''
-                  ''$mainMod SHIFT, P, exec, ${wlCopy} --clear''
+                  "$mainMod SHIFT, E, exec, ${wlCopy} -c"
+                  "$mainMod SHIFT, P, exec, ${wlCopy} --clear"
                   ''$mainMod+ALT, 9, exec, ps -eo pid,cmd | $menu --dmenu -p "Search process to kill…" -M multi-contains -i | awk '{ print $1 }' | xargs kill -9''
                   ''$mainMod+ALT, 5, exec, ps -eo pid,cmd | $menu --dmenu -p "Search process to terminate…" -M multi-contains -i | awk '{ print $1 }' | xargs kill -9''
                   ''$mainMod+ALT SHIFT, 9, exec, $menu --dmenu -p "Enter process string to kill…" --exec-search --lines 1 -b | xargs pkill -9''
@@ -385,25 +388,25 @@
                   "$mainMod SHIFT, PRINT, exec, ${hyprshot} -m window -m active -o $screenShotDir"
                   "$mainMod, PRINT, exec, ${hyprshot} -m output -m active -o $screenShotDir"
                   ", PRINT, exec, ${hyprshot} -m region -o $screenShotDir"
-                  '', XF86AudioRaiseVolume, exec, ${wpctl} set-volume -l 1.0 @DEFAULT_AUDIO_SINK@ 5%+''
-                  '', XF86AudioLowerVolume, exec, ${wpctl} set-volume -l 1.0 @DEFAULT_AUDIO_SINK@ 5%-''
-                  '', XF86AudioMute, exec, ${wpctl} set-mute @DEFAULT_AUDIO_SINK@ toggle''
-                  '', XF86AudioMicMute, exec, ${wpctl} set-mute @DEFAULT_AUDIO_SOURCE@ toggle''
-                  ''$mainMod SHIFT, M, exec, ${wpctl} set-mute @DEFAULT_AUDIO_SOURCE@ toggle''
-                  '', XF86AudioPlay, exec, ${playerctl} play-pause''
-                  '', XF86AudioPause, exec, ${playerctl} play-pause''
-                  '', XF86AudioStop, exec, ${playerctl} stop''
-                  '', XF86AudioPrev, exec, ${playerctl} previous''
-                  '', XF86AudioNext, exec, ${playerctl} next''
-                  ''$mainMod, mouse_down, exec, hyprctl -q keyword cursor:zoom_factor $(hyprctl getoption cursor:zoom_factor | ${awk} '/^float.*/ {print $2 * 1.1}')''
-                  ''$mainMod, mouse_up, exec, hyprctl -q keyword cursor:zoom_factor $(hyprctl getoption cursor:zoom_factor | ${awk} '/^float.*/ {print $2 * 0.9}')''
-                  ''$mainMod SHIFT, plus, exec, hyprctl -q keyword cursor:zoom_factor $(hyprctl getoption cursor:zoom_factor | ${awk} '/^float.*/ {print $2 * 1.1}')''
+                  ", XF86AudioRaiseVolume, exec, ${wpctl} set-volume -l 1.0 @DEFAULT_AUDIO_SINK@ 5%+"
+                  ", XF86AudioLowerVolume, exec, ${wpctl} set-volume -l 1.0 @DEFAULT_AUDIO_SINK@ 5%-"
+                  ", XF86AudioMute, exec, ${wpctl} set-mute @DEFAULT_AUDIO_SINK@ toggle"
+                  ", XF86AudioMicMute, exec, ${wpctl} set-mute @DEFAULT_AUDIO_SOURCE@ toggle"
+                  "$mainMod SHIFT, M, exec, ${wpctl} set-mute @DEFAULT_AUDIO_SOURCE@ toggle"
+                  ", XF86AudioPlay, exec, ${playerctl} play-pause"
+                  ", XF86AudioPause, exec, ${playerctl} play-pause"
+                  ", XF86AudioStop, exec, ${playerctl} stop"
+                  ", XF86AudioPrev, exec, ${playerctl} previous"
+                  ", XF86AudioNext, exec, ${playerctl} next"
+                  "$mainMod, mouse_down, exec, hyprctl -q keyword cursor:zoom_factor $(hyprctl getoption cursor:zoom_factor | ${awk} '/^float.*/ {print $2 * 1.1}')"
+                  "$mainMod, mouse_up, exec, hyprctl -q keyword cursor:zoom_factor $(hyprctl getoption cursor:zoom_factor | ${awk} '/^float.*/ {print $2 * 0.9}')"
+                  "$mainMod SHIFT, plus, exec, hyprctl -q keyword cursor:zoom_factor $(hyprctl getoption cursor:zoom_factor | ${awk} '/^float.*/ {print $2 * 1.1}')"
 
-                  ''$mainMod SHIFT, mouse_up, exec, hyprctl -q keyword cursor:zoom_factor 1''
-                  ''$mainMod SHIFT, mouse_down, exec, hyprctl -q keyword cursor:zoom_factor 1''
-                  ''$mainMod SHIFT, minus, exec, hyprctl -q keyword cursor:zoom_factor 1''
-                  ''$mainMod SHIFT, KP_SUBTRACT, exec, hyprctl -q keyword cursor:zoom_factor 1''
-                  ''$mainMod SHIFT, 0, exec, hyprctl -q keyword cursor:zoom_factor 1''
+                  "$mainMod SHIFT, mouse_up, exec, hyprctl -q keyword cursor:zoom_factor 1"
+                  "$mainMod SHIFT, mouse_down, exec, hyprctl -q keyword cursor:zoom_factor 1"
+                  "$mainMod SHIFT, minus, exec, hyprctl -q keyword cursor:zoom_factor 1"
+                  "$mainMod SHIFT, KP_SUBTRACT, exec, hyprctl -q keyword cursor:zoom_factor 1"
+                  "$mainMod SHIFT, 0, exec, hyprctl -q keyword cursor:zoom_factor 1"
                 ]
                 ++ cfg.additionalBind;
                 bindm = [
@@ -412,10 +415,10 @@
                 ]
                 ++ cfg.additionalBindm;
                 binde = [
-                  ''$mainMod, equal, exec, hyprctl -q keyword cursor:zoom_factor $(hyprctl getoption cursor:zoom_factor | ${awk} '/^float.*/ {print $2 * 1.1}')''
-                  ''$mainMod, minus, exec, hyprctl -q keyword cursor:zoom_factor $(hyprctl getoption cursor:zoom_factor | ${awk} '/^float.*/ {print $2 * 0.9}')''
-                  ''$mainMod, KP_ADD, exec, hyprctl -q keyword cursor:zoom_factor $(hyprctl getoption cursor:zoom_factor | ${awk} '/^float.*/ {print $2 * 1.1}')''
-                  ''$mainMod, KP_SUBTRACT, exec, hyprctl -q keyword cursor:zoom_factor $(hyprctl getoption cursor:zoom_factor | ${awk} '/^float.*/ {print $2 * 0.9}')''
+                  "$mainMod, equal, exec, hyprctl -q keyword cursor:zoom_factor $(hyprctl getoption cursor:zoom_factor | ${awk} '/^float.*/ {print $2 * 1.1}')"
+                  "$mainMod, minus, exec, hyprctl -q keyword cursor:zoom_factor $(hyprctl getoption cursor:zoom_factor | ${awk} '/^float.*/ {print $2 * 0.9}')"
+                  "$mainMod, KP_ADD, exec, hyprctl -q keyword cursor:zoom_factor $(hyprctl getoption cursor:zoom_factor | ${awk} '/^float.*/ {print $2 * 1.1}')"
+                  "$mainMod, KP_SUBTRACT, exec, hyprctl -q keyword cursor:zoom_factor $(hyprctl getoption cursor:zoom_factor | ${awk} '/^float.*/ {print $2 * 0.9}')"
                 ]
                 ++ cfg.additionalBinde;
               };

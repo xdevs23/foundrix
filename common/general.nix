@@ -12,12 +12,14 @@
         default = options.console.keyMap.default;
       };
       qemu.portForwards = lib.mkOption {
-        type = lib.types.listOf (lib.types.submodule {
-          options = {
-            host = lib.mkOption { type = lib.types.port; };
-            guest = lib.mkOption { type = lib.types.port; };
-          };
-        });
+        type = lib.types.listOf (
+          lib.types.submodule {
+            options = {
+              host = lib.mkOption { type = lib.types.port; };
+              guest = lib.mkOption { type = lib.types.port; };
+            };
+          }
+        );
         default = [ ];
       };
       qemu.dataDevice = lib.mkOption {
@@ -25,15 +27,17 @@
         default = null;
       };
       qemu.disks = lib.mkOption {
-        type = lib.types.listOf (lib.types.submodule {
-          options = {
-            name = lib.mkOption { type = lib.types.strMatching "[a-zA-Z0-9_-]+"; };
-            size = lib.mkOption {
-              type = lib.types.str;
-              default = "40G";
+        type = lib.types.listOf (
+          lib.types.submodule {
+            options = {
+              name = lib.mkOption { type = lib.types.strMatching "[a-zA-Z0-9_-]+"; };
+              size = lib.mkOption {
+                type = lib.types.str;
+                default = "40G";
+              };
             };
-          };
-        });
+          }
+        );
         default = [ ];
       };
     };
