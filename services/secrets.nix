@@ -48,6 +48,12 @@ let
           description = "Generate binary secret instead of ASCII-friendly password";
         };
 
+        symbols = lib.mkOption {
+          type = lib.types.bool;
+          default = false;
+          description = "Include at least one special character in the generated password";
+        };
+
         prefix = lib.mkOption {
           type = lib.types.str;
           default = "";
@@ -140,11 +146,12 @@ let
       prefixFile = pkgs.writeText "secret-${name}-prefix" secret.prefix;
       suffixFile = pkgs.writeText "secret-${name}-suffix" secret.suffix;
 
+      pwgenFlags = "-snc" + lib.optionalString secret.symbols "y";
       generateCmd =
         if secret.binary then
           "${lib.getExe pkgs.openssl} rand ${toString secret.length}"
         else
-          "${lib.getExe pkgs.pwgen} -snc ${toString secret.length} 1 | tr -d '\\n'";
+          "${lib.getExe pkgs.pwgen} ${pwgenFlags} ${toString secret.length} 1 | tr -d '\\n'";
     in
     {
       name = "generate-secret-${name}";
