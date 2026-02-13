@@ -107,12 +107,17 @@ in
       })
 
       (lib.mkIf cfg.persistSshHostKeys {
-        environment.etc = {
-          "ssh/ssh_host_rsa_key".source = "/var/etc/ssh/ssh_host_rsa_key";
-          "ssh/ssh_host_rsa_key.pub".source = "/var/etc/ssh/ssh_host_rsa_key.pub";
-          "ssh/ssh_host_ed25519_key".source = "/var/etc/ssh/ssh_host_ed25519_key";
-          "ssh/ssh_host_ed25519_key.pub".source = "/var/etc/ssh/ssh_host_ed25519_key.pub";
-        };
+        services.openssh.hostKeys = lib.mkForce [
+          {
+            type = "rsa";
+            bits = 4096;
+            path = "/var/etc/ssh/ssh_host_rsa_key";
+          }
+          {
+            type = "ed25519";
+            path = "/var/etc/ssh/ssh_host_ed25519_key";
+          }
+        ];
 
         systemd.tmpfiles.settings."var-etc-ssh"."/var/etc/ssh".d = {
           mode = "0755";
