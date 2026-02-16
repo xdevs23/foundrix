@@ -1,5 +1,8 @@
-use hyprland::data::{Client, Clients, CursorPosition, Monitor, Monitors, Workspace};
-use hyprland::dispatch::{Dispatch, DispatchType, WindowIdentifier, WorkspaceIdentifierWithSpecial};
+use hyprland::data::{Client, Clients, CursorPosition, Monitor, Monitors, Workspace, Workspaces};
+use hyprland::dispatch::{
+    Dispatch, DispatchType, MonitorIdentifier, WindowIdentifier, WorkspaceIdentifier,
+    WorkspaceIdentifierWithSpecial,
+};
 use hyprland::keyword::Keyword;
 use hyprland::shared::{HyprData, HyprDataActive, WorkspaceId};
 use tokio::sync::Mutex;
@@ -179,6 +182,7 @@ impl WorkspaceManager {
         }
 
         self.cleanup_orphan_workspaces().await?;
+        self.move_workspaces_to_correct_monitors(&monitors).await?;
 
         // Determine the target virtual workspace: use the focused monitor's current
         // virtual workspace, falling back to 1 if it's on an invalid workspace
@@ -229,6 +233,45 @@ impl WorkspaceManager {
                 ))
                 .await?;
             }
+        }
+
+        Ok(())
+    }
+
+    /// Move workspaces that are on the wrong monitor to their correct one.
+    /// This handles the case where monitors were disconnected (all workspaces
+    /// collapse to the remaining monitor) and then reconnected.
+    async fn move_workspaces_to_correct_monitors(&self, monitors: &[Monitor]) -> Result<()> {
+        let workspaces: Vec<_> = Workspaces::get_async().await?.into_iter().collect();
+
+        for ws in &workspaces {
+            if ws.id <= 0 {
+                continue;
+            }
+
+            // Determine which monitor this workspace should be on
+            let expected_monitor_id = if ws.id < 10 { 0 } else { ws.id / 10 };
+
+            let expected_monitor = monitors.iter().find(|m| m.id == expected_monitor_id as i128);
+            let expected_monitor = match expected_monitor {
+                Some(m) => m,
+                None => continue, // Monitor doesn't exist, skip
+            };
+
+            // Check if it's already on the right monitor
+            if ws.monitor == expected_monitor.name {
+                continue;
+            }
+
+            info!(
+                "Moving workspace {} from {} to {}",
+                ws.id, ws.monitor, expected_monitor.name
+            );
+            Dispatch::call_async(DispatchType::MoveWorkspaceToMonitor(
+                WorkspaceIdentifier::Id(ws.id),
+                MonitorIdentifier::Name(&expected_monitor.name),
+            ))
+            .await?;
         }
 
         Ok(())
