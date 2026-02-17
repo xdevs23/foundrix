@@ -1,3 +1,6 @@
+use std::collections::HashMap;
+use std::sync::Mutex as StdMutex;
+
 use hyprland::data::{Client, Clients, CursorPosition, Monitor, Monitors, Workspace, Workspaces};
 use hyprland::dispatch::{
     Dispatch, DispatchType, MonitorIdentifier, WindowIdentifier, WorkspaceIdentifier,
@@ -16,6 +19,11 @@ pub struct WorkspaceManager {
     pinned_patterns: Vec<WindowPattern>,
     /// Lock to serialize IPC operations and prevent race conditions during workspace transitions
     ipc_lock: Mutex<()>,
+    /// Maps Hyprland monitor ID → stable slot index (0, 1, 2, ...).
+    /// Slots are assigned by sorting monitors by description (which contains the
+    /// serial number), so the same physical monitor always gets the same slot
+    /// regardless of connector name or Hyprland ID.
+    monitor_slots: StdMutex<HashMap<i128, i128>>,
 }
 
 impl WorkspaceManager {
@@ -23,7 +31,19 @@ impl WorkspaceManager {
         Self {
             pinned_patterns: Vec::new(),
             ipc_lock: Mutex::new(()),
+            monitor_slots: StdMutex::new(HashMap::new()),
         }
+    }
+
+    /// Get the stable slot for a Hyprland monitor ID.
+    /// Falls back to the raw ID if no mapping exists yet.
+    fn slot_for(&self, monitor_id: i128) -> i128 {
+        self.monitor_slots
+            .lock()
+            .unwrap()
+            .get(&monitor_id)
+            .copied()
+            .unwrap_or(monitor_id)
     }
 
     fn workspace_id(virtual_ws: u8, monitor_id: i128) -> WorkspaceId {
@@ -136,7 +156,7 @@ impl WorkspaceManager {
             };
 
             // Calculate target workspace for this monitor
-            let target_ws = Self::workspace_id(virtual_ws, monitor_id);
+            let target_ws = Self::workspace_id(virtual_ws, self.slot_for(monitor_id));
 
             // Only move if not already there
             if client_ws_id != target_ws {
@@ -166,9 +186,26 @@ impl WorkspaceManager {
 
         info!("Assigning workspaces to {} monitor(s)", monitors.len());
 
+        // Assign stable slots by sorting monitors by description (contains serial number).
+        // This ensures the same physical monitor always gets the same workspace range.
+        {
+            let mut sorted: Vec<_> = monitors.iter().collect();
+            sorted.sort_by_key(|m| &m.description);
+            let mut slots = self.monitor_slots.lock().unwrap();
+            slots.clear();
+            for (slot, monitor) in sorted.iter().enumerate() {
+                debug!(
+                    "Slot {slot} -> {} (id={}, {})",
+                    monitor.name, monitor.id, monitor.description
+                );
+                slots.insert(monitor.id, slot as i128);
+            }
+        }
+
         for monitor in &monitors {
+            let slot = self.slot_for(monitor.id);
             for ws in 1..=9u8 {
-                let wsid = Self::workspace_id(ws, monitor.id);
+                let wsid = Self::workspace_id(ws, slot);
                 let is_default = ws == 1;
 
                 let rule = format!(
@@ -196,7 +233,7 @@ impl WorkspaceManager {
 
         // Sync all monitors to the target virtual workspace
         for monitor in &monitors {
-            let target_wsid = Self::workspace_id(target_virtual, monitor.id);
+            let target_wsid = Self::workspace_id(target_virtual, self.slot_for(monitor.id));
             if monitor.active_workspace.id == target_wsid {
                 continue;
             }
@@ -244,32 +281,36 @@ impl WorkspaceManager {
     async fn move_workspaces_to_correct_monitors(&self, monitors: &[Monitor]) -> Result<()> {
         let workspaces: Vec<_> = Workspaces::get_async().await?.into_iter().collect();
 
+        // Build reverse mapping: slot -> monitor name
+        let slot_to_monitor: HashMap<i128, &str> = monitors
+            .iter()
+            .map(|m| (self.slot_for(m.id), m.name.as_str()))
+            .collect();
+
         for ws in &workspaces {
             if ws.id <= 0 {
                 continue;
             }
 
-            // Determine which monitor this workspace should be on
-            let expected_monitor_id = if ws.id < 10 { 0 } else { ws.id / 10 };
+            // Determine which slot this workspace belongs to
+            let expected_slot = if ws.id < 10 { 0 } else { (ws.id / 10) as i128 };
 
-            let expected_monitor = monitors.iter().find(|m| m.id == expected_monitor_id as i128);
-            let expected_monitor = match expected_monitor {
-                Some(m) => m,
-                None => continue, // Monitor doesn't exist, skip
+            let expected_name = match slot_to_monitor.get(&expected_slot) {
+                Some(name) => *name,
+                None => continue,
             };
 
-            // Check if it's already on the right monitor
-            if ws.monitor == expected_monitor.name {
+            if ws.monitor == expected_name {
                 continue;
             }
 
             info!(
                 "Moving workspace {} from {} to {}",
-                ws.id, ws.monitor, expected_monitor.name
+                ws.id, ws.monitor, expected_name
             );
             Dispatch::call_async(DispatchType::MoveWorkspaceToMonitor(
                 WorkspaceIdentifier::Id(ws.id),
-                MonitorIdentifier::Name(&expected_monitor.name),
+                MonitorIdentifier::Name(expected_name),
             ))
             .await?;
         }
@@ -281,7 +322,7 @@ impl WorkspaceManager {
         let _guard = self.ipc_lock.lock().await;
 
         let focused = Monitor::get_active_async().await?;
-        let wsid = Self::workspace_id(virtual_ws, focused.id);
+        let wsid = Self::workspace_id(virtual_ws, self.slot_for(focused.id));
 
         debug!("Switching to virtual workspace {virtual_ws} (workspace {wsid} on {})", focused.name);
 
@@ -310,7 +351,7 @@ impl WorkspaceManager {
         // Switch all OTHER monitors to their target workspace
         // Continue on errors to ensure all monitors get synced even if one fails
         for monitor in &monitors {
-            let target_wsid = Self::workspace_id(virtual_ws, monitor.id);
+            let target_wsid = Self::workspace_id(virtual_ws, self.slot_for(monitor.id));
             // Skip if this is the trigger workspace or already on target
             if target_wsid == trigger_workspace_id || monitor.active_workspace.id == target_wsid {
                 continue;
@@ -361,7 +402,7 @@ impl WorkspaceManager {
         // Build set of valid workspace IDs for this virtual workspace
         let valid_workspaces: Vec<WorkspaceId> = monitors
             .iter()
-            .map(|m| Self::workspace_id(virtual_ws, m.id))
+            .map(|m| Self::workspace_id(virtual_ws, self.slot_for(m.id)))
             .collect();
 
         // Find window on any workspace of this virtual workspace that contains the cursor
@@ -391,7 +432,7 @@ impl WorkspaceManager {
         let _guard = self.ipc_lock.lock().await;
 
         let focused = Monitor::get_active_async().await?;
-        let wsid = Self::workspace_id(virtual_ws, focused.id);
+        let wsid = Self::workspace_id(virtual_ws, self.slot_for(focused.id));
 
         debug!(
             "Moving active window to workspace {wsid} (virtual {virtual_ws})"
@@ -411,7 +452,7 @@ impl WorkspaceManager {
     pub async fn navigate(&self, direction: Direction) -> Result<()> {
         let monitors: Vec<_> = Monitors::get_async().await?.into_iter().collect();
 
-        let primary = monitors.iter().find(|m| m.id == 0);
+        let primary = monitors.iter().find(|m| self.slot_for(m.id) == 0);
 
         let current_ws = match primary {
             Some(m) => m.active_workspace.id,
@@ -499,5 +540,22 @@ impl WorkspaceManager {
 impl Default for WorkspaceManager {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn workspace_id_slot_mapping() {
+        // slot 0 -> workspaces 1-9
+        assert_eq!(WorkspaceManager::workspace_id(1, 0), 1);
+        assert_eq!(WorkspaceManager::workspace_id(9, 0), 9);
+        // slot 1 -> workspaces 11-19
+        assert_eq!(WorkspaceManager::workspace_id(1, 1), 11);
+        assert_eq!(WorkspaceManager::workspace_id(4, 1), 14);
+        // slot 2 -> workspaces 21-29
+        assert_eq!(WorkspaceManager::workspace_id(1, 2), 21);
     }
 }
