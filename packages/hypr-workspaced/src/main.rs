@@ -44,6 +44,11 @@ enum Commands {
     Next,
     /// Switch to previous virtual workspace
     Prev,
+    /// Swap windows with neighboring monitor (next/prev by physical position)
+    Swap {
+        /// Direction: 'next' (right) or 'prev' (left)
+        direction: String,
+    },
     /// Collapse windows to current monitor
     Collapse {
         /// Mode: 'all' (same virtual workspace) or 'invisible' (orphan workspaces only)
@@ -101,6 +106,17 @@ async fn main() -> Result<()> {
         }
         Commands::Prev => {
             client::send_command(Command::Navigate(Direction::Prev)).await
+        }
+        Commands::Swap { direction } => {
+            let dir = match direction.as_str() {
+                "next" => Direction::Next,
+                "prev" => Direction::Prev,
+                _ => {
+                    eprintln!("Invalid swap direction: {direction}. Use 'next' or 'prev'.");
+                    std::process::exit(1);
+                }
+            };
+            client::send_command(Command::Swap(dir)).await
         }
         Commands::Collapse { mode } => {
             let mode = match mode.as_str() {

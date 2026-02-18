@@ -364,6 +364,8 @@
                   "$mainMod, L, exec, ${loginctl} lock-session"
                   "$mainMod, C, exec, ${lib.getExe hyprWorkspaced} collapse invisible"
                   "$mainMod SHIFT, C, exec, ${lib.getExe hyprWorkspaced} collapse all"
+                  "$mainMod, I, exec, ${lib.getExe hyprWorkspaced} swap next"
+                  "$mainMod SHIFT, I, exec, ${lib.getExe hyprWorkspaced} swap prev"
                 ]
                 # Dynamic workspace switching and moving (works with any number of monitors)
                 ++ dynamicWorkspaceBinds

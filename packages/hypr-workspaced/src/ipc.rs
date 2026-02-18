@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use std::str::FromStr;
 
 use crate::error::{Error, Result};
+use crate::workspace::VirtualWorkspace;
 
 pub fn parse_bool_arg(s: &str) -> std::result::Result<bool, String> {
     match s.to_lowercase().as_str() {
@@ -30,6 +31,7 @@ pub enum Command {
     MoveTo(u8),
     Navigate(Direction),
     Collapse(CollapseMode),
+    Swap(Direction),
     Assign,
     Pin(String),
     Unpin(String),
@@ -39,11 +41,8 @@ pub enum Command {
 
 impl Command {
     pub fn validate_workspace(ws: u8) -> Result<u8> {
-        if (1..=9).contains(&ws) {
-            Ok(ws)
-        } else {
-            Err(Error::InvalidVirtualWorkspace(ws))
-        }
+        VirtualWorkspace::new(ws)?;
+        Ok(ws)
     }
 }
 
@@ -67,6 +66,8 @@ impl FromStr for Command {
             ["prev"] => Ok(Command::Navigate(Direction::Prev)),
             ["collapse", "all"] => Ok(Command::Collapse(CollapseMode::All)),
             ["collapse", "invisible"] => Ok(Command::Collapse(CollapseMode::Invisible)),
+            ["swap", "next"] => Ok(Command::Swap(Direction::Next)),
+            ["swap", "prev"] => Ok(Command::Swap(Direction::Prev)),
             ["assign"] => Ok(Command::Assign),
             ["pin", pattern @ ..] if !pattern.is_empty() => {
                 Ok(Command::Pin(pattern.join(" ")))
@@ -92,6 +93,8 @@ impl std::fmt::Display for Command {
             Command::Navigate(Direction::Prev) => write!(f, "prev"),
             Command::Collapse(CollapseMode::All) => write!(f, "collapse all"),
             Command::Collapse(CollapseMode::Invisible) => write!(f, "collapse invisible"),
+            Command::Swap(Direction::Next) => write!(f, "swap next"),
+            Command::Swap(Direction::Prev) => write!(f, "swap prev"),
             Command::Assign => write!(f, "assign"),
             Command::Pin(pattern) => write!(f, "pin {pattern}"),
             Command::Unpin(pattern) => write!(f, "unpin {pattern}"),

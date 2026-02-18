@@ -11,7 +11,7 @@ use tracing_subscriber::EnvFilter;
 
 use crate::error::Result;
 use crate::ipc::{socket_path, CollapseMode, Command, Response};
-use crate::workspace::WorkspaceManager;
+use crate::workspace::{VirtualWorkspace, WorkspaceManager};
 
 type LogReloadHandle = Handle<EnvFilter, tracing_subscriber::Registry>;
 
@@ -113,7 +113,7 @@ pub async fn run(log_handle: LogReloadHandle, on_reconnect_restart: Option<Strin
 
     let mut manager = WorkspaceManager::new();
     let mut last_synced_generation: u64 = 0;
-    let mut last_synced_vspace: u8 = 0;
+    let mut last_synced_vspace: Option<VirtualWorkspace> = None;
 
     info!("Performing initial workspace assignment");
     if let Err(e) = manager.assign_workspaces().await {
@@ -135,7 +135,7 @@ pub async fn run(log_handle: LogReloadHandle, on_reconnect_restart: Option<Strin
                         if let Err(e) = manager.assign_workspaces().await {
                             error!("Workspace reassignment failed: {e}");
                         }
-                        last_synced_vspace = 0; // Reset on monitor change
+                        last_synced_vspace = None; // Reset on monitor change
                     }
                     None => {
                         warn!("Event channel closed");
@@ -152,26 +152,23 @@ pub async fn run(log_handle: LogReloadHandle, on_reconnect_restart: Option<Strin
                 }
                 last_synced_generation = state.generation;
 
-                // Skip special workspaces
-                if state.workspace_id <= 0 {
-                    continue;
-                }
-
-                // Calculate virtual workspace (1-9)
-                let vspace = (((state.workspace_id - 1) % 10) + 1) as u8;
+                let vws = match VirtualWorkspace::from_hyprland_id(state.workspace_id) {
+                    Some(v) => v,
+                    None => continue,
+                };
 
                 // Skip if we already synced to this virtual workspace
                 // (prevents feedback loop from our own workspace switches)
-                if vspace == last_synced_vspace {
-                    debug!("Skipping sync for vspace {} (already synced)", vspace);
+                if last_synced_vspace == Some(vws) {
+                    debug!("Skipping sync for vspace {} (already synced)", vws);
                     continue;
                 }
 
-                debug!("Workspace changed to {} (vspace {}), syncing monitors", state.workspace_id, vspace);
+                debug!("Workspace changed to {} (vspace {}), syncing monitors", state.workspace_id, vws);
                 if let Err(e) = manager.sync_monitors(state.workspace_id).await {
                     error!("Monitor sync failed: {e}");
                 } else {
-                    last_synced_vspace = vspace;
+                    last_synced_vspace = Some(vws);
                 }
             }
         }
@@ -294,10 +291,17 @@ async fn handle_command(
     log_handle: &LogReloadHandle,
 ) -> Response {
     let result = match cmd {
-        Command::Switch(ws) => manager.switch_virtual(ws).await,
-        Command::MoveTo(ws) => manager.move_to_virtual(ws).await,
+        Command::Switch(ws) => match VirtualWorkspace::new(ws) {
+            Ok(vws) => manager.switch_virtual(vws).await,
+            Err(e) => Err(e),
+        },
+        Command::MoveTo(ws) => match VirtualWorkspace::new(ws) {
+            Ok(vws) => manager.move_to_virtual(vws).await,
+            Err(e) => Err(e),
+        },
         Command::Navigate(dir) => manager.navigate(dir).await,
         Command::Collapse(mode) => manager.collapse(mode).await,
+        Command::Swap(dir) => manager.swap_monitor(dir).await,
         Command::Assign => manager.assign_workspaces().await,
         Command::Pin(pattern) => manager.pin(&pattern),
         Command::Unpin(pattern) => manager.unpin(&pattern),

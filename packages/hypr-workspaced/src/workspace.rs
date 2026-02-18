@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::sync::Mutex as StdMutex;
+use std::path::PathBuf;
 
 use hyprland::data::{Client, Clients, CursorPosition, Monitor, Monitors, Workspace, Workspaces};
 use hyprland::dispatch::{
@@ -15,15 +15,272 @@ use crate::error::{Error, Result};
 use crate::ipc::{CollapseMode, Direction};
 use crate::window::WindowPattern;
 
+// ---------------------------------------------------------------------------
+// VirtualWorkspace
+// ---------------------------------------------------------------------------
+
+/// A user-facing virtual workspace (valid range: 1–9).
+///
+/// All monitors are synchronised to the same virtual workspace — each monitor
+/// shows its own Hyprland workspace that corresponds to this number.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct VirtualWorkspace(u8);
+
+impl VirtualWorkspace {
+    pub fn new(n: u8) -> Result<Self> {
+        if (1..=9).contains(&n) {
+            Ok(Self(n))
+        } else {
+            Err(Error::InvalidVirtualWorkspace(n))
+        }
+    }
+
+    pub fn number(self) -> u8 {
+        self.0
+    }
+
+    pub fn next(self) -> Self {
+        Self((self.0 % 9) + 1)
+    }
+
+    pub fn prev(self) -> Self {
+        Self(((self.0 + 7) % 9) + 1)
+    }
+
+    /// Compute the Hyprland workspace ID for this virtual workspace on the
+    /// given monitor slot.
+    pub fn hyprland_id(self, slot: MonitorSlot) -> WorkspaceId {
+        slot.0 as WorkspaceId * 10 + self.0 as WorkspaceId
+    }
+
+    /// Extract the virtual workspace from a raw Hyprland workspace ID.
+    /// Returns `None` for special (negative) or orphan (multiples of 10) IDs.
+    pub fn from_hyprland_id(id: WorkspaceId) -> Option<Self> {
+        if id <= 0 || id % 10 == 0 {
+            return None;
+        }
+        let n = (((id - 1) % 10) + 1) as u8;
+        Some(Self(n))
+    }
+}
+
+impl std::fmt::Display for VirtualWorkspace {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// MonitorSlot
+// ---------------------------------------------------------------------------
+
+/// A stable index (0, 1, 2, …) assigned to a physical monitor.
+///
+/// Slots are assigned by sorting monitors by their description (which contains
+/// the serial number), so the same physical monitor always gets the same slot
+/// regardless of connector name or Hyprland ID.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct MonitorSlot(u8);
+
+impl MonitorSlot {
+    pub fn new(index: u8) -> Self {
+        Self(index)
+    }
+
+    pub fn index(self) -> u8 {
+        self.0
+    }
+
+    /// The orphan workspace ID for this slot (0, 10, 20, …).
+    /// These workspaces are never valid — clients on them need rescuing.
+    pub fn orphan_workspace_id(self) -> WorkspaceId {
+        self.0 as WorkspaceId * 10
+    }
+
+    /// Extract the monitor slot from a raw Hyprland workspace ID.
+    pub fn from_hyprland_id(id: WorkspaceId) -> Self {
+        if id < 10 {
+            Self(0)
+        } else {
+            Self((id / 10) as u8)
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// MonitorRegistry
+// ---------------------------------------------------------------------------
+
+/// Persistent registry of monitor descriptions to slot indices.
+/// Stored as one description per line; the line number (0-indexed) is the slot.
+/// The built-in display (eDP) is always slot 0 when seeding.
+struct MonitorRegistry {
+    entries: Vec<String>,
+}
+
+impl MonitorRegistry {
+    fn path() -> PathBuf {
+        let state_dir = std::env::var("XDG_STATE_HOME")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| {
+                let home = std::env::var("HOME").expect("HOME not set");
+                PathBuf::from(home).join(".local/state")
+            });
+        state_dir.join("hypr-workspaced").join("monitors")
+    }
+
+    fn load() -> Self {
+        let entries = match std::fs::read_to_string(Self::path()) {
+            Ok(content) => content
+                .lines()
+                .filter(|l| !l.is_empty())
+                .map(String::from)
+                .collect(),
+            Err(_) => Vec::new(),
+        };
+        Self { entries }
+    }
+
+    fn save(&self) {
+        let path = Self::path();
+        if let Some(parent) = path.parent() {
+            if let Err(e) = std::fs::create_dir_all(parent) {
+                warn!("Failed to create registry directory: {e}");
+                return;
+            }
+        }
+        if let Err(e) = std::fs::write(&path, self.entries.join("\n") + "\n") {
+            warn!("Failed to save monitor registry: {e}");
+        }
+    }
+
+    fn slot_for(&self, description: &str) -> Option<usize> {
+        self.entries.iter().position(|d| d == description)
+    }
+
+    /// Register monitors and return whether the registry was modified.
+    /// On first run, monitors are sorted by description. New monitors are
+    /// appended and get the next available slot.
+    fn register(&mut self, monitors: &[Monitor]) -> bool {
+        let mut modified = false;
+
+        if self.entries.is_empty() {
+            for m in monitors {
+                self.entries.push(m.description.clone());
+            }
+            modified = !self.entries.is_empty();
+        } else {
+            for monitor in monitors {
+                if self.slot_for(&monitor.description).is_none() {
+                    info!(
+                        "New monitor: {} ({}), slot {}",
+                        monitor.name,
+                        monitor.description,
+                        self.entries.len()
+                    );
+                    self.entries.push(monitor.description.clone());
+                    modified = true;
+                }
+            }
+        }
+
+        modified
+    }
+}
+
+// ---------------------------------------------------------------------------
+// MonitorLayout
+// ---------------------------------------------------------------------------
+
+/// Mapping from Hyprland monitor IDs to stable monitor slots.
+pub struct MonitorLayout {
+    slots: HashMap<i128, MonitorSlot>,
+}
+
+impl MonitorLayout {
+    pub fn new() -> Self {
+        Self {
+            slots: HashMap::new(),
+        }
+    }
+
+    /// Build a layout using the persistent monitor registry.
+    /// Each physical monitor (identified by description/serial) gets a permanent
+    /// slot that survives disconnects and restarts.
+    pub fn assign(monitors: &[Monitor]) -> Self {
+        let mut registry = MonitorRegistry::load();
+        if registry.register(monitors) {
+            registry.save();
+        }
+
+        let mut slots = HashMap::new();
+        for monitor in monitors {
+            if let Some(slot_idx) = registry.slot_for(&monitor.description) {
+                let slot = MonitorSlot::new(slot_idx as u8);
+                debug!(
+                    "Slot {} -> {} (id={}, {})",
+                    slot.index(),
+                    monitor.name,
+                    monitor.id,
+                    monitor.description
+                );
+                slots.insert(monitor.id, slot);
+            }
+        }
+
+        Self { slots }
+    }
+
+    /// Look up the slot for a Hyprland monitor ID.
+    /// Falls back to treating the raw ID as a slot index if no mapping exists.
+    pub fn slot_for(&self, monitor_id: i128) -> MonitorSlot {
+        self.slots
+            .get(&monitor_id)
+            .copied()
+            .unwrap_or(MonitorSlot::new(monitor_id as u8))
+    }
+
+    pub fn num_monitors(&self) -> usize {
+        self.slots.len()
+    }
+
+    /// Build a reverse mapping: slot → monitor name.
+    pub fn slot_to_monitor_name<'a>(
+        &self,
+        monitors: &'a [Monitor],
+    ) -> HashMap<MonitorSlot, &'a str> {
+        monitors
+            .iter()
+            .map(|m| (self.slot_for(m.id), m.name.as_str()))
+            .collect()
+    }
+
+    /// Iterate all assigned slots (useful for orphan cleanup).
+    pub fn all_slots(&self) -> impl Iterator<Item = MonitorSlot> + '_ {
+        let max = self.slots.values().map(|s| s.index()).max().unwrap_or(0);
+        (0..=max).map(MonitorSlot::new)
+    }
+}
+
+/// Check whether a Hyprland workspace ID belongs to a valid virtual workspace
+/// on an existing monitor slot.
+fn is_valid_workspace(id: WorkspaceId, num_monitors: usize) -> bool {
+    VirtualWorkspace::from_hyprland_id(id)
+        .map(|_| {
+            let slot = MonitorSlot::from_hyprland_id(id);
+            (slot.index() as usize) < num_monitors
+        })
+        .unwrap_or(false)
+}
+
+// ---------------------------------------------------------------------------
+// WorkspaceManager
+// ---------------------------------------------------------------------------
+
 pub struct WorkspaceManager {
     pinned_patterns: Vec<WindowPattern>,
-    /// Lock to serialize IPC operations and prevent race conditions during workspace transitions
     ipc_lock: Mutex<()>,
-    /// Maps Hyprland monitor ID → stable slot index (0, 1, 2, ...).
-    /// Slots are assigned by sorting monitors by description (which contains the
-    /// serial number), so the same physical monitor always gets the same slot
-    /// regardless of connector name or Hyprland ID.
-    monitor_slots: StdMutex<HashMap<i128, i128>>,
+    layout: MonitorLayout,
 }
 
 impl WorkspaceManager {
@@ -31,59 +288,8 @@ impl WorkspaceManager {
         Self {
             pinned_patterns: Vec::new(),
             ipc_lock: Mutex::new(()),
-            monitor_slots: StdMutex::new(HashMap::new()),
+            layout: MonitorLayout::new(),
         }
-    }
-
-    /// Get the stable slot for a Hyprland monitor ID.
-    /// Falls back to the raw ID if no mapping exists yet.
-    fn slot_for(&self, monitor_id: i128) -> i128 {
-        self.monitor_slots
-            .lock()
-            .unwrap()
-            .get(&monitor_id)
-            .copied()
-            .unwrap_or(monitor_id)
-    }
-
-    fn workspace_id(virtual_ws: u8, monitor_id: i128) -> WorkspaceId {
-        if monitor_id == 0 {
-            virtual_ws as WorkspaceId
-        } else {
-            (monitor_id as WorkspaceId * 10) + virtual_ws as WorkspaceId
-        }
-    }
-
-    fn virtual_from_workspace(workspace_id: WorkspaceId) -> u8 {
-        (((workspace_id - 1) % 10) + 1) as u8
-    }
-
-    fn is_special_workspace(workspace_id: WorkspaceId) -> bool {
-        workspace_id < 0
-    }
-
-    /// Check if a workspace ID is valid for the given number of monitors.
-    /// A workspace is valid if:
-    /// - Its virtual workspace (1-9) is in range
-    /// - Its monitor ID exists
-    fn is_valid_workspace(workspace_id: WorkspaceId, num_monitors: usize) -> bool {
-        if workspace_id <= 0 {
-            return false;
-        }
-
-        let vspace = Self::virtual_from_workspace(workspace_id);
-        if vspace < 1 || vspace > 9 {
-            return false;
-        }
-
-        // Calculate monitor ID from workspace
-        let monitor_id = if workspace_id < 10 {
-            0
-        } else {
-            workspace_id / 10
-        };
-
-        (monitor_id as usize) < num_monitors
     }
 
     pub fn pin(&mut self, pattern_str: &str) -> Result<()> {
@@ -117,10 +323,7 @@ impl WorkspaceManager {
     }
 
     async fn find_monitor_for_client(client: &Client, monitors: &[Monitor]) -> Option<i128> {
-        // Client has monitor field which is Option<MonitorId>
-        // MonitorId is i128
         client.monitor.or_else(|| {
-            // Fallback: find monitor by workspace
             monitors
                 .iter()
                 .find(|m| m.active_workspace.id == client.workspace.id)
@@ -128,7 +331,7 @@ impl WorkspaceManager {
         })
     }
 
-    async fn move_pinned_windows(&self, virtual_ws: u8) -> Result<()> {
+    async fn move_pinned_windows(&self, vws: VirtualWorkspace) -> Result<()> {
         if self.pinned_patterns.is_empty() {
             return Ok(());
         }
@@ -141,28 +344,27 @@ impl WorkspaceManager {
                 continue;
             }
 
-            let client_ws_id = client.workspace.id;
-            if Self::is_special_workspace(client_ws_id) {
+            if client.workspace.id < 0 {
                 continue;
             }
 
-            // Find which monitor this client is on
             let monitor_id = match Self::find_monitor_for_client(client, &monitors).await {
                 Some(id) => id,
                 None => {
-                    warn!("Could not determine monitor for pinned client {}", client.address);
+                    warn!(
+                        "Could not determine monitor for pinned client {}",
+                        client.address
+                    );
                     continue;
                 }
             };
 
-            // Calculate target workspace for this monitor
-            let target_ws = Self::workspace_id(virtual_ws, self.slot_for(monitor_id));
+            let target_ws = vws.hyprland_id(self.layout.slot_for(monitor_id));
 
-            // Only move if not already there
-            if client_ws_id != target_ws {
+            if client.workspace.id != target_ws {
                 debug!(
                     "Moving pinned window {} ({}) from workspace {} to {}",
-                    client.class, client.address, client_ws_id, target_ws
+                    client.class, client.address, client.workspace.id, target_ws
                 );
                 Dispatch::call_async(DispatchType::MoveToWorkspaceSilent(
                     WorkspaceIdentifierWithSpecial::Id(target_ws),
@@ -175,7 +377,7 @@ impl WorkspaceManager {
         Ok(())
     }
 
-    pub async fn assign_workspaces(&self) -> Result<()> {
+    pub async fn assign_workspaces(&mut self) -> Result<()> {
         let _guard = self.ipc_lock.lock().await;
 
         let monitors: Vec<_> = Monitors::get_async().await?.into_iter().collect();
@@ -186,27 +388,14 @@ impl WorkspaceManager {
 
         info!("Assigning workspaces to {} monitor(s)", monitors.len());
 
-        // Assign stable slots by sorting monitors by description (contains serial number).
-        // This ensures the same physical monitor always gets the same workspace range.
-        {
-            let mut sorted: Vec<_> = monitors.iter().collect();
-            sorted.sort_by_key(|m| &m.description);
-            let mut slots = self.monitor_slots.lock().unwrap();
-            slots.clear();
-            for (slot, monitor) in sorted.iter().enumerate() {
-                debug!(
-                    "Slot {slot} -> {} (id={}, {})",
-                    monitor.name, monitor.id, monitor.description
-                );
-                slots.insert(monitor.id, slot as i128);
-            }
-        }
+        self.layout = MonitorLayout::assign(&monitors);
 
         for monitor in &monitors {
-            let slot = self.slot_for(monitor.id);
-            for ws in 1..=9u8 {
-                let wsid = Self::workspace_id(ws, slot);
-                let is_default = ws == 1;
+            let slot = self.layout.slot_for(monitor.id);
+            for n in 1..=9u8 {
+                let vws = VirtualWorkspace(n);
+                let wsid = vws.hyprland_id(slot);
+                let is_default = n == 1;
 
                 let rule = format!(
                     "{wsid},monitor:{},persistent:true,default:{is_default}",
@@ -221,23 +410,19 @@ impl WorkspaceManager {
         self.cleanup_orphan_workspaces().await?;
         self.move_workspaces_to_correct_monitors(&monitors).await?;
 
-        // Determine the target virtual workspace: use the focused monitor's current
-        // virtual workspace, falling back to 1 if it's on an invalid workspace
         let focused = Monitor::get_active_async().await?;
-        let focused_ws = focused.active_workspace.id;
-        let target_virtual = if focused_ws <= 0 || focused_ws % 10 == 0 {
-            1u8
-        } else {
-            Self::virtual_from_workspace(focused_ws)
-        };
+        let target = VirtualWorkspace::from_hyprland_id(focused.active_workspace.id)
+            .unwrap_or(VirtualWorkspace(1));
 
-        // Sync all monitors to the target virtual workspace
         for monitor in &monitors {
-            let target_wsid = Self::workspace_id(target_virtual, self.slot_for(monitor.id));
+            let target_wsid = target.hyprland_id(self.layout.slot_for(monitor.id));
             if monitor.active_workspace.id == target_wsid {
                 continue;
             }
-            debug!("Syncing {} to workspace {target_wsid} (virtual {target_virtual})", monitor.name);
+            debug!(
+                "Syncing {} to workspace {target_wsid} (virtual {target})",
+                monitor.name
+            );
             Dispatch::call_async(DispatchType::Workspace(WorkspaceIdentifierWithSpecial::Id(
                 target_wsid,
             )))
@@ -251,8 +436,9 @@ impl WorkspaceManager {
     async fn cleanup_orphan_workspaces(&self) -> Result<()> {
         let clients = Clients::get_async().await?;
 
-        for orphan_id in [0, 10, 20, 30, 40, 50, 60, 70, 80, 90] {
-            let target = if orphan_id == 0 { 1 } else { orphan_id + 1 };
+        for slot in self.layout.all_slots() {
+            let orphan_id = slot.orphan_workspace_id();
+            let target = orphan_id + 1;
 
             let orphan_clients: Vec<_> = clients
                 .iter()
@@ -275,26 +461,16 @@ impl WorkspaceManager {
         Ok(())
     }
 
-    /// Move workspaces that are on the wrong monitor to their correct one.
-    /// This handles the case where monitors were disconnected (all workspaces
-    /// collapse to the remaining monitor) and then reconnected.
     async fn move_workspaces_to_correct_monitors(&self, monitors: &[Monitor]) -> Result<()> {
         let workspaces: Vec<_> = Workspaces::get_async().await?.into_iter().collect();
-
-        // Build reverse mapping: slot -> monitor name
-        let slot_to_monitor: HashMap<i128, &str> = monitors
-            .iter()
-            .map(|m| (self.slot_for(m.id), m.name.as_str()))
-            .collect();
+        let slot_to_monitor = self.layout.slot_to_monitor_name(monitors);
 
         for ws in &workspaces {
             if ws.id <= 0 {
                 continue;
             }
 
-            // Determine which slot this workspace belongs to
-            let expected_slot = if ws.id < 10 { 0 } else { (ws.id / 10) as i128 };
-
+            let expected_slot = MonitorSlot::from_hyprland_id(ws.id);
             let expected_name = match slot_to_monitor.get(&expected_slot) {
                 Some(name) => *name,
                 None => continue,
@@ -318,13 +494,16 @@ impl WorkspaceManager {
         Ok(())
     }
 
-    pub async fn switch_virtual(&self, virtual_ws: u8) -> Result<()> {
+    pub async fn switch_virtual(&self, vws: VirtualWorkspace) -> Result<()> {
         let _guard = self.ipc_lock.lock().await;
 
         let focused = Monitor::get_active_async().await?;
-        let wsid = Self::workspace_id(virtual_ws, self.slot_for(focused.id));
+        let wsid = vws.hyprland_id(self.layout.slot_for(focused.id));
 
-        debug!("Switching to virtual workspace {virtual_ws} (workspace {wsid} on {})", focused.name);
+        debug!(
+            "Switching to virtual workspace {vws} (workspace {wsid} on {})",
+            focused.name
+        );
 
         Dispatch::call_async(DispatchType::Workspace(WorkspaceIdentifierWithSpecial::Id(
             wsid,
@@ -334,25 +513,26 @@ impl WorkspaceManager {
         Ok(())
     }
 
-    /// Sync all monitors to match the workspace that triggered the event.
-    /// Called by the event handler when a workspace change is detected.
     pub async fn sync_monitors(&self, trigger_workspace_id: WorkspaceId) -> Result<()> {
         let _guard = self.ipc_lock.lock().await;
 
-        let virtual_ws = Self::virtual_from_workspace(trigger_workspace_id);
+        let vws = match VirtualWorkspace::from_hyprland_id(trigger_workspace_id) {
+            Some(v) => v,
+            None => return Ok(()),
+        };
+
         let monitors: Vec<_> = Monitors::get_async().await?.into_iter().collect();
 
         if monitors.len() <= 1 {
             return Ok(());
         }
 
-        debug!("Syncing monitors to virtual workspace {virtual_ws} (triggered by ws {trigger_workspace_id})");
+        debug!(
+            "Syncing monitors to virtual workspace {vws} (triggered by ws {trigger_workspace_id})"
+        );
 
-        // Switch all OTHER monitors to their target workspace
-        // Continue on errors to ensure all monitors get synced even if one fails
         for monitor in &monitors {
-            let target_wsid = Self::workspace_id(virtual_ws, self.slot_for(monitor.id));
-            // Skip if this is the trigger workspace or already on target
+            let target_wsid = vws.hyprland_id(self.layout.slot_for(monitor.id));
             if target_wsid == trigger_workspace_id || monitor.active_workspace.id == target_wsid {
                 continue;
             }
@@ -363,17 +543,17 @@ impl WorkspaceManager {
             ))
             .await
             {
-                warn!("Failed to switch {} to workspace {target_wsid}: {e}", monitor.name);
+                warn!(
+                    "Failed to switch {} to workspace {target_wsid}: {e}",
+                    monitor.name
+                );
             }
         }
 
-        // Move pinned windows
-        if let Err(e) = self.move_pinned_windows(virtual_ws).await {
+        if let Err(e) = self.move_pinned_windows(vws).await {
             warn!("Failed to move pinned windows: {e}");
         }
 
-        // Refocus the trigger workspace (restores focus to original monitor)
-        // Only if we're not already on it (avoids "Previous workspace doesn't exist" error)
         let active_ws = Workspace::get_active_async().await?;
         if active_ws.id != trigger_workspace_id {
             if let Err(e) = Dispatch::call_async(DispatchType::Workspace(
@@ -381,31 +561,29 @@ impl WorkspaceManager {
             ))
             .await
             {
-                warn!("Failed to refocus trigger workspace {trigger_workspace_id}: {e}");
+                warn!(
+                    "Failed to refocus trigger workspace {trigger_workspace_id}: {e}"
+                );
             }
         }
 
-        // Focus window under cursor (if any)
-        if let Err(e) = self.focus_window_under_cursor(virtual_ws).await {
+        if let Err(e) = self.focus_window_under_cursor(vws).await {
             warn!("Failed to focus window under cursor: {e}");
         }
 
         Ok(())
     }
 
-    /// Find and focus the window under the cursor on the current virtual workspace.
-    async fn focus_window_under_cursor(&self, virtual_ws: u8) -> Result<()> {
+    async fn focus_window_under_cursor(&self, vws: VirtualWorkspace) -> Result<()> {
         let cursor = CursorPosition::get_async().await?;
         let clients: Vec<_> = Clients::get_async().await?.into_iter().collect();
         let monitors: Vec<_> = Monitors::get_async().await?.into_iter().collect();
 
-        // Build set of valid workspace IDs for this virtual workspace
         let valid_workspaces: Vec<WorkspaceId> = monitors
             .iter()
-            .map(|m| Self::workspace_id(virtual_ws, self.slot_for(m.id)))
+            .map(|m| vws.hyprland_id(self.layout.slot_for(m.id)))
             .collect();
 
-        // Find window on any workspace of this virtual workspace that contains the cursor
         let window_under_cursor = clients.iter().find(|c| {
             if !valid_workspaces.contains(&c.workspace.id) {
                 return false;
@@ -428,18 +606,14 @@ impl WorkspaceManager {
         Ok(())
     }
 
-    pub async fn move_to_virtual(&self, virtual_ws: u8) -> Result<()> {
+    pub async fn move_to_virtual(&self, vws: VirtualWorkspace) -> Result<()> {
         let _guard = self.ipc_lock.lock().await;
 
         let focused = Monitor::get_active_async().await?;
-        let wsid = Self::workspace_id(virtual_ws, self.slot_for(focused.id));
+        let wsid = vws.hyprland_id(self.layout.slot_for(focused.id));
 
-        debug!(
-            "Moving active window to workspace {wsid} (virtual {virtual_ws})"
-        );
+        debug!("Moving active window to workspace {wsid} (virtual {vws})");
 
-        // MoveToWorkspace moves the window AND switches to that workspace
-        // The workspace change event will trigger sync_monitors
         Dispatch::call_async(DispatchType::MoveToWorkspace(
             WorkspaceIdentifierWithSpecial::Id(wsid),
             None,
@@ -449,10 +623,97 @@ impl WorkspaceManager {
         Ok(())
     }
 
+    /// Swap windows between the focused monitor and its physical neighbor.
+    /// Only affects the current virtual workspace. Windows are moved individually
+    /// so that workspace IDs stay bound to their correct monitors.
+    pub async fn swap_monitor(&self, direction: Direction) -> Result<()> {
+        let _guard = self.ipc_lock.lock().await;
+
+        let monitors: Vec<_> = Monitors::get_async().await?.into_iter().collect();
+        if monitors.len() < 2 {
+            return Ok(());
+        }
+
+        let focused = Monitor::get_active_async().await?;
+
+        let mut by_position: Vec<_> = monitors.iter().collect();
+        by_position.sort_by_key(|m| m.x);
+
+        let focused_idx = by_position
+            .iter()
+            .position(|m| m.id == focused.id)
+            .ok_or_else(|| Error::Other("Focused monitor not found in list".into()))?;
+
+        let target_idx = match direction {
+            Direction::Next => {
+                if focused_idx + 1 >= by_position.len() {
+                    return Ok(());
+                }
+                focused_idx + 1
+            }
+            Direction::Prev => {
+                if focused_idx == 0 {
+                    return Ok(());
+                }
+                focused_idx - 1
+            }
+        };
+
+        let target = by_position[target_idx];
+
+        let vws = match VirtualWorkspace::from_hyprland_id(focused.active_workspace.id) {
+            Some(v) => v,
+            None => return Ok(()),
+        };
+
+        let ws_a = vws.hyprland_id(self.layout.slot_for(focused.id));
+        let ws_b = vws.hyprland_id(self.layout.slot_for(target.id));
+
+        let clients: Vec<_> = Clients::get_async().await?.into_iter().collect();
+        let clients_a: Vec<_> = clients.iter().filter(|c| c.workspace.id == ws_a).collect();
+        let clients_b: Vec<_> = clients.iter().filter(|c| c.workspace.id == ws_b).collect();
+
+        debug!(
+            "Swapping ws {ws_a} ({}, {} windows) <-> ws {ws_b} ({}, {} windows)",
+            focused.name,
+            clients_a.len(),
+            target.name,
+            clients_b.len(),
+        );
+
+        const BUFFER_WS: WorkspaceId = 999;
+
+        for client in &clients_a {
+            Dispatch::call_async(DispatchType::MoveToWorkspaceSilent(
+                WorkspaceIdentifierWithSpecial::Id(BUFFER_WS),
+                Some(WindowIdentifier::Address(client.address.clone())),
+            ))
+            .await?;
+        }
+        for client in &clients_b {
+            Dispatch::call_async(DispatchType::MoveToWorkspaceSilent(
+                WorkspaceIdentifierWithSpecial::Id(ws_a),
+                Some(WindowIdentifier::Address(client.address.clone())),
+            ))
+            .await?;
+        }
+        for client in &clients_a {
+            Dispatch::call_async(DispatchType::MoveToWorkspaceSilent(
+                WorkspaceIdentifierWithSpecial::Id(ws_b),
+                Some(WindowIdentifier::Address(client.address.clone())),
+            ))
+            .await?;
+        }
+
+        Ok(())
+    }
+
     pub async fn navigate(&self, direction: Direction) -> Result<()> {
         let monitors: Vec<_> = Monitors::get_async().await?.into_iter().collect();
 
-        let primary = monitors.iter().find(|m| self.slot_for(m.id) == 0);
+        let primary = monitors
+            .iter()
+            .find(|m| self.layout.slot_for(m.id) == MonitorSlot::new(0));
 
         let current_ws = match primary {
             Some(m) => m.active_workspace.id,
@@ -462,23 +723,22 @@ impl WorkspaceManager {
             }
         };
 
-        if Self::is_special_workspace(current_ws) {
-            warn!("Primary monitor on special workspace");
-            return Ok(());
-        }
-
-        let current_virtual = Self::virtual_from_workspace(current_ws);
-
-        let new_virtual = match direction {
-            Direction::Next => (current_virtual % 9) + 1,
-            Direction::Prev => ((current_virtual + 7) % 9) + 1,
+        let current = match VirtualWorkspace::from_hyprland_id(current_ws) {
+            Some(v) => v,
+            None => {
+                warn!("Primary monitor on special/orphan workspace");
+                return Ok(());
+            }
         };
 
-        debug!(
-            "Navigating {direction:?}: virtual {current_virtual} -> {new_virtual}"
-        );
+        let target = match direction {
+            Direction::Next => current.next(),
+            Direction::Prev => current.prev(),
+        };
 
-        self.switch_virtual(new_virtual).await
+        debug!("Navigating {direction:?}: virtual {current} -> {target}");
+
+        self.switch_virtual(target).await
     }
 
     pub async fn collapse(&self, mode: CollapseMode) -> Result<()> {
@@ -487,19 +747,16 @@ impl WorkspaceManager {
         let active_ws = Workspace::get_active_async().await?;
         let current_ws_id = active_ws.id;
 
-        if Self::is_special_workspace(current_ws_id) {
-            return Ok(());
-        }
+        let current_vws = match VirtualWorkspace::from_hyprland_id(current_ws_id) {
+            Some(v) => v,
+            None => return Ok(()),
+        };
 
-        let virtual_ws = Self::virtual_from_workspace(current_ws_id);
         let clients = Clients::get_async().await?;
         let monitors: Vec<_> = Monitors::get_async().await?.into_iter().collect();
         let num_monitors = monitors.len();
 
-        debug!(
-            "Collapsing {:?} to workspace {current_ws_id} (virtual {virtual_ws})",
-            mode
-        );
+        debug!("Collapsing {mode:?} to workspace {current_ws_id} (virtual {current_vws})");
 
         for client in clients.iter() {
             let client_ws_id = client.workspace.id;
@@ -510,14 +767,11 @@ impl WorkspaceManager {
 
             let should_move = match mode {
                 CollapseMode::All => {
-                    // Move all windows from same virtual workspace
-                    let client_virtual = Self::virtual_from_workspace(client_ws_id);
-                    client_virtual == virtual_ws && client_ws_id != current_ws_id
+                    VirtualWorkspace::from_hyprland_id(client_ws_id)
+                        .map(|v| v == current_vws && client_ws_id != current_ws_id)
+                        .unwrap_or(false)
                 }
-                CollapseMode::Invisible => {
-                    // Only move windows from orphan/invalid workspaces
-                    !Self::is_valid_workspace(client_ws_id, num_monitors)
-                }
+                CollapseMode::Invisible => !is_valid_workspace(client_ws_id, num_monitors),
             };
 
             if should_move {
@@ -548,14 +802,73 @@ mod tests {
     use super::*;
 
     #[test]
-    fn workspace_id_slot_mapping() {
+    fn virtual_workspace_validation() {
+        assert!(VirtualWorkspace::new(0).is_err());
+        assert!(VirtualWorkspace::new(10).is_err());
+        for n in 1..=9 {
+            assert_eq!(VirtualWorkspace::new(n).unwrap().number(), n);
+        }
+    }
+
+    #[test]
+    fn virtual_workspace_navigation() {
+        let ws = VirtualWorkspace::new(1).unwrap();
+        assert_eq!(ws.next().number(), 2);
+        assert_eq!(ws.prev().number(), 9);
+
+        let ws = VirtualWorkspace::new(9).unwrap();
+        assert_eq!(ws.next().number(), 1);
+        assert_eq!(ws.prev().number(), 8);
+
+        let ws = VirtualWorkspace::new(5).unwrap();
+        assert_eq!(ws.next().number(), 6);
+        assert_eq!(ws.prev().number(), 4);
+    }
+
+    #[test]
+    fn hyprland_id_mapping() {
+        let slot0 = MonitorSlot::new(0);
+        let slot1 = MonitorSlot::new(1);
+        let slot2 = MonitorSlot::new(2);
+
         // slot 0 -> workspaces 1-9
-        assert_eq!(WorkspaceManager::workspace_id(1, 0), 1);
-        assert_eq!(WorkspaceManager::workspace_id(9, 0), 9);
+        assert_eq!(VirtualWorkspace::new(1).unwrap().hyprland_id(slot0), 1);
+        assert_eq!(VirtualWorkspace::new(9).unwrap().hyprland_id(slot0), 9);
         // slot 1 -> workspaces 11-19
-        assert_eq!(WorkspaceManager::workspace_id(1, 1), 11);
-        assert_eq!(WorkspaceManager::workspace_id(4, 1), 14);
+        assert_eq!(VirtualWorkspace::new(1).unwrap().hyprland_id(slot1), 11);
+        assert_eq!(VirtualWorkspace::new(4).unwrap().hyprland_id(slot1), 14);
         // slot 2 -> workspaces 21-29
-        assert_eq!(WorkspaceManager::workspace_id(1, 2), 21);
+        assert_eq!(VirtualWorkspace::new(1).unwrap().hyprland_id(slot2), 21);
+    }
+
+    #[test]
+    fn from_hyprland_id() {
+        // Normal workspace IDs
+        assert_eq!(VirtualWorkspace::from_hyprland_id(1).unwrap().number(), 1);
+        assert_eq!(VirtualWorkspace::from_hyprland_id(9).unwrap().number(), 9);
+        assert_eq!(VirtualWorkspace::from_hyprland_id(14).unwrap().number(), 4);
+        assert_eq!(VirtualWorkspace::from_hyprland_id(23).unwrap().number(), 3);
+
+        // Special and orphan IDs
+        assert!(VirtualWorkspace::from_hyprland_id(-1).is_none());
+        assert!(VirtualWorkspace::from_hyprland_id(0).is_none());
+        assert!(VirtualWorkspace::from_hyprland_id(10).is_none());
+        assert!(VirtualWorkspace::from_hyprland_id(20).is_none());
+    }
+
+    #[test]
+    fn monitor_slot_from_hyprland_id() {
+        assert_eq!(MonitorSlot::from_hyprland_id(1).index(), 0);
+        assert_eq!(MonitorSlot::from_hyprland_id(9).index(), 0);
+        assert_eq!(MonitorSlot::from_hyprland_id(11).index(), 1);
+        assert_eq!(MonitorSlot::from_hyprland_id(14).index(), 1);
+        assert_eq!(MonitorSlot::from_hyprland_id(21).index(), 2);
+    }
+
+    #[test]
+    fn orphan_workspace_ids() {
+        assert_eq!(MonitorSlot::new(0).orphan_workspace_id(), 0);
+        assert_eq!(MonitorSlot::new(1).orphan_workspace_id(), 10);
+        assert_eq!(MonitorSlot::new(2).orphan_workspace_id(), 20);
     }
 }
