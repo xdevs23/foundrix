@@ -82,8 +82,10 @@
           owner = "sibradzic";
           repo = name;
           # chore: update amdgpu-clocks revision
-          rev = "60419dcda0987be3ae7afa37a5345c2399af420d";
-          hash = "sha256-Z97jwjRw7/jMembBaZJaAoE2S+xxK3FQ7hAT5dn12rU=";
+          # git ls-remote https://github.com/sibradzic/amdgpu-clocks.git HEAD
+          # nix-prefetch-url --unpack https://github.com/sibradzic/amdgpu-clocks/archive/<rev>.tar.gz | nix hash convert --hash-algo sha256 --to sri
+          rev = "906127368b371b0cd0fa1328ca4cb4c50dbf3b7a";
+          hash = "sha256-lvmWHexaGjTsGM5Ge2/vqcH7TlYoJVbtE5Ap4tL8vtI=";
         };
         installPhase = ''
           mkdir -p $out/bin

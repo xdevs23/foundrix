@@ -344,7 +344,7 @@
       show-all-traits = builtins.mapAttrs (
         _: nixos: showOutputs.show-all-traits { inherit (nixos) config options; }
       ) self.nixosConfigurations;
-      formatter = forAllSystems (system: nixpkgs.legacyPackages.${system}.nixfmt-rfc-style);
+      formatter = forAllSystems (system: nixpkgs.legacyPackages.${system}.nixfmt);
     }
   );
 }

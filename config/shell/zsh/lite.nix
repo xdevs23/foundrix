@@ -24,7 +24,8 @@
         src = builtins.fetchGit {
           url = "https://github.com/ohmyzsh/ohmyzsh";
           # chore: update oh-my-zsh hash to latest commit
-          rev = "eeaf9f89b0e8b10a02f16cb6cdd93779c28eb2ea";
+          # git ls-remote https://github.com/ohmyzsh/ohmyzsh.git HEAD
+          rev = "52d93f18d61f11db69b4591d7fc7bd5578954d30";
         };
       };
       oh-my-zsh-plugins = names: lib.lists.forEach names oh-my-zsh-plugin;

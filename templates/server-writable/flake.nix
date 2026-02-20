@@ -55,6 +55,6 @@
           platformModule = foundrix.nixosModules.hardware.platform.x86_64;
         };
       };
-      formatter = forAllSystems (system: nixpkgs.legacyPackages.${system}.nixfmt-rfc-style);
+      formatter = forAllSystems (system: nixpkgs.legacyPackages.${system}.nixfmt);
     };
 }

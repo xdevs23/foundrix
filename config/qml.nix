@@ -9,18 +9,22 @@
       };
       programs.vscode.profiles.default.extensions = pkgs.vscode-utils.extensionsFromVscodeMarketplace [
         # chore: update qt-qml extension
+        # check https://marketplace.visualstudio.com/items?itemName=TheQtCompany.qt-qml for latest version
+        # nix-prefetch-url "https://TheQtCompany.gallery.vsassets.io/_apis/public/gallery/publisher/TheQtCompany/extension/qt-qml/<version>/assetbyname/Microsoft.VisualStudio.Services.VSIXPackage" | nix hash convert --hash-algo sha256 --to sri
         {
           name = "qt-qml";
           publisher = "TheQtCompany";
-          version = "1.9.0";
-          sha256 = "sha256-cWS3xUAbPiH/Mqohs0reWNyfMLiSO7tXdIp7/GbTysw=";
+          version = "1.11.1";
+          sha256 = "sha256-lUXx2VAXK0Av4T3bRW7hXpP0u7zJbDvMbKkpPACT4WE=";
         }
         # chore: update qt-core extension
+        # check https://marketplace.visualstudio.com/items?itemName=TheQtCompany.qt-core for latest version
+        # nix-prefetch-url "https://TheQtCompany.gallery.vsassets.io/_apis/public/gallery/publisher/TheQtCompany/extension/qt-core/<version>/assetbyname/Microsoft.VisualStudio.Services.VSIXPackage" | nix hash convert --hash-algo sha256 --to sri
         {
           name = "qt-core";
           publisher = "TheQtCompany";
-          version = "1.9.0";
-          sha256 = "sha256-IpqsDfhx9UIA3jm/BkPW9mzMkr+muvvhak/wPZb8HQA=";
+          version = "1.11.1";
+          sha256 = "sha256-PQmNWezNYVGGNFAJrlMRhXHe3o0XV6LxE2omU1mqZM0=";
         }
       ];
     })

@@ -110,17 +110,19 @@ in
       rhUefiShim =
         let
           # chore: update shimSources
+          # browse https://kojipkgs.fedoraproject.org/packages/shim/ for latest version/build
+          # update URLs below, then: nix-prefetch-url <url> | nix hash convert --hash-algo sha256 --to sri
           shimSources =
             {
               "x86_64-linux" = {
-                url = "https://kojipkgs.fedoraproject.org/packages/shim/15.8/5/x86_64/shim-x64-15.8-5.x86_64.rpm";
-                sha256 = "sha256-JneTMBluKq+EFZ05yXUxDNCV5zw+skqCtcOpX2wNJ5E=";
+                url = "https://kojipkgs.fedoraproject.org/packages/shim/16.1/6/x86_64/shim-x64-16.1-6.x86_64.rpm";
+                sha256 = "sha256-pxYLRFhEHbDQPwZutICcZoCwdf65pIvwqBHBJcEo6zQ=";
                 shimFile = "shimx64.efi";
                 mmFile = "mmx64.efi";
               };
               "aarch64-linux" = {
-                url = "https://kojipkgs.fedoraproject.org/packages/shim/15.8/5/aarch64/shim-aa64-15.8-5.aarch64.rpm";
-                sha256 = "sha256-ygKJmwFx8F1gQMWHc32KeWISetubACGrD99/21y5BuE=";
+                url = "https://kojipkgs.fedoraproject.org/packages/shim/16.1/6/aarch64/shim-aa64-16.1-6.aarch64.rpm";
+                sha256 = "sha256-8OELVfGQd2MGWz+5ne/boF5W4kRBDznprFVp7YK4oPk=";
                 shimFile = "shimaa64.efi";
                 mmFile = "mmaa64.efi";
               };
