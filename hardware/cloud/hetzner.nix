@@ -1,4 +1,6 @@
 {
+  config,
+  lib,
   pkgs,
   modulesPath,
   foundrixModules,
@@ -41,4 +43,79 @@
       ''} %i";
     };
   };
+
+  # Use systemd-networkd instead of legacy dhcpcd
+  networking.useDHCP = false;
+  systemd.network.enable = true;
+  systemd.network.networks."10-wan" = {
+    matchConfig.Name = "en*";
+    networkConfig.DHCP = "ipv4";
+    linkConfig.RequiredForOnline = "routable";
+  };
+
+  # Hetzner doesn't use SLAAC — read IPv6 from metadata and configure statically
+  systemd.services.hetzner-ipv6 = {
+    description = "Configure IPv6 from Hetzner metadata";
+    after = [ "network-online.target" ];
+    wants = [ "network-online.target" ];
+    wantedBy = [ "multi-user.target" ];
+    serviceConfig = {
+      Type = "oneshot";
+      RemainAfterExit = true;
+      ExecStart = pkgs.writeShellScript "hetzner-ipv6" ''
+        metadata=$(${lib.getExe pkgs.curl} -sf http://169.254.169.254/hetzner/v1/metadata)
+
+        ipv6_subnet=$(echo "$metadata" | ${lib.getExe pkgs.yq} -r '.["network-config"].config[0].subnets[] | select(.ipv6 == true)')
+        addr=$(echo "$ipv6_subnet" | ${lib.getExe pkgs.yq} -r '.address')
+        gw=$(echo "$ipv6_subnet" | ${lib.getExe pkgs.yq} -r '.gateway')
+
+        if [ -z "$addr" ] || [ "$addr" = "null" ]; then
+          echo "No IPv6 address found in metadata" >&2
+          exit 1
+        fi
+
+        iface=$(${lib.getExe' pkgs.iproute2 "ip"} -o link show | ${lib.getExe pkgs.gawk} -F': ' '/state UP/ && /en/ {print $2; exit}')
+
+        echo "Configuring $addr on $iface (gateway $gw)"
+        ${lib.getExe' pkgs.iproute2 "ip"} -6 addr replace "$addr" dev "$iface"
+        ${lib.getExe' pkgs.iproute2 "ip"} -6 route replace default via "$gw" dev "$iface"
+      '';
+    };
+  };
+
+  # Override DHCP-provided DNS with configured nameservers
+  systemd.services.enforce-dns-config = {
+    description = "Enforce preferred DNS configuration";
+    requires = [ "systemd-resolved.service" ];
+    after = [
+      "systemd-resolved.service"
+      "network-online.target"
+    ];
+    wants = [ "network-online.target" ];
+    wantedBy = [ "multi-user.target" ];
+    serviceConfig = {
+      Type = "oneshot";
+      RemainAfterExit = true;
+      ExecStart = pkgs.writeShellScript "enforce-dns" ''
+        iface=$(${lib.getExe' pkgs.iproute2 "ip"} -o link show | ${lib.getExe pkgs.gawk} -F': ' '/state UP/ && /en/ {print $2; exit}')
+
+        if [ -z "$iface" ]; then
+          echo "No active en* interface found" >&2
+          exit 1
+        fi
+
+        echo "Setting DNS on interface: $iface"
+        ${pkgs.systemd}/bin/resolvectl dns "$iface" ${
+          lib.concatStringsSep " " (config.networking.nameservers ++ config.services.resolved.fallbackDns)
+        }
+        ${pkgs.systemd}/bin/resolvectl default-route "$iface" yes
+
+        echo "DNS configuration enforced: ${lib.concatStringsSep ", " config.networking.nameservers}"
+      '';
+    };
+  };
+
+  # systemd-repart re-reads the partition table, which causes udev to recreate
+  # /dev/disk/by-partuuid/* symlinks. Ensure /var waits for udev to settle.
+  fileSystems."/var".options = [ "x-systemd.after=initrd-parse-etc.service" ];
 }
