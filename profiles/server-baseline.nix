@@ -21,6 +21,11 @@
 
   users.mutableUsers = false;
 
+  system.nixos-init.enable = lib.mkDefault true;
+  boot.initrd.systemd.enable = lib.mkDefault true;
+  system.etc.overlay.enable = lib.mkDefault true;
+  services.userborn.enable = lib.mkDefault true;
+
   environment.systemPackages = with pkgs; [
     lsof
     file
