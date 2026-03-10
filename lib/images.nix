@@ -4,6 +4,7 @@
   customLib,
   foundrixModules,
   foundrix,
+  defaultSpecialArgs,
   ...
 }:
 let
@@ -26,7 +27,7 @@ let
       extraModules ? [ ],
     }:
     lib.nixosSystem {
-      specialArgs = foundrixModules.foundrixSpecialArgs // {
+      specialArgs = defaultSpecialArgs // {
         inherit targetConfig;
       };
       modules = [
@@ -50,7 +51,7 @@ let
       extraModules ? [ ],
     }:
     lib.nixosSystem {
-      specialArgs = foundrixModules.foundrixSpecialArgs // {
+      specialArgs = defaultSpecialArgs // {
         inherit targetConfig;
       };
       modules = [

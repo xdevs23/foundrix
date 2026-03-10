@@ -41,7 +41,7 @@
         import ./lib (
           defaultSpecialArgs
           // {
-            inherit lib;
+            inherit lib defaultSpecialArgs;
             pkgs = import nixpkgs { inherit system; };
           }
         );
