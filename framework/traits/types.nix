@@ -18,7 +18,12 @@
     updateMethod = {
       none = "none";
       systemd-sysupdate = "systemd-sysupdate";
-      # Future: could add other update mechanisms
+    };
+  };
+  system = {
+    purpose = {
+      installed = "installed";
+      live = "live";
     };
   };
 
@@ -41,6 +46,12 @@
       updateMethod = {
         none = "no system updates - static partition labels";
         systemd-sysupdate = "A/B updates with versioned partition labels";
+      };
+    };
+    system = {
+      purpose = {
+        installed = "permanently installed system with persistent storage";
+        live = "ephemeral live system - no runtime partitioning or persistent mounts";
       };
     };
   };

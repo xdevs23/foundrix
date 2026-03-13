@@ -6,5 +6,6 @@
     ./filesystem.nix
     ./home-manager.nix
     ./image.nix
+    ./system.nix
   ];
 }

@@ -1,9 +1,12 @@
 {
   lib,
   pkgs,
+  traitTypes,
   ...
 }:
 {
+  foundrix.traits.system.purpose = traitTypes.system.purpose.live;
+
   # Allow passwordless login for live environment
   users.allowNoPasswordLogin = true;
 

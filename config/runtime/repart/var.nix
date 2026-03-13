@@ -47,9 +47,14 @@ in
       cfg = namespacedCfg __curPos;
       varBlkDevPath = "/dev/disk/by-partuuid/${cfg.uuid}";
       varBlkDevUnit = "${utils.escapeSystemdPath varBlkDevPath}.device";
+      repartEnabled = config.systemd.repart.enable;
     in
     {
-      assertions = [
+      # Enable repart by default (can be overridden with mkForce)
+      systemd.repart.enable = lib.mkDefault true;
+      boot.initrd.systemd.repart.enable = lib.mkDefault true;
+
+      assertions = lib.mkIf repartEnabled [
         {
           assertion = deviceCfg.dataDevice != null;
           message = ''
@@ -60,20 +65,12 @@ in
         }
       ];
 
-      # Enable systemd in initrd (required for repart)
-      boot.initrd.systemd.enable = true;
+      boot.initrd.systemd.enable = lib.mkIf repartEnabled true;
+      boot.initrd.systemd.repart.device = lib.mkIf repartEnabled deviceCfg.dataDevice;
+      boot.initrd.systemd.repart.empty = lib.mkIf repartEnabled "allow";
 
-      # Configure initrd repart
-      boot.initrd.systemd.repart = {
-        enable = true;
-        device = deviceCfg.dataDevice;
-        empty = "allow"; # Create GPT on empty disk
-      };
-
-      # Define the /var partition
-      systemd.repart = {
-        enable = true;
-        partitions."50-var" = {
+      systemd.repart.partitions = lib.mkIf repartEnabled {
+        "50-var" = {
           Type = "var";
           Format = cfg.format;
           Label = "var";
@@ -85,8 +82,7 @@ in
         };
       };
 
-      # Default /var filesystem config pointing to the runtime partition
-      foundrix.config.filesystem.var = {
+      foundrix.config.filesystem.var = lib.mkIf repartEnabled {
         device = lib.mkDefault varBlkDevPath;
         fsOptions = lib.mkDefault (
           (lib.optionals (cfg.format == "btrfs") [ "subvol=var" ])
@@ -99,14 +95,12 @@ in
         );
       };
 
-      # systemd-tmpfiles-setup needs /var to be mounted
-      systemd.services.systemd-tmpfiles-setup = {
+      systemd.services.systemd-tmpfiles-setup = lib.mkIf repartEnabled {
         requires = [ "var.mount" ];
         after = [ "var.mount" ];
       };
 
-      # Btrfs-specific kernel params
-      boot.kernelParams = lib.mkIf (cfg.format == "btrfs") [
+      boot.kernelParams = lib.mkIf (repartEnabled && cfg.format == "btrfs") [
         "systemd.setenv=SYSTEMD_REPART_MKFS_OPTIONS_BTRFS=--nodiscard"
       ];
     };
