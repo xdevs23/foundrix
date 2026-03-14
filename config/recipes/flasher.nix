@@ -64,6 +64,7 @@ in
 
   # No boot menu needed for single-purpose live image
   foundrix.config.image.boot.systemd-boot.timeout = lib.mkForce 0;
+  foundrix.framework.repart-disk-image.seed = "24000000-0000-4000-9000-000000000000";
 
   environment.systemPackages = with pkgs; [
     util-linux

@@ -17,6 +17,11 @@
       default = config.boot.uki.name;
       description = "Name of the disk image, UKI name by default";
     };
+    seed = lib.mkOption {
+      type = lib.types.str;
+      default = "00000000-0000-0000-0000-000000000000";
+      description = "Seed UUID for deterministic partition/disk GUIDs";
+    };
     bootloader.extraConfig = lib.mkOption {
       type = with lib.types; listOf str;
       default = [ ];
@@ -45,7 +50,7 @@
     in
     {
       image.repart = {
-        inherit (cfg) name;
+        inherit (cfg) name seed;
         split = true;
       };
 
