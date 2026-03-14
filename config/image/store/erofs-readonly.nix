@@ -78,6 +78,8 @@ in
         device = lib.mkDefault "/dev/disk/by-partlabel/${storePartitionLabel}";
       };
 
+      foundrix.traits.filesystem.readOnlyStore = true;
+
       fileSystems."/nix/store".neededForBoot = lib.mkDefault true;
 
       boot.initrd.supportedFilesystems.erofs = true;

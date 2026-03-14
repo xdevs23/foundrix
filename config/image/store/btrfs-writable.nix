@@ -51,6 +51,8 @@ in
 
   fileSystems."/nix".neededForBoot = lib.mkDefault true;
 
+  environment.systemPackages = [ pkgs.btrfs-progs ];
+
   boot.initrd.supportedFilesystems.btrfs = true;
   boot.supportedFilesystems.btrfs = true;
 }

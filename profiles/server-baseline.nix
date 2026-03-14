@@ -19,6 +19,11 @@
   services.bpftune.enable = lib.mkDefault pkgs.stdenv.hostPlatform.isx86_64;
   services.timesyncd.enable = lib.mkDefault true;
 
+  nix.settings.trusted-users = [
+    "root"
+    "@wheel"
+  ];
+
   users.mutableUsers = false;
 
   system.nixos-init.enable = lib.mkDefault true;

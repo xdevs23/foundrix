@@ -12,6 +12,7 @@ let
   partitionIds = config.foundrix.config.image.partition-ids;
   updateMethod = config.foundrix.traits.image.updateMethod;
   hasVersionedUpdates = updateMethod == traitTypes.image.updateMethod.systemd-sysupdate;
+  readOnlyStore = config.foundrix.traits.filesystem.readOnlyStore;
 in
 {
   imports = [
@@ -60,6 +61,16 @@ in
           SplitName = "esp";
         };
       };
+
+      # On writable-store systems, nixos-rebuild installs a default nixos.efi
+      # that duplicates the foundrix UKI. Remove it after bootloader install,
+      # but only if nixos-rebuild has created its own kernel+initrd entries.
+      boot.loader.systemd-boot.extraInstallCommands = lib.mkIf (!readOnlyStore) ''
+        if [ -d /boot/EFI/nixos ] && [ "$(ls -A /boot/EFI/nixos/ 2>/dev/null)" ]; then
+          ${lib.getExe' pkgs.coreutils-full "rm"} -f /boot/EFI/Linux/nixos.efi
+          ${lib.getExe' pkgs.coreutils-full "rmdir"} /boot/EFI/Linux 2>/dev/null || true
+        fi
+      '';
 
       # Configure OTA artifact for UKI when A/B updates enabled
       foundrix.framework = lib.optionalAttrs hasVersionedUpdates {
