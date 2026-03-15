@@ -54,6 +54,7 @@ in
     foundrixModules.config.image.boot.systemd-boot
     foundrixModules.config.greetd-autostart
     foundrixModules.config.live
+    foundrixModules.config.repart-config
   ];
 
   # Configure greetd to auto-start the flash script
