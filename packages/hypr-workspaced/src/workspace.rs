@@ -466,7 +466,7 @@ impl WorkspaceManager {
         let slot_to_monitor = self.layout.slot_to_monitor_name(monitors);
 
         for ws in &workspaces {
-            if ws.id <= 0 {
+            if ws.id <= 0 || VirtualWorkspace::from_hyprland_id(ws.id).is_none() {
                 continue;
             }
 
@@ -531,10 +531,30 @@ impl WorkspaceManager {
             "Syncing monitors to virtual workspace {vws} (triggered by ws {trigger_workspace_id})"
         );
 
+        let workspaces: Vec<_> = Workspaces::get_async().await?.into_iter().collect();
+
         for monitor in &monitors {
             let target_wsid = vws.hyprland_id(self.layout.slot_for(monitor.id));
             if target_wsid == trigger_workspace_id || monitor.active_workspace.id == target_wsid {
                 continue;
+            }
+
+            // If the workspace is on the wrong monitor, move it there first
+            if let Some(ws) = workspaces.iter().find(|w| w.id == target_wsid) {
+                if ws.monitor != monitor.name {
+                    warn!(
+                        "Workspace {target_wsid} is on {} but belongs on {}, relocating",
+                        ws.monitor, monitor.name
+                    );
+                    if let Err(e) = Dispatch::call_async(DispatchType::MoveWorkspaceToMonitor(
+                        WorkspaceIdentifier::Id(target_wsid),
+                        MonitorIdentifier::Name(&monitor.name),
+                    ))
+                    .await
+                    {
+                        warn!("Failed to move workspace {target_wsid} to {}: {e}", monitor.name);
+                    }
+                }
             }
 
             debug!("Switching {} to workspace {target_wsid}", monitor.name);
