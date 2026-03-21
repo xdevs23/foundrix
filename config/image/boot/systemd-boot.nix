@@ -5,6 +5,7 @@
   namespaced,
   namespacedCfg,
   traitTypes,
+  foundrixModules,
   ...
 }:
 let
@@ -16,7 +17,8 @@ let
 in
 {
   imports = [
-    ../partition-ids.nix
+    foundrixModules.config.image.partition-ids
+    foundrixModules.config.filesystem.esp
   ];
 
   options = namespaced __curPos {
@@ -36,6 +38,7 @@ in
       boot.loader.systemd-boot.graceful = true;
       boot.loader.efi.canTouchEfiVariables = false;
       boot.loader.timeout = cfg.timeout;
+
 
       image.repart.partitions.${partitionIds.esp} = {
         contents = {

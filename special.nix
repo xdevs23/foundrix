@@ -59,6 +59,9 @@ rec {
       {
         users = lib.genAttrs users (username: cfg);
       };
+  installedOnly =
+    config: configAttrs:
+    lib.mkIf ((config.foundrix.traits.system.purpose or null) != "live") configAttrs;
   mkPerUserHomeManagerModule =
     curPos: config:
     {

@@ -21,6 +21,26 @@ let
   targetImageDrv = targetBuild.finalImage or targetBuild.image;
   targetImage = "${targetImageDrv}/${targetConfig.image.fileName}";
 
+  # Approximate flasher store size from target partition sizes + overhead
+  parseSizeGB =
+    str:
+    let
+      mG = builtins.match "([0-9]+)G" str;
+      mM = builtins.match "([0-9]+)M" str;
+    in
+    if mG != null then
+      lib.toInt (builtins.elemAt mG 0)
+    else if mM != null then
+      1
+    else
+      0;
+  targetSizeGB = lib.foldl' builtins.add 0 (
+    lib.mapAttrsToList (
+      _: p: parseSizeGB (p.repartConfig.SizeMinBytes or "0")
+    ) targetConfig.image.repart.partitions
+  );
+  defaultStoreSizeMin = "${toString (lib.max 6 (targetSizeGB + 2))}G";
+
   flasher-tui = pkgs.callPackage ../../packages/flasher-tui { };
 
   imageIsCompressed = lib.hasSuffix ".zst" targetConfig.image.fileName;
@@ -48,6 +68,12 @@ let
   '';
 in
 {
+  options.foundrix.config.recipes.flasher.storeSizeMin = lib.mkOption {
+    type = lib.types.str;
+    default = defaultStoreSizeMin;
+    description = "Minimum size for the flasher's store partition. Auto-calculated from target partition sizes + 2G overhead.";
+  };
+
   imports = [
     foundrixModules.profiles.minimal-image
     foundrixModules.config.image.store.erofs-readonly
@@ -57,58 +83,68 @@ in
     foundrixModules.config.repart-config
   ];
 
-  # Configure greetd to auto-start the flash script
-  foundrix.config.greetd-autostart = {
-    package = flashScript;
-    user = "root";
+  config = {
+    # Configure greetd to auto-start the flash script
+    foundrix.config.greetd-autostart = {
+      package = flashScript;
+      user = "root";
+    };
+
+    # No boot menu needed for single-purpose live image
+    foundrix.config.image.boot.systemd-boot.timeout = lib.mkForce 0;
+
+    # Suppress kernel console output to keep the flasher TUI clean
+    boot.kernelParams = [
+      "quiet"
+      "loglevel=0"
+      "rd.systemd.show_status=false"
+      "udev.log_priority=3"
+    ];
+    foundrix.framework.repart-disk-image.seed = "24000000-0000-4000-9000-000000000000";
+
+    environment.systemPackages = with pkgs; [
+      util-linux
+    ];
+
+    # The flasher bundles the target image in its nix store closure, so it
+    # needs a much larger store partition than a normal system
+    foundrix.config.image.store.erofs-readonly.sizeMin = config.foundrix.config.recipes.flasher.storeSizeMin;
+
+    # The flasher image is meant to be dd'd to USB — don't compress it
+    image.repart.compression.enable = lib.mkForce false;
+
+    # The flasher is a live image — override the target's filesystem layout
+    fileSystems = lib.mkForce {
+      "/" = {
+        fsType = "tmpfs";
+        options = [ "size=10%" "noatime" "mode=0755" ];
+      };
+      "/nix/store" = {
+        device = "/dev/disk/by-partlabel/store";
+        fsType = "erofs";
+        options = [ "noatime" ];
+        neededForBoot = true;
+      };
+      "/boot" = {
+        device = "/dev/disk/by-partuuid/${lib.toLower "C12A7328-F81F-11D2-BA4B-00A0C93EC93B"}";
+        fsType = "vfat";
+        options = [ "fmask=0077" "dmask=0077" "noatime" ];
+      };
+    };
+
+    systemd.repart.enable = lib.mkForce false;
+    boot.initrd.systemd.repart.enable = lib.mkForce false;
+
+    # Wipe all device-specific repart configs and their services
+    systemd.repartConfig = lib.mkForce { };
+
+    # Naming based on target
+    boot.uki.name = "${targetConfig.boot.uki.name}_flasher";
+    system.nixos.distroId = "${targetConfig.system.nixos.distroId}-flasher";
+    system.nixos.distroName = "${targetConfig.system.nixos.distroName} Flasher";
+
+    # Inherit version and state from target
+    system.stateVersion = targetConfig.system.stateVersion;
+    system.image = targetConfig.system.image;
   };
-
-  # No boot menu needed for single-purpose live image
-  foundrix.config.image.boot.systemd-boot.timeout = lib.mkForce 0;
-  foundrix.framework.repart-disk-image.seed = "24000000-0000-4000-9000-000000000000";
-
-  environment.systemPackages = with pkgs; [
-    util-linux
-  ];
-
-  # The flasher bundles the target image in its nix store closure, so it
-  # needs a much larger store partition than a normal system
-  foundrix.config.image.store.erofs-readonly.sizeMin = "12G";
-
-  # The flasher image is meant to be dd'd to USB — don't compress it
-  image.repart.compression.enable = lib.mkForce false;
-
-  # The flasher is a live image — override the target's filesystem layout
-  fileSystems = lib.mkForce {
-    "/" = {
-      fsType = "tmpfs";
-      options = [ "size=10%" "noatime" "mode=0755" ];
-    };
-    "/nix/store" = {
-      device = "/dev/disk/by-partlabel/store";
-      fsType = "erofs";
-      options = [ "noatime" ];
-      neededForBoot = true;
-    };
-    "/boot" = {
-      device = "/dev/disk/by-partuuid/${lib.toLower "C12A7328-F81F-11D2-BA4B-00A0C93EC93B"}";
-      fsType = "vfat";
-      options = [ "fmask=0077" "dmask=0077" "noatime" ];
-    };
-  };
-
-  systemd.repart.enable = lib.mkForce false;
-  boot.initrd.systemd.repart.enable = lib.mkForce false;
-
-  # Wipe all device-specific repart configs and their services
-  systemd.repartConfig = lib.mkForce { };
-
-  # Naming based on target
-  boot.uki.name = "${targetConfig.boot.uki.name}_flasher";
-  system.nixos.distroId = "${targetConfig.system.nixos.distroId}-flasher";
-  system.nixos.distroName = "${targetConfig.system.nixos.distroName} Flasher";
-
-  # Inherit version and state from target
-  system.stateVersion = targetConfig.system.stateVersion;
-  system.image = targetConfig.system.image;
 }

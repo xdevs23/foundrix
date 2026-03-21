@@ -74,30 +74,32 @@ fn discover_disks() -> Result<Vec<Disk>> {
     let mut disks = Vec::new();
 
     for line in stdout.lines() {
-        let fields: Vec<&str> = line.splitn(5, char::is_whitespace)
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .collect();
+        let parts: Vec<&str> = line.split_whitespace().collect();
 
-        if fields.len() < 3 {
+        if parts.len() < 3 {
             continue;
         }
 
-        let name = fields[0];
-        let size_bytes: u64 = match fields[1].parse() {
+        let name = parts[0];
+        let size_bytes: u64 = match parts[1].parse() {
             Ok(s) => s,
             Err(_) => continue,
         };
-        let disk_type = fields[2];
+        let disk_type = parts[2];
 
         if disk_type != "disk" {
             continue;
         }
 
-        let transport = fields.get(3).unwrap_or(&"").to_string();
-        let model = fields.get(4).unwrap_or(&"").to_string();
+        let transport = parts.get(3).unwrap_or(&"").to_string();
+        let model = if parts.len() > 4 {
+            parts[4..].join(" ")
+        } else {
+            String::new()
+        };
 
-        if transport == "usb" {
+        // Skip USB drives (we're booting from one) and virtual devices
+        if transport == "usb" || transport.is_empty() {
             continue;
         }
 
@@ -429,6 +431,7 @@ fn ui(frame: &mut Frame, app: &mut App) {
 fn drop_to_shell(terminal: &mut Terminal<CrosstermBackend<std::io::Stdout>>) -> Result<()> {
     terminal::disable_raw_mode()?;
     crossterm::execute!(std::io::stdout(), LeaveAlternateScreen)?;
+    restore_kernel_console(Some("7".to_string()));
 
     let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
     let status = Command::new(&shell)
@@ -439,6 +442,7 @@ fn drop_to_shell(terminal: &mut Terminal<CrosstermBackend<std::io::Stdout>>) -> 
         eprintln!("shell exited with {status}");
     }
 
+    suppress_kernel_console();
     crossterm::execute!(std::io::stdout(), EnterAlternateScreen)?;
     terminal::enable_raw_mode()?;
     terminal.clear()?;
@@ -560,9 +564,24 @@ fn run(terminal: &mut Terminal<CrosstermBackend<std::io::Stdout>>, app: &mut App
     }
 }
 
+fn suppress_kernel_console() -> Option<String> {
+    let prev = fs::read_to_string("/proc/sys/kernel/printk").ok()?;
+    // Set console loglevel to 1 (KERN_EMERG only)
+    fs::write("/proc/sys/kernel/printk", "1").ok()?;
+    Some(prev)
+}
+
+fn restore_kernel_console(prev: Option<String>) {
+    if let Some(prev) = prev {
+        let _ = fs::write("/proc/sys/kernel/printk", prev);
+    }
+}
+
 fn main() -> Result<()> {
     let cli = Cli::parse();
     let disks = discover_disks()?;
+
+    let prev_printk = suppress_kernel_console();
 
     terminal::enable_raw_mode().context("enabling raw mode")?;
     crossterm::execute!(std::io::stdout(), EnterAlternateScreen)?;
@@ -575,6 +594,8 @@ fn main() -> Result<()> {
 
     terminal::disable_raw_mode()?;
     crossterm::execute!(std::io::stdout(), LeaveAlternateScreen)?;
+
+    restore_kernel_console(prev_printk);
 
     result
 }
