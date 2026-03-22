@@ -105,7 +105,7 @@ def find_drop_handle_and_old_sets(
 
 
 def nft_update(nft: nftables.Nftables, elements: dict, config: dict) -> None:
-    """Atomically create new sets, insert rules, and remove old ones."""
+    """Atomically replace dynamic rules: delete old, create new in one batch."""
     table = config["table"]
     chain = config["chain"]
     iface = config["interfaceMatch"]
@@ -124,72 +124,52 @@ def nft_update(nft: nftables.Nftables, elements: dict, config: dict) -> None:
         new_v4 = f"allowed_dynamic_{proto}_ipv4_{h}"
         new_v6 = f"allowed_dynamic_{proto}_ipv6_{h}"
 
-        # Create sets and add elements in one atomic JSON command
-        cmds: list[dict] = [
-            {"add": {"set": {
-                "family": "inet", "table": table, "name": new_v4,
-                "type": ["ipv4_addr", "inet_service"], "flags": ["interval"],
-            }}},
-            {"add": {"set": {
-                "family": "inet", "table": table, "name": new_v6,
-                "type": ["ipv6_addr", "inet_service"], "flags": ["interval"],
-            }}},
-        ]
-        for ip, port in v4_elems:
-            cmds.append({"add": {"element": {
-                "family": "inet", "table": table, "name": new_v4,
-                "elem": [{"concat": [ip, port]}],
-            }}})
-        for ip, port in v6_elems:
-            cmds.append({"add": {"element": {
-                "family": "inet", "table": table, "name": new_v6,
-                "elem": [{"concat": [ip, port]}],
-            }}})
-
-        rc, _, error = nft.json_cmd({"nftables": cmds})
-        if rc != 0:
-            print(f"ERROR creating {proto} sets: {error}", file=sys.stderr)
-            continue
-        print(f"Created {proto} sets: {new_v4}, {new_v6}")
-
-        # Find drop rule handle and any old dynamic rules/sets
         drop_handle, old_handles, old_sets = find_drop_handle_and_old_sets(
             nft, table, chain, proto
         )
 
-        # Insert new rules before drop using text commands
-        # (the concat match syntax is much cleaner in text form)
+        # Build a single atomic batch: delete old rules/sets, create new sets,
+        # add elements, insert rules — all applied as one transaction.
+        stmts: list[str] = []
+
+        for handle in old_handles:
+            stmts.append(f"delete rule inet {table} {chain} handle {handle}")
+        for set_name in set(old_sets):
+            stmts.append(f"delete set inet {table} {set_name}")
+
+        stmts.append(
+            f"add set inet {table} {new_v4} "
+            f"{{ type ipv4_addr . inet_service ; flags interval ; }}"
+        )
+        stmts.append(
+            f"add set inet {table} {new_v6} "
+            f"{{ type ipv6_addr . inet_service ; flags interval ; }}"
+        )
+
+        if v4_elems:
+            elem_str = ", ".join(f"{ip} . {port}" for ip, port in v4_elems)
+            stmts.append(f"add element inet {table} {new_v4} {{ {elem_str} }}")
+        if v6_elems:
+            elem_str = ", ".join(f"{ip} . {port}" for ip, port in v6_elems)
+            stmts.append(f"add element inet {table} {new_v6} {{ {elem_str} }}")
+
         if drop_handle is not None:
             if v4_elems:
-                rc, _, error = nft.cmd(
+                stmts.append(
                     f"insert rule inet {table} {chain} position {drop_handle} "
-                    f'oifname {iface} ip daddr . {proto} dport @{new_v4} accept'
+                    f"oifname {iface} ip daddr . {proto} dport @{new_v4} accept"
                 )
-                if rc != 0:
-                    print(f"ERROR inserting {proto} v4 rule: {error}", file=sys.stderr)
             if v6_elems:
-                rc, _, error = nft.cmd(
+                stmts.append(
                     f"insert rule inet {table} {chain} position {drop_handle} "
-                    f'oifname {iface} ip6 daddr . {proto} dport @{new_v6} accept'
+                    f"oifname {iface} ip6 daddr . {proto} dport @{new_v6} accept"
                 )
-                if rc != 0:
-                    print(f"ERROR inserting {proto} v6 rule: {error}", file=sys.stderr)
 
-        # Filter out handles/sets that reference our NEW sets (don't delete those)
-        old_handles_filtered = []
-        for h_idx, handle in enumerate(old_handles):
-            # old_sets has corresponding entries — check if they reference new sets
-            related_sets = [s for s in old_sets if s in (new_v4, new_v6)]
-            if not related_sets:
-                old_handles_filtered.append(handle)
-
-        # Delete old rules by handle, then old sets
-        for handle in old_handles_filtered:
-            nft.cmd(f"delete rule inet {table} {chain} handle {handle}")
-
-        for set_name in set(old_sets):
-            if set_name not in (new_v4, new_v6):
-                nft.cmd(f"delete set inet {table} {set_name}")
+        batch = "\n".join(stmts)
+        rc, _, error = nft.cmd(batch)
+        if rc != 0:
+            print(f"ERROR in atomic {proto} update: {error}", file=sys.stderr)
+            continue
 
         print(f"{proto}: {len(v4_elems)} v4, {len(v6_elems)} v6 elements")
 
