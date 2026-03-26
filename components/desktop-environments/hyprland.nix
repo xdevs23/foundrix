@@ -214,6 +214,7 @@
                 playerctl = lib.getExe pkgs.playerctl;
                 wpctl = lib.getExe' pkgs.wireplumber "wpctl";
                 awk = lib.getExe pkgs.gawk;
+                uwsmApp = cmd: "uwsm app -- ${cmd}";
               in
               {
                 env = [
@@ -229,9 +230,9 @@
                   "${wlPaste} --type text --watch ${cliphist} store -max-dedupe-search 40 -max-items 100"
                   # For images
                   "${wlPaste} --type image --watch ${cliphist} store -max-items 100"
-                  polkitAuthAgentScript
+                  (uwsmApp polkitAuthAgentScript)
                 ]
-                ++ cfg.execOnce;
+                ++ map uwsmApp cfg.execOnce;
 
                 input = {
                   kb_layout = builtins.head (lib.strings.splitString "-" config.foundrix.general.keymap);
@@ -358,9 +359,9 @@
                   "$mainMod, F, fullscreen, 0"
                   "$mainMod SHIFT, Q, exec, hyprctl kill"
                   "$mainMod, J, togglesplit,"
-                  "$mainMod, B, exec, ${lib.getExe cfg.browser}"
-                  "$mainMod, E, exec, ${lib.getExe cfg.fileManager}"
-                  "$mainMod, T, exec, ${lib.getExe cfg.terminal}"
+                  "$mainMod, B, exec, ${uwsmApp (lib.getExe cfg.browser)}"
+                  "$mainMod, E, exec, ${uwsmApp (lib.getExe cfg.fileManager)}"
+                  "$mainMod, T, exec, ${uwsmApp (lib.getExe cfg.terminal)}"
                   "$mainMod, left, movefocus, l"
                   "$mainMod, right, movefocus, r"
                   "$mainMod, up, movefocus, u"
