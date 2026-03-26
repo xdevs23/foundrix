@@ -10,6 +10,7 @@
   namespacedCfg,
   foundrixModules,
   foundrixIgnoreMissingInputs,
+  usersOrAll,
   ...
 }:
 {
@@ -130,23 +131,25 @@
               portalPackage = inputs.hyprland.packages.${system}.xdg-desktop-portal-hyprland;
               xwayland.enable = true;
             };
+          uwsm = {
+            enable = true;
+            waylandCompositors.hyprland = {
+              prettyName = "Hyprland";
+              comment = "Hyprland compositor managed by UWSM";
+              binPath = lib.getExe' inputs.hyprland.packages.${pkgs.stdenv.targetPlatform.system}.hyprland "start-hyprland";
+              extraArgs = [ "--no-nixgl" ];
+            };
+          };
         };
-        systemd.services.greetd.serviceConfig = {
-          Type = "idle";
-          StandardInput = "tty";
-          StandardOutput = "tty";
-          StandardError = "journal";
-          TTYReset = true;
-          TTYVHangup = true;
-          TTYVTDisallocate = true;
-        };
+        environment.systemPackages = [ pkgs.uwsm ];
         services.greetd = {
           enable = true;
-          settings = {
-            default_session = {
-              command = "${lib.getExe pkgs.tuigreet} --time --remember --cmd ${lib.getExe' config.programs.hyprland.package "Hyprland"}";
-              user = "greeter";
+          settings = rec {
+            initial_session = {
+              command = "${lib.getExe pkgs.uwsm} start hyprland-uwsm.desktop";
+              user = builtins.head (usersOrAll cfg.users);
             };
+            default_session = initial_session;
           };
         };
         home-manager = applyHomeManagerUsers cfg.users {
@@ -191,6 +194,7 @@
             enable = true;
             package = config.programs.hyprland.package;
             portalPackage = config.programs.hyprland.portalPackage;
+            systemd.enable = false; # Conflicts with UWSM
             extraConfig = cfg.extraConfig;
             settings =
               let
