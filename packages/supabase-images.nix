@@ -1,5 +1,10 @@
 # Docker images for Supabase services
 # All images are prefetched by Nix for reproducibility
+#
+# chore: update supabase docker images
+# check https://github.com/supabase/supabase/blob/master/docker/docker-compose.yml for latest tags
+# for each image, prefetch with:
+#   nix run nixpkgs#nix-prefetch-docker -- --image-name <name> --image-tag <tag>
 { pkgs, ... }:
 let
   pullImage = pkgs.dockerTools.pullImage;
