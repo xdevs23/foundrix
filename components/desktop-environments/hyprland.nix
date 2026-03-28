@@ -136,7 +136,9 @@
             waylandCompositors.hyprland = {
               prettyName = "Hyprland";
               comment = "Hyprland compositor managed by UWSM";
-              binPath = lib.getExe' inputs.hyprland.packages.${pkgs.stdenv.targetPlatform.system}.hyprland "start-hyprland";
+              binPath =
+                lib.getExe' inputs.hyprland.packages.${pkgs.stdenv.targetPlatform.system}.hyprland
+                  "start-hyprland";
               extraArgs = [ "--no-nixgl" ];
             };
           };
@@ -144,12 +146,11 @@
         environment.systemPackages = [ pkgs.uwsm ];
         services.greetd = {
           enable = true;
-          settings = rec {
-            initial_session = {
-              command = "${lib.getExe pkgs.uwsm} start hyprland-uwsm.desktop";
-              user = builtins.head (usersOrAll cfg.users);
+          settings = {
+            default_session = {
+              command = "${lib.getExe pkgs.tuigreet} --time --remember --cmd '${lib.getExe pkgs.uwsm} start hyprland-uwsm.desktop'";
+              user = "greeter";
             };
-            default_session = initial_session;
           };
         };
         home-manager = applyHomeManagerUsers cfg.users {
@@ -218,6 +219,7 @@
               in
               {
                 env = [
+                  "XDG_CURRENT_DESKTOP,Hyprland"
                   "XCURSOR_SIZE,24"
                   "HYPRCURSOR_SIZE,24"
                   "HYPRCURSOR_THEME,rose-pine-hyprcursor"

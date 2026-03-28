@@ -24,7 +24,10 @@ let
         example = [ 443 ];
       };
       protocol = lib.mkOption {
-        type = lib.types.enum [ "tcp" "udp" ];
+        type = lib.types.enum [
+          "tcp"
+          "udp"
+        ];
         default = "tcp";
         description = "Transport protocol";
       };
@@ -33,12 +36,14 @@ let
 
   dynamicConnections = builtins.filter (c: c.host != "*") cfg.allowedConnections;
 
-  configJson = pkgs.writeText "nftables-dns-config.json" (builtins.toJSON {
-    connections = map (c: {
-      inherit (c) host ports protocol;
-    }) dynamicConnections;
-    inherit (cfg) table chain interfaceMatch;
-  });
+  configJson = pkgs.writeText "nftables-dns-config.json" (
+    builtins.toJSON {
+      connections = map (c: {
+        inherit (c) host ports protocol;
+      }) dynamicConnections;
+      inherit (cfg) table chain interfaceMatch;
+    }
+  );
 
 in
 {
@@ -47,7 +52,10 @@ in
 
     dnsServers = lib.mkOption {
       type = lib.types.listOf lib.types.str;
-      default = [ "1.1.1.1" "2606:4700:4700::1111" ];
+      default = [
+        "1.1.1.1"
+        "2606:4700:4700::1111"
+      ];
       description = "DNS servers to try for resolution (tried in order, first success wins)";
     };
 
@@ -59,9 +67,19 @@ in
         static port-based rules that don't require DNS resolution.
       '';
       example = [
-        { host = "acme.zerossl.com"; ports = [ 443 ]; }
-        { host = "dns.quad9.net"; ports = [ 53 ]; protocol = "udp"; }
-        { host = "*"; ports = [ 25 ]; }
+        {
+          host = "acme.zerossl.com";
+          ports = [ 443 ];
+        }
+        {
+          host = "dns.quad9.net";
+          ports = [ 53 ];
+          protocol = "udp";
+        }
+        {
+          host = "*";
+          ports = [ 25 ];
+        }
       ];
     };
 
@@ -108,7 +126,9 @@ in
       wantedBy = [ "multi-user.target" ];
       serviceConfig = {
         Type = "oneshot";
-        ExecStart = "${lib.getExe (pkgs.python3.withPackages (ps: [ ps.nftables ]))} ${./nftables-dns-update.py} ${configJson}";
+        ExecStart = "${
+          lib.getExe (pkgs.python3.withPackages (ps: [ ps.nftables ]))
+        } ${./nftables-dns-update.py} ${configJson}";
       };
     };
 

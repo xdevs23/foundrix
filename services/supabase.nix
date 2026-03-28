@@ -31,8 +31,9 @@ let
     "pg-meta-crypto-key"
   ];
 
-  secretServiceUnits = map (name: "generate-secret-supabase-${name}.service") secretNames
-    ++ [ "supabase-generate-service-role-key.service" ];
+  secretServiceUnits = map (name: "generate-secret-supabase-${name}.service") secretNames ++ [
+    "supabase-generate-service-role-key.service"
+  ];
 
   # ── JWT generation ──────────────────────────────────────────────────
 
@@ -156,7 +157,14 @@ let
       interval ? "5s",
       retries ? 3,
     }:
-    { inherit test timeout interval retries; };
+    {
+      inherit
+        test
+        timeout
+        interval
+        retries
+        ;
+    };
 
   wgetHealth =
     url:
@@ -206,292 +214,290 @@ let
   dockerComposeConfig = {
     name = "supabase";
 
-    services =
-      {
-        db = baseService images.postgres // {
-          container_name = "supabase-db";
-          ports = [ "127.0.0.1:${pg.port}:${pg.port}" ];
-          volumes = [ "${cfg.stateDir}/db/data:/var/lib/postgresql/data" ] ++ initVolumes;
-          healthcheck = healthcheck {
-            test = [
-              "CMD"
-              "pg_isready"
-              "-U"
-              "postgres"
-              "-h"
-              "localhost"
-            ];
-            interval = "5s";
-            retries = 10;
-          };
-          environment = {
-            POSTGRES_HOST = "/var/run/postgresql";
-            PGPORT = pg.port;
-            POSTGRES_PORT = pg.port;
-            POSTGRES_PASSWORD = env "POSTGRES_PASSWORD";
-            POSTGRES_DB = pg.db;
-            JWT_SECRET = env "JWT_SECRET";
-            JWT_EXP = toString cfg.auth.jwtExpiry;
-          };
-          command =
-            [
-              "postgres"
-              "-c"
-              "config_file=/etc/postgresql/postgresql.conf"
-              "-c"
-              "log_min_messages=fatal"
-            ]
-            ++ lib.flatten (
-              lib.mapAttrsToList (n: v: [
-                "-c"
-                "${n}='${v}'"
-              ]) cfg.postgres.appSettings
-            );
-        };
-
-        kong = baseService images.kong // {
-          container_name = "supabase-kong";
-          ports = [
-            "${toString cfg.kong.httpPort}:8000/tcp"
-            "${toString cfg.kong.httpsPort}:8443/tcp"
+    services = {
+      db = baseService images.postgres // {
+        container_name = "supabase-db";
+        ports = [ "127.0.0.1:${pg.port}:${pg.port}" ];
+        volumes = [ "${cfg.stateDir}/db/data:/var/lib/postgresql/data" ] ++ initVolumes;
+        healthcheck = healthcheck {
+          test = [
+            "CMD"
+            "pg_isready"
+            "-U"
+            "postgres"
+            "-h"
+            "localhost"
           ];
-          volumes = [ "${secretsPrefix}-kong.yml:/home/kong/kong.yml:ro" ];
-          environment = {
-            KONG_DATABASE = "off";
-            KONG_DECLARATIVE_CONFIG = "/home/kong/kong.yml";
-            KONG_DNS_ORDER = "LAST,A,CNAME";
-            KONG_PLUGINS = "request-transformer,cors,key-auth,acl,basic-auth,request-termination,ip-restriction";
-            KONG_NGINX_PROXY_PROXY_BUFFER_SIZE = "160k";
-            KONG_NGINX_PROXY_PROXY_BUFFERS = "64 160k";
-            KONG_UPSTREAM_KEEPALIVE_POOL_SIZE = "60";
-            KONG_UPSTREAM_KEEPALIVE_MAX_REQUESTS = "100";
-            KONG_NGINX_PROXY_PROXY_READ_TIMEOUT = "30s";
-            KONG_NGINX_PROXY_PROXY_SEND_TIMEOUT = "30s";
-            SUPABASE_ANON_KEY = env "ANON_KEY";
-            SUPABASE_SERVICE_KEY = env "SERVICE_ROLE_KEY";
-            DASHBOARD_USERNAME = cfg.dashboardUsername;
-            DASHBOARD_PASSWORD = env "DASHBOARD_PASSWORD";
-          };
+          interval = "5s";
+          retries = 10;
         };
-
-        auth = baseService images.auth // {
-          container_name = "supabase-auth";
-          healthcheck = wgetHealth "http://localhost:9999/health";
-          environment = {
-            GOTRUE_API_HOST = "0.0.0.0";
-            GOTRUE_API_PORT = "9999";
-            API_EXTERNAL_URL = apiExternalUrl;
-            GOTRUE_DB_DRIVER = "postgres";
-            GOTRUE_DB_DATABASE_URL = dbUrl "supabase_auth_admin";
-            GOTRUE_SITE_URL = cfg.siteUrl;
-            GOTRUE_URI_ALLOW_LIST = lib.concatStringsSep "," cfg.auth.additionalRedirectUrls;
-            GOTRUE_DISABLE_SIGNUP = lib.boolToString (!cfg.auth.enableSignup);
-            GOTRUE_JWT_ADMIN_ROLES = "service_role";
-            GOTRUE_JWT_AUD = "authenticated";
-            GOTRUE_JWT_DEFAULT_GROUP_NAME = "authenticated";
-            GOTRUE_JWT_EXP = toString cfg.auth.jwtExpiry;
-            GOTRUE_JWT_SECRET = env "JWT_SECRET";
-            GOTRUE_EXTERNAL_EMAIL_ENABLED = "true";
-            GOTRUE_EXTERNAL_ANONYMOUS_USERS_ENABLED = lib.boolToString cfg.auth.enableAnonymousUsers;
-            GOTRUE_MAILER_AUTOCONFIRM = lib.boolToString cfg.auth.enableEmailAutoconfirm;
-            GOTRUE_MAILER_OTP_EXP = toString cfg.auth.otpExpiry;
-            GOTRUE_MAILER_EXTERNAL_HOSTS = cfg.domain;
-            GOTRUE_RATE_LIMIT_EMAIL_SENT = toString cfg.auth.rateLimitEmailSent;
-            GOTRUE_MAILER_URLPATHS_CONFIRMATION = cfg.auth.mailerUrlPaths.confirmation;
-            GOTRUE_MAILER_URLPATHS_INVITE = cfg.auth.mailerUrlPaths.invite;
-            GOTRUE_MAILER_URLPATHS_RECOVERY = cfg.auth.mailerUrlPaths.recovery;
-            GOTRUE_MAILER_URLPATHS_EMAIL_CHANGE = cfg.auth.mailerUrlPaths.emailChange;
-            GOTRUE_EXTERNAL_PHONE_ENABLED = "false";
-            GOTRUE_SMS_AUTOCONFIRM = "false";
-          } // lib.optionalAttrs (cfg.smtpConfigFile != null) {
-            GOTRUE_SMTP_ADMIN_EMAIL = env "SMTP_ADMIN_EMAIL";
-            GOTRUE_SMTP_HOST = env "SMTP_HOST";
-            GOTRUE_SMTP_PORT = env "SMTP_PORT";
-            GOTRUE_SMTP_USER = env "SMTP_USER";
-            GOTRUE_SMTP_PASS = env "SMTP_PASSWORD";
-            GOTRUE_SMTP_SENDER_NAME = env "SMTP_SENDER_NAME";
-          };
+        environment = {
+          POSTGRES_HOST = "/var/run/postgresql";
+          PGPORT = pg.port;
+          POSTGRES_PORT = pg.port;
+          POSTGRES_PASSWORD = env "POSTGRES_PASSWORD";
+          POSTGRES_DB = pg.db;
+          JWT_SECRET = env "JWT_SECRET";
+          JWT_EXP = toString cfg.auth.jwtExpiry;
         };
-
-        rest = baseService images.rest // {
-          container_name = "supabase-rest";
-          command = [ "postgrest" ];
-          environment = {
-            PGRST_DB_URI = dbUrl "authenticator";
-            PGRST_DB_SCHEMAS = lib.concatStringsSep "," cfg.rest.dbSchemas;
-            PGRST_DB_ANON_ROLE = "anon";
-            PGRST_JWT_SECRET = env "JWT_SECRET";
-            PGRST_DB_USE_LEGACY_GUCS = "false";
-            PGRST_APP_SETTINGS_JWT_SECRET = env "JWT_SECRET";
-            PGRST_APP_SETTINGS_JWT_EXP = toString cfg.auth.jwtExpiry;
-          };
-        };
-
-        realtime = baseService images.realtime // {
-          container_name = "realtime-dev.supabase-realtime";
-          healthcheck = healthcheck {
-            test = [
-              "CMD-SHELL"
-              "curl -sSfL --head -o /dev/null -H \"Authorization: Bearer ${env "ANON_KEY"}\" http://localhost:4000/api/tenants/realtime-dev/health"
-            ];
-          };
-          environment = {
-            PORT = "4000";
-            DB_HOST = pg.host;
-            DB_PORT = pg.port;
-            DB_USER = "supabase_admin";
-            DB_PASSWORD = env "POSTGRES_PASSWORD";
-            DB_NAME = pg.db;
-            DB_AFTER_CONNECT_QUERY = "SET search_path TO _realtime";
-            DB_ENC_KEY = "supabaserealtime";
-            API_JWT_SECRET = env "JWT_SECRET";
-            SECRET_KEY_BASE = env "SECRET_KEY_BASE";
-            ERL_AFLAGS = "-proto_dist inet_tcp";
-            DNS_NODES = "''";
-            RLIMIT_NOFILE = "10000";
-            APP_NAME = "realtime";
-            SEED_SELF_HOST = "true";
-            RUN_JANITOR = "true";
-          };
-        };
-
-        storage = baseService images.storage // {
-          container_name = "supabase-storage";
-          volumes = [ "${cfg.stateDir}/storage:/var/lib/storage" ];
-          healthcheck = wgetHealth "http://storage:5000/status";
-          depends_on = {
-            rest.condition = "service_started";
-            imgproxy.condition = "service_started";
-          };
-          environment =
-            {
-              ANON_KEY = env "ANON_KEY";
-              SERVICE_KEY = env "SERVICE_ROLE_KEY";
-              POSTGREST_URL = "http://rest:3000";
-              PGRST_JWT_SECRET = env "JWT_SECRET";
-              DATABASE_URL = dbUrl "supabase_storage_admin";
-              FILE_SIZE_LIMIT = cfg.storage.fileSizeLimit;
-              STORAGE_BACKEND = cfg.storage.backend;
-              TENANT_ID = cfg.storage.tenantId;
-              REQUEST_ALLOW_X_FORWARDED_PATH = "true";
-              ENABLE_IMAGE_TRANSFORMATION = "true";
-              IMGPROXY_URL = "http://imgproxy:5001";
-            }
-            // (
-              if cfg.storage.backend == "file" then
-                { FILE_STORAGE_BACKEND_PATH = "/var/lib/storage"; }
-              else
-                {
-                  REGION = cfg.storage.s3.region;
-                  GLOBAL_S3_BUCKET = cfg.storage.s3.bucket;
-                  AWS_ACCESS_KEY_ID = env "AWS_ACCESS_KEY_ID";
-                  AWS_SECRET_ACCESS_KEY = env "AWS_SECRET_ACCESS_KEY";
-                }
-                // lib.optionalAttrs (cfg.storage.s3.endpoint != "") {
-                  GLOBAL_S3_ENDPOINT = cfg.storage.s3.endpoint;
-                }
-                // lib.optionalAttrs cfg.storage.s3.forcePathStyle {
-                  GLOBAL_S3_FORCE_PATH_STYLE = "true";
-                }
-            );
-        };
-
-        imgproxy = (removeAttrs (baseService images.imgproxy) [ "extra_hosts" ]) // {
-          container_name = "supabase-imgproxy";
-          volumes = [ "${cfg.stateDir}/storage:/var/lib/storage" ];
-          healthcheck = healthcheck {
-            test = [
-              "CMD"
-              "imgproxy"
-              "health"
-            ];
-          };
-          environment = {
-            IMGPROXY_BIND = ":5001";
-            IMGPROXY_LOCAL_FILESYSTEM_ROOT = "/";
-            IMGPROXY_USE_ETAG = "true";
-            IMGPROXY_ENABLE_WEBP_DETECTION = "true";
-          };
-        };
-
-        meta = baseService images.meta // {
-          container_name = "supabase-meta";
-          environment = {
-            PG_META_PORT = "8080";
-            PG_META_DB_HOST = pg.host;
-            PG_META_DB_PORT = pg.port;
-            PG_META_DB_NAME = pg.db;
-            PG_META_DB_USER = "supabase_admin";
-            PG_META_DB_PASSWORD = env "POSTGRES_PASSWORD";
-            CRYPTO_KEY = env "PG_META_CRYPTO_KEY";
-          };
-        };
-
-        supavisor = baseService images.supavisor // {
-          container_name = "supabase-pooler";
-          ports = [ "6543:6543" ];
-          volumes = [ "${secretsPrefix}-pooler.exs:/etc/pooler/pooler.exs:ro" ];
-          healthcheck = curlHealth "http://127.0.0.1:4000/api/health" // {
-            interval = "10s";
-            retries = 5;
-          };
-          command = [
-            "/bin/sh"
+        command = [
+          "postgres"
+          "-c"
+          "config_file=/etc/postgresql/postgresql.conf"
+          "-c"
+          "log_min_messages=fatal"
+        ]
+        ++ lib.flatten (
+          lib.mapAttrsToList (n: v: [
             "-c"
-            "/app/bin/migrate && /app/bin/supavisor eval \"$(cat /etc/pooler/pooler.exs)\" && /app/bin/server"
-          ];
-          environment = {
-            PORT = "4000";
-            POSTGRES_PORT = pg.port;
-            POSTGRES_DB = pg.db;
-            POSTGRES_PASSWORD = env "POSTGRES_PASSWORD";
-            DATABASE_URL = "ecto://supabase_admin:${env "POSTGRES_PASSWORD"}@${pg.host}:${pg.port}/_supabase";
-            CLUSTER_POSTGRES = "true";
-            SECRET_KEY_BASE = env "SECRET_KEY_BASE";
-            VAULT_ENC_KEY = env "VAULT_ENC_KEY";
-            API_JWT_SECRET = env "JWT_SECRET";
-            METRICS_JWT_SECRET = env "JWT_SECRET";
-            REGION = "local";
-            ERL_AFLAGS = "-proto_dist inet_tcp";
-            POOLER_TENANT_ID = cfg.storage.tenantId;
-            POOLER_DEFAULT_POOL_SIZE = toString cfg.pooler.defaultPoolSize;
-            POOLER_MAX_CLIENT_CONN = toString cfg.pooler.maxClientConn;
-            POOLER_POOL_MODE = "transaction";
-          };
-        };
-      }
-      // lib.optionalAttrs cfg.studio.enable {
-        studio = baseService images.studio // {
-          container_name = "supabase-studio";
-          ports = [ "127.0.0.1:3000:3000" ];
-          healthcheck = healthcheck {
-            test = [
-              "CMD"
-              "node"
-              "-e"
-              "fetch('http://studio:3000/api/platform/profile').then((r) => {if (r.status !== 200) throw new Error(r.status)})"
-            ];
-            timeout = "10s";
-          };
-          environment = {
-            HOSTNAME = "::";
-            STUDIO_PG_META_URL = "http://meta:8080";
-            POSTGRES_PORT = pg.port;
-            POSTGRES_HOST = pg.host;
-            POSTGRES_DB = pg.db;
-            POSTGRES_PASSWORD = env "POSTGRES_PASSWORD";
-            PG_META_CRYPTO_KEY = env "PG_META_CRYPTO_KEY";
-            DEFAULT_ORGANIZATION_NAME = "Default Organization";
-            DEFAULT_PROJECT_NAME = "Default Project";
-            SUPABASE_URL = "http://kong:8000";
-            SUPABASE_PUBLIC_URL = apiExternalUrl;
-            SUPABASE_ANON_KEY = env "ANON_KEY";
-            SUPABASE_SERVICE_KEY = env "SERVICE_ROLE_KEY";
-            AUTH_JWT_SECRET = env "JWT_SECRET";
-            NEXT_PUBLIC_ENABLE_LOGS = "false";
-          };
+            "${n}='${v}'"
+          ]) cfg.postgres.appSettings
+        );
+      };
+
+      kong = baseService images.kong // {
+        container_name = "supabase-kong";
+        ports = [
+          "${toString cfg.kong.httpPort}:8000/tcp"
+          "${toString cfg.kong.httpsPort}:8443/tcp"
+        ];
+        volumes = [ "${secretsPrefix}-kong.yml:/home/kong/kong.yml:ro" ];
+        environment = {
+          KONG_DATABASE = "off";
+          KONG_DECLARATIVE_CONFIG = "/home/kong/kong.yml";
+          KONG_DNS_ORDER = "LAST,A,CNAME";
+          KONG_PLUGINS = "request-transformer,cors,key-auth,acl,basic-auth,request-termination,ip-restriction";
+          KONG_NGINX_PROXY_PROXY_BUFFER_SIZE = "160k";
+          KONG_NGINX_PROXY_PROXY_BUFFERS = "64 160k";
+          KONG_UPSTREAM_KEEPALIVE_POOL_SIZE = "60";
+          KONG_UPSTREAM_KEEPALIVE_MAX_REQUESTS = "100";
+          KONG_NGINX_PROXY_PROXY_READ_TIMEOUT = "30s";
+          KONG_NGINX_PROXY_PROXY_SEND_TIMEOUT = "30s";
+          SUPABASE_ANON_KEY = env "ANON_KEY";
+          SUPABASE_SERVICE_KEY = env "SERVICE_ROLE_KEY";
+          DASHBOARD_USERNAME = cfg.dashboardUsername;
+          DASHBOARD_PASSWORD = env "DASHBOARD_PASSWORD";
         };
       };
+
+      auth = baseService images.auth // {
+        container_name = "supabase-auth";
+        healthcheck = wgetHealth "http://localhost:9999/health";
+        environment = {
+          GOTRUE_API_HOST = "0.0.0.0";
+          GOTRUE_API_PORT = "9999";
+          API_EXTERNAL_URL = apiExternalUrl;
+          GOTRUE_DB_DRIVER = "postgres";
+          GOTRUE_DB_DATABASE_URL = dbUrl "supabase_auth_admin";
+          GOTRUE_SITE_URL = cfg.siteUrl;
+          GOTRUE_URI_ALLOW_LIST = lib.concatStringsSep "," cfg.auth.additionalRedirectUrls;
+          GOTRUE_DISABLE_SIGNUP = lib.boolToString (!cfg.auth.enableSignup);
+          GOTRUE_JWT_ADMIN_ROLES = "service_role";
+          GOTRUE_JWT_AUD = "authenticated";
+          GOTRUE_JWT_DEFAULT_GROUP_NAME = "authenticated";
+          GOTRUE_JWT_EXP = toString cfg.auth.jwtExpiry;
+          GOTRUE_JWT_SECRET = env "JWT_SECRET";
+          GOTRUE_EXTERNAL_EMAIL_ENABLED = "true";
+          GOTRUE_EXTERNAL_ANONYMOUS_USERS_ENABLED = lib.boolToString cfg.auth.enableAnonymousUsers;
+          GOTRUE_MAILER_AUTOCONFIRM = lib.boolToString cfg.auth.enableEmailAutoconfirm;
+          GOTRUE_MAILER_OTP_EXP = toString cfg.auth.otpExpiry;
+          GOTRUE_MAILER_EXTERNAL_HOSTS = cfg.domain;
+          GOTRUE_RATE_LIMIT_EMAIL_SENT = toString cfg.auth.rateLimitEmailSent;
+          GOTRUE_MAILER_URLPATHS_CONFIRMATION = cfg.auth.mailerUrlPaths.confirmation;
+          GOTRUE_MAILER_URLPATHS_INVITE = cfg.auth.mailerUrlPaths.invite;
+          GOTRUE_MAILER_URLPATHS_RECOVERY = cfg.auth.mailerUrlPaths.recovery;
+          GOTRUE_MAILER_URLPATHS_EMAIL_CHANGE = cfg.auth.mailerUrlPaths.emailChange;
+          GOTRUE_EXTERNAL_PHONE_ENABLED = "false";
+          GOTRUE_SMS_AUTOCONFIRM = "false";
+        }
+        // lib.optionalAttrs (cfg.smtpConfigFile != null) {
+          GOTRUE_SMTP_ADMIN_EMAIL = env "SMTP_ADMIN_EMAIL";
+          GOTRUE_SMTP_HOST = env "SMTP_HOST";
+          GOTRUE_SMTP_PORT = env "SMTP_PORT";
+          GOTRUE_SMTP_USER = env "SMTP_USER";
+          GOTRUE_SMTP_PASS = env "SMTP_PASSWORD";
+          GOTRUE_SMTP_SENDER_NAME = env "SMTP_SENDER_NAME";
+        };
+      };
+
+      rest = baseService images.rest // {
+        container_name = "supabase-rest";
+        command = [ "postgrest" ];
+        environment = {
+          PGRST_DB_URI = dbUrl "authenticator";
+          PGRST_DB_SCHEMAS = lib.concatStringsSep "," cfg.rest.dbSchemas;
+          PGRST_DB_ANON_ROLE = "anon";
+          PGRST_JWT_SECRET = env "JWT_SECRET";
+          PGRST_DB_USE_LEGACY_GUCS = "false";
+          PGRST_APP_SETTINGS_JWT_SECRET = env "JWT_SECRET";
+          PGRST_APP_SETTINGS_JWT_EXP = toString cfg.auth.jwtExpiry;
+        };
+      };
+
+      realtime = baseService images.realtime // {
+        container_name = "realtime-dev.supabase-realtime";
+        healthcheck = healthcheck {
+          test = [
+            "CMD-SHELL"
+            "curl -sSfL --head -o /dev/null -H \"Authorization: Bearer ${env "ANON_KEY"}\" http://localhost:4000/api/tenants/realtime-dev/health"
+          ];
+        };
+        environment = {
+          PORT = "4000";
+          DB_HOST = pg.host;
+          DB_PORT = pg.port;
+          DB_USER = "supabase_admin";
+          DB_PASSWORD = env "POSTGRES_PASSWORD";
+          DB_NAME = pg.db;
+          DB_AFTER_CONNECT_QUERY = "SET search_path TO _realtime";
+          DB_ENC_KEY = "supabaserealtime";
+          API_JWT_SECRET = env "JWT_SECRET";
+          SECRET_KEY_BASE = env "SECRET_KEY_BASE";
+          ERL_AFLAGS = "-proto_dist inet_tcp";
+          DNS_NODES = "''";
+          RLIMIT_NOFILE = "10000";
+          APP_NAME = "realtime";
+          SEED_SELF_HOST = "true";
+          RUN_JANITOR = "true";
+        };
+      };
+
+      storage = baseService images.storage // {
+        container_name = "supabase-storage";
+        volumes = [ "${cfg.stateDir}/storage:/var/lib/storage" ];
+        healthcheck = wgetHealth "http://storage:5000/status";
+        depends_on = {
+          rest.condition = "service_started";
+          imgproxy.condition = "service_started";
+        };
+        environment = {
+          ANON_KEY = env "ANON_KEY";
+          SERVICE_KEY = env "SERVICE_ROLE_KEY";
+          POSTGREST_URL = "http://rest:3000";
+          PGRST_JWT_SECRET = env "JWT_SECRET";
+          DATABASE_URL = dbUrl "supabase_storage_admin";
+          FILE_SIZE_LIMIT = cfg.storage.fileSizeLimit;
+          STORAGE_BACKEND = cfg.storage.backend;
+          TENANT_ID = cfg.storage.tenantId;
+          REQUEST_ALLOW_X_FORWARDED_PATH = "true";
+          ENABLE_IMAGE_TRANSFORMATION = "true";
+          IMGPROXY_URL = "http://imgproxy:5001";
+        }
+        // (
+          if cfg.storage.backend == "file" then
+            { FILE_STORAGE_BACKEND_PATH = "/var/lib/storage"; }
+          else
+            {
+              REGION = cfg.storage.s3.region;
+              GLOBAL_S3_BUCKET = cfg.storage.s3.bucket;
+              AWS_ACCESS_KEY_ID = env "AWS_ACCESS_KEY_ID";
+              AWS_SECRET_ACCESS_KEY = env "AWS_SECRET_ACCESS_KEY";
+            }
+            // lib.optionalAttrs (cfg.storage.s3.endpoint != "") {
+              GLOBAL_S3_ENDPOINT = cfg.storage.s3.endpoint;
+            }
+            // lib.optionalAttrs cfg.storage.s3.forcePathStyle {
+              GLOBAL_S3_FORCE_PATH_STYLE = "true";
+            }
+        );
+      };
+
+      imgproxy = (removeAttrs (baseService images.imgproxy) [ "extra_hosts" ]) // {
+        container_name = "supabase-imgproxy";
+        volumes = [ "${cfg.stateDir}/storage:/var/lib/storage" ];
+        healthcheck = healthcheck {
+          test = [
+            "CMD"
+            "imgproxy"
+            "health"
+          ];
+        };
+        environment = {
+          IMGPROXY_BIND = ":5001";
+          IMGPROXY_LOCAL_FILESYSTEM_ROOT = "/";
+          IMGPROXY_USE_ETAG = "true";
+          IMGPROXY_ENABLE_WEBP_DETECTION = "true";
+        };
+      };
+
+      meta = baseService images.meta // {
+        container_name = "supabase-meta";
+        environment = {
+          PG_META_PORT = "8080";
+          PG_META_DB_HOST = pg.host;
+          PG_META_DB_PORT = pg.port;
+          PG_META_DB_NAME = pg.db;
+          PG_META_DB_USER = "supabase_admin";
+          PG_META_DB_PASSWORD = env "POSTGRES_PASSWORD";
+          CRYPTO_KEY = env "PG_META_CRYPTO_KEY";
+        };
+      };
+
+      supavisor = baseService images.supavisor // {
+        container_name = "supabase-pooler";
+        ports = [ "6543:6543" ];
+        volumes = [ "${secretsPrefix}-pooler.exs:/etc/pooler/pooler.exs:ro" ];
+        healthcheck = curlHealth "http://127.0.0.1:4000/api/health" // {
+          interval = "10s";
+          retries = 5;
+        };
+        command = [
+          "/bin/sh"
+          "-c"
+          "/app/bin/migrate && /app/bin/supavisor eval \"$(cat /etc/pooler/pooler.exs)\" && /app/bin/server"
+        ];
+        environment = {
+          PORT = "4000";
+          POSTGRES_PORT = pg.port;
+          POSTGRES_DB = pg.db;
+          POSTGRES_PASSWORD = env "POSTGRES_PASSWORD";
+          DATABASE_URL = "ecto://supabase_admin:${env "POSTGRES_PASSWORD"}@${pg.host}:${pg.port}/_supabase";
+          CLUSTER_POSTGRES = "true";
+          SECRET_KEY_BASE = env "SECRET_KEY_BASE";
+          VAULT_ENC_KEY = env "VAULT_ENC_KEY";
+          API_JWT_SECRET = env "JWT_SECRET";
+          METRICS_JWT_SECRET = env "JWT_SECRET";
+          REGION = "local";
+          ERL_AFLAGS = "-proto_dist inet_tcp";
+          POOLER_TENANT_ID = cfg.storage.tenantId;
+          POOLER_DEFAULT_POOL_SIZE = toString cfg.pooler.defaultPoolSize;
+          POOLER_MAX_CLIENT_CONN = toString cfg.pooler.maxClientConn;
+          POOLER_POOL_MODE = "transaction";
+        };
+      };
+    }
+    // lib.optionalAttrs cfg.studio.enable {
+      studio = baseService images.studio // {
+        container_name = "supabase-studio";
+        ports = [ "127.0.0.1:3000:3000" ];
+        healthcheck = healthcheck {
+          test = [
+            "CMD"
+            "node"
+            "-e"
+            "fetch('http://studio:3000/api/platform/profile').then((r) => {if (r.status !== 200) throw new Error(r.status)})"
+          ];
+          timeout = "10s";
+        };
+        environment = {
+          HOSTNAME = "::";
+          STUDIO_PG_META_URL = "http://meta:8080";
+          POSTGRES_PORT = pg.port;
+          POSTGRES_HOST = pg.host;
+          POSTGRES_DB = pg.db;
+          POSTGRES_PASSWORD = env "POSTGRES_PASSWORD";
+          PG_META_CRYPTO_KEY = env "PG_META_CRYPTO_KEY";
+          DEFAULT_ORGANIZATION_NAME = "Default Organization";
+          DEFAULT_PROJECT_NAME = "Default Project";
+          SUPABASE_URL = "http://kong:8000";
+          SUPABASE_PUBLIC_URL = apiExternalUrl;
+          SUPABASE_ANON_KEY = env "ANON_KEY";
+          SUPABASE_SERVICE_KEY = env "SERVICE_ROLE_KEY";
+          AUTH_JWT_SECRET = env "JWT_SECRET";
+          NEXT_PUBLIC_ENABLE_LOGS = "false";
+        };
+      };
+    };
   };
 
   dockerComposeFile = pkgs.writeText "docker-compose.yml" (builtins.toJSON dockerComposeConfig);
@@ -538,8 +544,9 @@ let
   envFiles =
     map (name: "${secretsPrefix}-${name}.variant") secretNames
     ++ [ "${secretsPrefix}-service-role-key.variant" ]
-    ++ lib.optional (s3.accessKeyIdFile != null && s3.secretAccessKeyFile != null)
-      "${secretsPrefix}-s3-credentials.env"
+    ++ lib.optional (
+      s3.accessKeyIdFile != null && s3.secretAccessKeyFile != null
+    ) "${secretsPrefix}-s3-credentials.env"
     ++ lib.optional (cfg.smtpConfigFile != null) cfg.smtpConfigFile;
 
   # ── Image loading script ────────────────────────────────────────────
@@ -615,21 +622,19 @@ let
       seedsAppliedFile = "${cfg.stateDir}/.seeds-applied";
       seedPaths = productionConfig.db.seed.sql_paths or [ ];
       seedEnabled = productionConfig.db.seed.enabled or false;
-      seedProcessingCode = lib.concatMapStringsSep "\n" (
-        pattern: ''
-          for seed_file in ${pattern}; do
-            if [ -f "$seed_file" ]; then
-              if ! grep -Fxq "$seed_file" "${seedsAppliedFile}"; then
-                echo "Running new seed: $seed_file"
-                ${lib.getExe' pkgs.postgresql "psql"} "$DB_URL" -f "$seed_file"
-                echo "$seed_file" >> "${seedsAppliedFile}"
-              else
-                echo "Already applied: $seed_file"
-              fi
+      seedProcessingCode = lib.concatMapStringsSep "\n" (pattern: ''
+        for seed_file in ${pattern}; do
+          if [ -f "$seed_file" ]; then
+            if ! grep -Fxq "$seed_file" "${seedsAppliedFile}"; then
+              echo "Running new seed: $seed_file"
+              ${lib.getExe' pkgs.postgresql "psql"} "$DB_URL" -f "$seed_file"
+              echo "$seed_file" >> "${seedsAppliedFile}"
+            else
+              echo "Already applied: $seed_file"
             fi
-          done
-        ''
-      ) seedPaths;
+          fi
+        done
+      '') seedPaths;
     in
     pkgs.writeShellScript "run-supabase-migrations" ''
       set -euo pipefail
@@ -941,13 +946,15 @@ in
       requires = [
         "docker.service"
         "supabase-config.service"
-      ] ++ cfg.extraRequires;
+      ]
+      ++ cfg.extraRequires;
       wants = [ "network-online.target" ];
       after = [
         "docker.service"
         "supabase-config.service"
         "network-online.target"
-      ] ++ cfg.extraRequires;
+      ]
+      ++ cfg.extraRequires;
       wantedBy = [ "multi-user.target" ];
       path = [ pkgs.docker ];
       serviceConfig = {
@@ -965,50 +972,50 @@ in
     };
 
     systemd.services.supabase-migrations = lib.mkIf cfg.migrations.enable {
-        description = "Apply Supabase migrations";
-        after = [
-          "supabase-stack.service"
-          "docker.service"
-        ];
-        requires = [ "supabase-stack.service" ];
-        wantedBy = [ "multi-user.target" ];
-        path = [
-          pkgs.postgresql
-          pkgs.supabase-cli
-          pkgs.docker
-        ];
-        serviceConfig = {
-          Type = "oneshot";
-          RemainAfterExit = true;
-          ExecStart = migrationScript;
-          Restart = "on-failure";
-          RestartSec = "10s";
-          TimeoutStartSec = "300s";
-        };
-        preStart = ''
-          echo "Waiting for PostgreSQL to be ready..."
-          for i in {1..60}; do
-            if ${lib.getExe pkgs.docker} exec supabase-db pg_isready -U postgres > /dev/null 2>&1; then
-              echo "PostgreSQL is ready!"
-              break
-            fi
-            echo "Waiting for PostgreSQL... ($i/60)"
-            sleep 2
-          done
+      description = "Apply Supabase migrations";
+      after = [
+        "supabase-stack.service"
+        "docker.service"
+      ];
+      requires = [ "supabase-stack.service" ];
+      wantedBy = [ "multi-user.target" ];
+      path = [
+        pkgs.postgresql
+        pkgs.supabase-cli
+        pkgs.docker
+      ];
+      serviceConfig = {
+        Type = "oneshot";
+        RemainAfterExit = true;
+        ExecStart = migrationScript;
+        Restart = "on-failure";
+        RestartSec = "10s";
+        TimeoutStartSec = "300s";
+      };
+      preStart = ''
+        echo "Waiting for PostgreSQL to be ready..."
+        for i in {1..60}; do
+          if ${lib.getExe pkgs.docker} exec supabase-db pg_isready -U postgres > /dev/null 2>&1; then
+            echo "PostgreSQL is ready!"
+            break
+          fi
+          echo "Waiting for PostgreSQL... ($i/60)"
+          sleep 2
+        done
 
-          echo "Waiting for auth service to be healthy..."
-          for i in {1..60}; do
-            if ${lib.getExe pkgs.docker} exec supabase-auth wget -q --spider http://localhost:9999/health 2>/dev/null; then
-              echo "Auth service is healthy!"
-              sleep 2
-              exit 0
-            fi
-            echo "Waiting for auth... ($i/60)"
+        echo "Waiting for auth service to be healthy..."
+        for i in {1..60}; do
+          if ${lib.getExe pkgs.docker} exec supabase-auth wget -q --spider http://localhost:9999/health 2>/dev/null; then
+            echo "Auth service is healthy!"
             sleep 2
-          done
-          echo "ERROR: Auth service did not become healthy in time"
-          exit 1
-        '';
+            exit 0
+          fi
+          echo "Waiting for auth... ($i/60)"
+          sleep 2
+        done
+        echo "ERROR: Auth service did not become healthy in time"
+        exit 1
+      '';
     };
   };
 }

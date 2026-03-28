@@ -39,7 +39,6 @@ in
       boot.loader.efi.canTouchEfiVariables = false;
       boot.loader.timeout = cfg.timeout;
 
-
       image.repart.partitions.${partitionIds.esp} = {
         contents = {
           # systemd-boot EFI binary

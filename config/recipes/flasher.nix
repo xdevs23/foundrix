@@ -47,18 +47,26 @@ let
 
   # If target image is already zstd-compressed, use it directly.
   # Otherwise, compress it to save store space on the flasher USB.
-  flasherImage = pkgs.runCommand "flasher-image" {
-    nativeBuildInputs = [ pkgs.zstd ];
-  } ''
-    mkdir -p $out
-    ${if imageIsCompressed then ''
-      ln -s "${targetImage}" "$out/image.raw.zst"
-      zstdcat "${targetImage}" | wc -c > "$out/uncompressed-size"
-    '' else ''
-      zstd -T0 -9 "${targetImage}" -o "$out/image.raw.zst"
-      stat -c %s "${targetImage}" > "$out/uncompressed-size"
-    ''}
-  '';
+  flasherImage =
+    pkgs.runCommand "flasher-image"
+      {
+        nativeBuildInputs = [ pkgs.zstd ];
+      }
+      ''
+        mkdir -p $out
+        ${
+          if imageIsCompressed then
+            ''
+              ln -s "${targetImage}" "$out/image.raw.zst"
+              zstdcat "${targetImage}" | wc -c > "$out/uncompressed-size"
+            ''
+          else
+            ''
+              zstd -T0 -9 "${targetImage}" -o "$out/image.raw.zst"
+              stat -c %s "${targetImage}" > "$out/uncompressed-size"
+            ''
+        }
+      '';
 
   flashScript = pkgs.writeShellScriptBin "flash-disk" ''
     exec ${lib.getExe flasher-tui} \
@@ -108,7 +116,8 @@ in
 
     # The flasher bundles the target image in its nix store closure, so it
     # needs a much larger store partition than a normal system
-    foundrix.config.image.store.erofs-readonly.sizeMin = config.foundrix.config.recipes.flasher.storeSizeMin;
+    foundrix.config.image.store.erofs-readonly.sizeMin =
+      config.foundrix.config.recipes.flasher.storeSizeMin;
 
     # The flasher image is meant to be dd'd to USB — don't compress it
     image.repart.compression.enable = lib.mkForce false;
@@ -117,7 +126,11 @@ in
     fileSystems = lib.mkForce {
       "/" = {
         fsType = "tmpfs";
-        options = [ "size=10%" "noatime" "mode=0755" ];
+        options = [
+          "size=10%"
+          "noatime"
+          "mode=0755"
+        ];
       };
       "/nix/store" = {
         device = "/dev/disk/by-partlabel/store";
@@ -128,7 +141,11 @@ in
       "/boot" = {
         device = "/dev/disk/by-partuuid/${lib.toLower "C12A7328-F81F-11D2-BA4B-00A0C93EC93B"}";
         fsType = "vfat";
-        options = [ "fmask=0077" "dmask=0077" "noatime" ];
+        options = [
+          "fmask=0077"
+          "dmask=0077"
+          "noatime"
+        ];
       };
     };
 

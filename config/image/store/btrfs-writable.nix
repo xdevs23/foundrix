@@ -43,7 +43,9 @@ in
 
     # Default /nix filesystem config pointing to main partition
     foundrix.config.filesystem.nix = {
-      device = lib.mkDefault "/dev/disk/by-partlabel/${config.image.repart.partitions.${partitionIds.main}.repartConfig.Label}";
+      device = lib.mkDefault "/dev/disk/by-partlabel/${
+        config.image.repart.partitions.${partitionIds.main}.repartConfig.Label
+      }";
       fsOptions = lib.mkDefault [
         "subvol=nix"
         "compress=zstd"

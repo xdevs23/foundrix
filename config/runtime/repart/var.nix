@@ -47,11 +47,13 @@ in
       cfg = namespacedCfg __curPos;
       varBlkDevPath = "/dev/disk/by-partuuid/${cfg.uuid}";
       varBlkDevUnit = "${utils.escapeSystemdPath varBlkDevPath}.device";
-      repartEnabled = config.systemd.repart.enable;
+      repartEnabled = config.boot.initrd.systemd.repart.enable;
     in
     {
-      # Enable repart by default (can be overridden with mkForce)
-      systemd.repart.enable = lib.mkDefault true;
+      # Partitioning is handled entirely in the initrd — the main-system
+      # systemd-repart.service is not needed and fails to discover the root
+      # block device / machine-id when running on a volatile root.
+      systemd.repart.enable = lib.mkDefault false;
       boot.initrd.systemd.repart.enable = lib.mkDefault true;
 
       assertions = lib.mkIf repartEnabled [
@@ -88,16 +90,9 @@ in
           (lib.optionals (cfg.format == "btrfs") [ "subvol=var" ])
           ++ [
             "x-systemd.device-timeout=300s"
-            "x-systemd.after=systemd-repart.service"
             "x-systemd.after=${varBlkDevUnit}"
-            "x-systemd.requires=systemd-repart.service"
           ]
         );
-      };
-
-      systemd.services.systemd-tmpfiles-setup = lib.mkIf repartEnabled {
-        requires = [ "var.mount" ];
-        after = [ "var.mount" ];
       };
 
       boot.kernelParams = lib.mkIf (repartEnabled && cfg.format == "btrfs") [

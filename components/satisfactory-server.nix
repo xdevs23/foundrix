@@ -37,7 +37,8 @@
       serverArgs = [
         "-Port=${toString cfg.port}"
         "-ReliablePort=${toString cfg.reliablePort}"
-      ] ++ cfg.extraArgs;
+      ]
+      ++ cfg.extraArgs;
     in
     {
       users.users.satisfactory = {
@@ -101,7 +102,10 @@
 
       networking.firewall = lib.mkIf cfg.openFirewall {
         allowedUDPPorts = [ cfg.port ];
-        allowedTCPPorts = [ cfg.port cfg.reliablePort ];
+        allowedTCPPorts = [
+          cfg.port
+          cfg.reliablePort
+        ];
       };
     };
 }

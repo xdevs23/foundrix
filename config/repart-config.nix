@@ -35,16 +35,18 @@ let
 
   # Collect filesystem format types from partition definitions to determine
   # which filesystem tools to include in the service PATH
-  partitionFsTools = partitions:
+  partitionFsTools =
+    partitions:
     let
       formats = lib.unique (
-        lib.filter (f: f != null) (
-          lib.mapAttrsToList (_: p: p.Format or null) partitions
-        )
+        lib.filter (f: f != null) (lib.mapAttrsToList (_: p: p.Format or null) partitions)
       );
-      toolsForFormat = fmt: {
-        btrfs = [ pkgs.btrfs-progs ];
-      }.${fmt} or [];
+      toolsForFormat =
+        fmt:
+        {
+          btrfs = [ pkgs.btrfs-progs ];
+        }
+        .${fmt} or [ ];
     in
     lib.concatMap toolsForFormat formats;
 in
@@ -136,7 +138,8 @@ in
       ) config.system.build.repartConfigs;
 
       # Auto-generate systemd-repart@<name> services for configs with a device
-      systemd.services = lib.mapAttrs' (name: cfg:
+      systemd.services = lib.mapAttrs' (
+        name: cfg:
         let
           deviceUnit = "${utils.escapeSystemdPath cfg.device}.device";
         in
@@ -149,7 +152,9 @@ in
           serviceConfig = {
             Type = "oneshot";
             RemainAfterExit = true;
-            ExecStart = "${pkgs.systemd}/bin/systemd-repart --definitions=${config.systemd.repartConfigDirs.${name}} --dry-run=no --empty=allow ${cfg.device}";
+            ExecStart = "${pkgs.systemd}/bin/systemd-repart --definitions=${
+              config.systemd.repartConfigDirs.${name}
+            } --dry-run=no --empty=allow ${cfg.device}";
           };
         }
       ) configsWithDevice;

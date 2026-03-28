@@ -77,17 +77,25 @@ in
             ip daddr 169.254.169.254 tcp dport 80 accept
           ''}
 
-          ${lib.optionalString hasDns (lib.concatMapStringsSep "\n          " (server:
-            let fam = if lib.hasInfix ":" server then "ip6" else "ip"; in
-            "oifname ${iface} ${fam} daddr ${server} udp dport 53 accept"
-          ) dnsCfg.dnsServers)}
+          ${lib.optionalString hasDns (
+            lib.concatMapStringsSep "\n          " (
+              server:
+              let
+                fam = if lib.hasInfix ":" server then "ip6" else "ip";
+              in
+              "oifname ${iface} ${fam} daddr ${server} udp dport 53 accept"
+            ) dnsCfg.dnsServers
+          )}
 
           oifname ${iface} tcp sport { ${
             lib.concatMapStringsSep ", " toString config.networking.firewall.allowedTCPPorts
           } } ct state new accept
 
-          ${lib.concatMapStringsSep "\n          " (conn:
-            let ports = lib.concatMapStringsSep ", " toString conn.ports; in
+          ${lib.concatMapStringsSep "\n          " (
+            conn:
+            let
+              ports = lib.concatMapStringsSep ", " toString conn.ports;
+            in
             "oifname ${iface} ${conn.protocol} dport { ${ports} } accept"
           ) wildcardConnections}
 

@@ -84,6 +84,8 @@ in
       (lib.mkIf cfg.persistMachineId {
         environment.etc."machine-id".source = "/var/etc/machine-id";
 
+        systemd.services.systemd-machine-id-commit.enable = false;
+
         systemd.tmpfiles.settings."var-etc"."/var/etc".d = {
           mode = "0755";
           user = "0";
