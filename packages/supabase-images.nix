@@ -52,10 +52,10 @@ in
 
   storage = pullImage {
     imageName = "supabase/storage-api";
-    imageDigest = "sha256:3e3742049427313d167578ba7af753069947972b64fcc5374cfb750f66a26177";
-    hash = "sha256-8+89g1vZE6TxX1byxSFuP4Nw4+8fDV+6S9Miz5P2GGo=";
+    imageDigest = "sha256:4f0eb90b935c676914ed0609c2c7d47cddb3f336155726bb2d5542617d4afdfa";
+    hash = "sha256-cOoJxzBUex3MV4waTqkiDbZJ6rYpMyZFb/YCO0aYd9I=";
     finalImageName = "supabase/storage-api";
-    finalImageTag = "v1.33.0";
+    finalImageTag = "v1.44.2";
   };
 
   imgproxy = pullImage {
