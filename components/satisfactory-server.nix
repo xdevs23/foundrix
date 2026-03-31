@@ -44,8 +44,11 @@
       users.users.satisfactory = {
         isSystemUser = true;
         group = "satisfactory";
+        home = "/var/lib/${stateDir}";
       };
       users.groups.satisfactory = { };
+
+      hardware.graphics.enable32Bit = true;
 
       systemd.services.satisfactory = {
         description = "Satisfactory Dedicated Server";
@@ -92,11 +95,12 @@
           ProtectHostname = true;
           RestrictRealtime = true;
           RestrictSUIDSGID = true;
-          RestrictNamespaces = true;
+          RestrictNamespaces = false;
           LockPersonality = true;
           NoNewPrivileges = true;
           MemoryDenyWriteExecute = false; # UE needs JIT
-          SystemCallArchitectures = "native";
+          SystemCallArchitectures = ""; # steamcmd/steam-run need 32-bit syscalls
+          TimeoutStartSec = "30min"; # steamcmd downloads ~4.5GB on first start
         };
       };
 
