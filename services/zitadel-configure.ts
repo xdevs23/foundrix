@@ -1,0 +1,639 @@
+interface DesiredState {
+  apiUrl: string;
+  patPath: string;
+  org: {
+    primaryDomain: string;
+  };
+  policies: {
+    domainPolicy: {
+      userLoginMustBeDomain: boolean;
+      validateOrgDomains: boolean;
+    };
+    loginPolicy: {
+      allowRegister: boolean;
+    };
+  };
+  privacyPolicyLink: string | null;
+  projects: Record<string, ProjectSpec>;
+}
+
+interface ProjectSpec {
+  apps: Record<string, AppSpec>;
+  roles: Record<string, { displayName: string }>;
+  userGrants: Record<string, string[]>;
+}
+
+type AppSpec = ConfidentialAppSpec | PublicAppSpec;
+
+interface ConfidentialAppSpec {
+  type: "confidential";
+  redirectUris: string[];
+  outputPath: string;
+}
+
+interface PublicAppSpec {
+  type: "public";
+  redirectUris: string[];
+  postLogoutRedirectUris: string[];
+  outputPath: string;
+}
+
+interface OrgDomain {
+  domainName: string;
+  isVerified: boolean;
+  isPrimary: boolean;
+}
+
+interface ZitadelUser {
+  id: string;
+  userName: string;
+  human?: {
+    email?: {
+      email: string;
+    };
+  };
+}
+
+class ZitadelClient {
+  constructor(
+    private apiUrl: string,
+    private token: string,
+  ) {}
+
+  private async request(
+    method: string,
+    path: string,
+    body?: unknown,
+  ): Promise<unknown> {
+    const resp = await fetch(`${this.apiUrl}${path}`, {
+      method,
+      headers: {
+        Authorization: `Bearer ${this.token}`,
+        "Content-Type": "application/json",
+      },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+
+    const text = await resp.text();
+    if (!resp.ok) {
+      throw new Error(`${method} ${path} → ${resp.status}: ${text}`);
+    }
+    return text ? JSON.parse(text) : {};
+  }
+
+  async listOrgDomains(): Promise<OrgDomain[]> {
+    const resp = (await this.request("POST", "/management/v1/orgs/me/domains/_search", {})) as {
+      result?: OrgDomain[];
+    };
+    return resp.result ?? [];
+  }
+
+  async addOrgDomain(domain: string): Promise<void> {
+    await this.request("POST", "/management/v1/orgs/me/domains", { domain });
+  }
+
+  async setPrimaryOrgDomain(domain: string): Promise<void> {
+    await this.request("POST", `/management/v1/orgs/me/domains/${domain}/_set_primary`, {});
+  }
+
+  async getDomainPolicy(): Promise<Record<string, unknown>> {
+    const resp = (await this.request("GET", "/admin/v1/policies/domain")) as {
+      policy: Record<string, unknown>;
+    };
+    return resp.policy;
+  }
+
+  async updateDomainPolicy(policy: Record<string, unknown>): Promise<void> {
+    await this.request("PUT", "/admin/v1/policies/domain", policy);
+  }
+
+  async getLoginPolicy(): Promise<Record<string, unknown>> {
+    const resp = (await this.request("GET", "/admin/v1/policies/login")) as {
+      policy: Record<string, unknown>;
+    };
+    return resp.policy;
+  }
+
+  async updateLoginPolicy(policy: Record<string, unknown>): Promise<void> {
+    await this.request("PUT", "/admin/v1/policies/login", policy);
+  }
+
+  async searchProjects(name: string): Promise<{ id: string; name: string }[]> {
+    const resp = (await this.request("POST", "/management/v1/projects/_search", {
+      queries: [{ nameQuery: { name, method: "TEXT_QUERY_METHOD_EQUALS" } }],
+    })) as { result?: { id: string; name: string }[] };
+    return resp.result ?? [];
+  }
+
+  async createProject(name: string): Promise<string> {
+    const resp = (await this.request("POST", "/management/v1/projects", {
+      name,
+      projectRoleAssertion: true,
+    })) as { id: string };
+    return resp.id;
+  }
+
+  async getProject(id: string): Promise<{ name: string; projectRoleAssertion?: boolean }> {
+    const resp = (await this.request("GET", `/management/v1/projects/${id}`)) as {
+      project: { name: string; projectRoleAssertion?: boolean };
+    };
+    return resp.project;
+  }
+
+  async updateProject(id: string, settings: { name: string; projectRoleAssertion: boolean }): Promise<void> {
+    await this.request("PUT", `/management/v1/projects/${id}`, settings);
+  }
+
+  async searchApps(
+    projectId: string,
+    name: string,
+  ): Promise<{
+    id: string;
+    name: string;
+    oidcConfig?: {
+      clientId: string;
+      redirectUris?: string[];
+      postLogoutRedirectUris?: string[];
+    };
+  }[]> {
+    const resp = (await this.request(
+      "POST",
+      `/management/v1/projects/${projectId}/apps/_search`,
+      { queries: [{ nameQuery: { name, method: "TEXT_QUERY_METHOD_EQUALS" } }] },
+    )) as {
+      result?: {
+        id: string;
+        name: string;
+        oidcConfig?: {
+          clientId: string;
+          redirectUris?: string[];
+          postLogoutRedirectUris?: string[];
+        };
+      }[];
+    };
+    return resp.result ?? [];
+  }
+
+  async createOIDCApp(
+    projectId: string,
+    app: {
+      name: string;
+      redirectUris: string[];
+      postLogoutRedirectUris?: string[];
+      responseTypes: string[];
+      grantTypes: string[];
+      appType: string;
+      authMethodType: string;
+      accessTokenRoleAssertion?: boolean;
+      idTokenRoleAssertion?: boolean;
+    },
+  ): Promise<{ clientId: string; clientSecret: string }> {
+    const resp = (await this.request(
+      "POST",
+      `/management/v1/projects/${projectId}/apps/oidc`,
+      app,
+    )) as { clientId: string; clientSecret: string };
+    return { clientId: resp.clientId, clientSecret: resp.clientSecret };
+  }
+
+  async regenerateClientSecret(projectId: string, appId: string): Promise<string> {
+    const resp = (await this.request(
+      "POST",
+      `/management/v1/projects/${projectId}/apps/${appId}/oidc_config/_generate_client_secret`,
+      {},
+    )) as { clientSecret: string };
+    return resp.clientSecret;
+  }
+
+  async updateOIDCAppConfig(
+    projectId: string,
+    appId: string,
+    config: {
+      redirectUris: string[];
+      postLogoutRedirectUris?: string[];
+      responseTypes: string[];
+      grantTypes: string[];
+      appType: string;
+      authMethodType: string;
+      accessTokenRoleAssertion?: boolean;
+      idTokenRoleAssertion?: boolean;
+    },
+  ): Promise<void> {
+    await this.request(
+      "PUT",
+      `/management/v1/projects/${projectId}/apps/${appId}/oidc_config`,
+      config,
+    );
+  }
+
+  async searchUsers(): Promise<ZitadelUser[]> {
+    const resp = (await this.request("POST", "/management/v1/users/_search", {})) as {
+      result?: ZitadelUser[];
+    };
+    return resp.result ?? [];
+  }
+
+  async updateUserEmail(userId: string, email: string): Promise<void> {
+    await this.request("POST", `/v2/users/${userId}/email`, {
+      email,
+      isVerified: true,
+    });
+  }
+
+  async addProjectRole(projectId: string, roleKey: string, displayName: string): Promise<void> {
+    await this.request("POST", `/management/v1/projects/${projectId}/roles`, {
+      roleKey,
+      displayName,
+    });
+  }
+
+  async searchProjectRoles(projectId: string): Promise<{ key: string }[]> {
+    const resp = (await this.request("POST", `/management/v1/projects/${projectId}/roles/_search`, {})) as {
+      result?: { key: string }[];
+    };
+    return resp.result ?? [];
+  }
+
+  async searchUserGrants(userId: string, projectId: string): Promise<{ id: string; roleKeys: string[] }[]> {
+    const resp = (await this.request("POST", "/management/v1/users/grants/_search", {
+      queries: [
+        { userIdQuery: { userId } },
+        { projectIdQuery: { projectId } },
+      ],
+    })) as { result?: { id: string; roleKeys: string[] }[] };
+    return resp.result ?? [];
+  }
+
+  async createUserGrant(userId: string, projectId: string, roleKeys: string[]): Promise<void> {
+    await this.request("POST", `/management/v1/users/${userId}/grants`, {
+      projectId,
+      roleKeys,
+    });
+  }
+
+  async updateUserGrant(userId: string, grantId: string, roleKeys: string[]): Promise<void> {
+    await this.request("PUT", `/management/v1/users/${userId}/grants/${grantId}`, {
+      roleKeys,
+    });
+  }
+
+  async getPrivacyPolicy(): Promise<{ tosLink?: string; privacyLink?: string; helpLink?: string }> {
+    const resp = (await this.request("GET", "/admin/v1/policies/privacy")) as {
+      policy: { tosLink?: string; privacyLink?: string; helpLink?: string };
+    };
+    return resp.policy;
+  }
+
+  async updatePrivacyPolicy(policy: { tosLink?: string; privacyLink?: string; helpLink?: string }): Promise<void> {
+    await this.request("PUT", "/admin/v1/policies/privacy", policy);
+  }
+}
+
+async function waitForApi(client: ZitadelClient): Promise<void> {
+  for (;;) {
+    try {
+      await client.listOrgDomains();
+      return;
+    } catch (e) {
+      console.log(`Management API not ready (${e instanceof Error ? e.message : e}), retrying in 2s...`);
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+  }
+}
+
+async function convergeOrgDomain(
+  client: ZitadelClient,
+  primaryDomain: string,
+): Promise<void> {
+  const domains = await client.listOrgDomains();
+  const existing = domains.find((d) => d.domainName === primaryDomain);
+
+  if (!existing) {
+    console.log(`Adding org domain: ${primaryDomain}`);
+    await client.addOrgDomain(primaryDomain);
+    console.log(`Setting primary domain: ${primaryDomain}`);
+    await client.setPrimaryOrgDomain(primaryDomain);
+    return;
+  }
+
+  if (!existing.isPrimary) {
+    console.log(`Setting primary domain: ${primaryDomain}`);
+    await client.setPrimaryOrgDomain(primaryDomain);
+    return;
+  }
+
+  console.log(`Org domain already converged: ${primaryDomain}`);
+}
+
+async function convergeDomainPolicy(
+  client: ZitadelClient,
+  desired: DesiredState["policies"]["domainPolicy"],
+): Promise<void> {
+  const current = await client.getDomainPolicy();
+
+  if (
+    (current.userLoginMustBeDomain ?? false) === desired.userLoginMustBeDomain &&
+    (current.validateOrgDomains ?? false) === desired.validateOrgDomains
+  ) {
+    console.log("Domain policy already converged");
+    return;
+  }
+
+  console.log("Updating domain policy");
+  await client.updateDomainPolicy({
+    userLoginMustBeDomain: desired.userLoginMustBeDomain,
+    validateOrgDomains: desired.validateOrgDomains,
+  });
+}
+
+async function convergeLoginPolicy(
+  client: ZitadelClient,
+  desired: DesiredState["policies"]["loginPolicy"],
+): Promise<void> {
+  const current = await client.getLoginPolicy();
+
+  if ((current.allowRegister ?? false) === desired.allowRegister) {
+    console.log("Login policy already converged");
+    return;
+  }
+
+  const { details: _, isDefault: __, ...settings } = current;
+  console.log(`Setting allowRegister: ${desired.allowRegister}`);
+  await client.updateLoginPolicy({
+    ...settings,
+    allowRegister: desired.allowRegister,
+  });
+}
+
+async function convergeUserEmails(
+  client: ZitadelClient,
+  primaryDomain: string,
+): Promise<void> {
+  const users = await client.searchUsers();
+
+  for (const user of users) {
+    if (!user.human?.email?.email) continue;
+
+    const currentEmail = user.human.email.email;
+    const atIdx = currentEmail.indexOf("@");
+    if (atIdx < 0) continue;
+
+    const currentDomain = currentEmail.substring(atIdx + 1);
+    if (currentDomain === primaryDomain) continue;
+
+    const localPart = currentEmail.substring(0, atIdx);
+    const newEmail = `${localPart}@${primaryDomain}`;
+    console.log(`Updating email for ${user.userName}: ${currentEmail} → ${newEmail}`);
+    await client.updateUserEmail(user.id, newEmail);
+  }
+
+  console.log("User emails converged");
+}
+
+async function convergeProject(client: ZitadelClient, name: string): Promise<string> {
+  const projects = await client.searchProjects(name);
+
+  if (projects.length > 0) {
+    const id = projects[0].id;
+    const project = await client.getProject(id);
+
+    if (!project.projectRoleAssertion) {
+      console.log(`Enabling projectRoleAssertion on: ${name} (${id})`);
+      await client.updateProject(id, { name: project.name, projectRoleAssertion: true });
+    } else {
+      console.log(`Project already converged: ${name} (${id})`);
+    }
+
+    return id;
+  }
+
+  console.log(`Creating project: ${name}`);
+  const id = await client.createProject(name);
+  console.log(`Created project: ${name} (${id})`);
+  return id;
+}
+
+async function convergeConfidentialApp(
+  client: ZitadelClient,
+  projectId: string,
+  appName: string,
+  spec: ConfidentialAppSpec,
+): Promise<void> {
+  const apps = await client.searchApps(projectId, appName);
+
+  let clientId: string;
+  let clientSecret: string;
+  let appId: string;
+
+  if (apps.length > 0) {
+    const app = apps[0];
+    appId = app.id;
+    clientId = app.oidcConfig!.clientId;
+    console.log(`OIDC app exists: ${appName}, regenerating client secret`);
+    clientSecret = await client.regenerateClientSecret(projectId, appId);
+  } else {
+    console.log(`Creating OIDC app: ${appName}`);
+    const creds = await client.createOIDCApp(projectId, {
+      name: appName,
+      redirectUris: spec.redirectUris,
+      responseTypes: ["OIDC_RESPONSE_TYPE_CODE"],
+      grantTypes: ["OIDC_GRANT_TYPE_AUTHORIZATION_CODE"],
+      appType: "OIDC_APP_TYPE_WEB",
+      authMethodType: "OIDC_AUTH_METHOD_TYPE_BASIC",
+    });
+    clientId = creds.clientId;
+    clientSecret = creds.clientSecret;
+    console.log(`Created OIDC app: ${appName} (client_id: ${clientId})`);
+
+    const newApps = await client.searchApps(projectId, appName);
+    appId = newApps.length > 0 ? newApps[0].id : "";
+  }
+
+  if (appId) {
+    try {
+      await client.updateOIDCAppConfig(projectId, appId, {
+        redirectUris: spec.redirectUris,
+        responseTypes: ["OIDC_RESPONSE_TYPE_CODE"],
+        grantTypes: ["OIDC_GRANT_TYPE_AUTHORIZATION_CODE"],
+        appType: "OIDC_APP_TYPE_WEB",
+        authMethodType: "OIDC_AUTH_METHOD_TYPE_BASIC",
+        accessTokenRoleAssertion: true,
+        idTokenRoleAssertion: true,
+      });
+      console.log(`Enabled role assertions on: ${appName}`);
+    } catch (e) {
+      if (e instanceof Error && e.message.includes("No changes")) {
+        console.log(`Role assertions already set on: ${appName}`);
+      } else {
+        throw e;
+      }
+    }
+  }
+
+  await Deno.writeTextFile(spec.outputPath, [
+    `CLIENT_ID=${clientId}`,
+    `CLIENT_SECRET=${clientSecret}`,
+    "",
+  ].join("\n"));
+  console.log(`Wrote OIDC client credentials to ${spec.outputPath}`);
+}
+
+async function convergePublicApp(
+  client: ZitadelClient,
+  projectId: string,
+  appName: string,
+  spec: PublicAppSpec,
+): Promise<void> {
+  const apps = await client.searchApps(projectId, appName);
+
+  let clientId: string;
+
+  if (apps.length > 0) {
+    const app = apps[0];
+    clientId = app.oidcConfig!.clientId;
+    console.log(`Public OIDC app exists: ${appName} (client_id: ${clientId})`);
+
+    const currentRedirects = app.oidcConfig?.redirectUris ?? [];
+    const currentPostLogout = app.oidcConfig?.postLogoutRedirectUris ?? [];
+    const missingRedirects = spec.redirectUris.filter((u) => !currentRedirects.includes(u));
+    const missingPostLogout = spec.postLogoutRedirectUris.filter((u) => !currentPostLogout.includes(u));
+    if (missingRedirects.length > 0 || missingPostLogout.length > 0) {
+      console.log(`Updating ${appName}: syncing redirect URIs`);
+      await client.updateOIDCAppConfig(projectId, app.id, {
+        redirectUris: spec.redirectUris,
+        postLogoutRedirectUris: spec.postLogoutRedirectUris,
+        responseTypes: ["OIDC_RESPONSE_TYPE_CODE"],
+        grantTypes: ["OIDC_GRANT_TYPE_AUTHORIZATION_CODE"],
+        appType: "OIDC_APP_TYPE_USER_AGENT",
+        authMethodType: "OIDC_AUTH_METHOD_TYPE_NONE",
+      });
+    }
+  } else {
+    console.log(`Creating public OIDC app: ${appName}`);
+    const creds = await client.createOIDCApp(projectId, {
+      name: appName,
+      redirectUris: spec.redirectUris,
+      postLogoutRedirectUris: spec.postLogoutRedirectUris,
+      responseTypes: ["OIDC_RESPONSE_TYPE_CODE"],
+      grantTypes: ["OIDC_GRANT_TYPE_AUTHORIZATION_CODE"],
+      appType: "OIDC_APP_TYPE_USER_AGENT",
+      authMethodType: "OIDC_AUTH_METHOD_TYPE_NONE",
+    });
+    clientId = creds.clientId;
+    console.log(`Created public OIDC app: ${appName} (client_id: ${clientId})`);
+  }
+
+  await Deno.writeTextFile(spec.outputPath, clientId);
+  console.log(`Wrote OIDC client ID to ${spec.outputPath}`);
+}
+
+async function convergeProjectRole(
+  client: ZitadelClient,
+  projectId: string,
+  roleKey: string,
+  displayName: string,
+): Promise<void> {
+  const roles = await client.searchProjectRoles(projectId);
+  if (roles.some((r) => r.key === roleKey)) {
+    console.log(`Project role already exists: ${roleKey}`);
+    return;
+  }
+
+  console.log(`Creating project role: ${roleKey}`);
+  await client.addProjectRole(projectId, roleKey, displayName);
+}
+
+async function convergeUserGrant(
+  client: ZitadelClient,
+  projectId: string,
+  userName: string,
+  roleKeys: string[],
+): Promise<void> {
+  const users = await client.searchUsers();
+  const user = users.find((u) => u.userName === userName);
+  if (!user) {
+    console.log(`User "${userName}" not found, skipping grant`);
+    return;
+  }
+
+  const grants = await client.searchUserGrants(user.id, projectId);
+  if (grants.length > 0) {
+    const grant = grants[0];
+    const missing = roleKeys.filter((k) => !grant.roleKeys.includes(k));
+    if (missing.length === 0) {
+      console.log(`User "${userName}" already has all roles: ${roleKeys.join(", ")}`);
+      return;
+    }
+    console.log(`Adding roles ${missing.join(", ")} to user "${userName}"`);
+    await client.updateUserGrant(user.id, grant.id, [...new Set([...grant.roleKeys, ...roleKeys])]);
+    return;
+  }
+
+  console.log(`Granting roles ${roleKeys.join(", ")} to user "${userName}"`);
+  await client.createUserGrant(user.id, projectId, roleKeys);
+}
+
+async function convergePrivacyPolicy(
+  client: ZitadelClient,
+  link: string | null,
+): Promise<void> {
+  if (!link) {
+    console.log("No privacy policy link configured, skipping");
+    return;
+  }
+
+  const current = await client.getPrivacyPolicy();
+  if (current.privacyLink === link) {
+    console.log("Privacy policy link already converged");
+    return;
+  }
+
+  console.log(`Setting privacy policy link: ${link}`);
+  await client.updatePrivacyPolicy({
+    ...current,
+    privacyLink: link,
+  });
+}
+
+async function main(): Promise<void> {
+  const specPath = Deno.args[0];
+  if (!specPath) {
+    console.error("Usage: zitadel-configure.ts <desired-state.json>");
+    Deno.exit(1);
+  }
+
+  const spec: DesiredState = JSON.parse(await Deno.readTextFile(specPath));
+  const token = (await Deno.readTextFile(spec.patPath)).trim();
+  const client = new ZitadelClient(spec.apiUrl, token);
+
+  await waitForApi(client);
+  await convergeDomainPolicy(client, spec.policies.domainPolicy);
+  await convergeLoginPolicy(client, spec.policies.loginPolicy);
+  await convergeOrgDomain(client, spec.org.primaryDomain);
+  await convergeUserEmails(client, spec.org.primaryDomain);
+  await convergePrivacyPolicy(client, spec.privacyPolicyLink);
+
+  for (const [projectName, projectSpec] of Object.entries(spec.projects)) {
+    const projectId = await convergeProject(client, projectName);
+
+    for (const [appName, appSpec] of Object.entries(projectSpec.apps)) {
+      if (appSpec.type === "confidential") {
+        await convergeConfidentialApp(client, projectId, appName, appSpec as ConfidentialAppSpec);
+      } else {
+        await convergePublicApp(client, projectId, appName, appSpec as PublicAppSpec);
+      }
+    }
+
+    for (const [roleKey, roleSpec] of Object.entries(projectSpec.roles)) {
+      await convergeProjectRole(client, projectId, roleKey, roleSpec.displayName);
+    }
+
+    for (const [userName, roleKeys] of Object.entries(projectSpec.userGrants)) {
+      await convergeUserGrant(client, projectId, userName, roleKeys);
+    }
+  }
+
+  console.log("Configuration complete");
+}
+
+main();

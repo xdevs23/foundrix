@@ -1,0 +1,677 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mail Account</title>
+<style>
+  :root {
+    --bg: #f0f1f3;
+    --surface: #ffffff;
+    --surface-alt: #f7f8fa;
+    --border: #e2e4e9;
+    --border-focus: #9ba3b0;
+    --text: #1a1d24;
+    --text-secondary: #5f6980;
+    --text-muted: #8b93a7;
+    --accent: #2563eb;
+    --accent-hover: #1d4ed8;
+    --accent-subtle: #eff4ff;
+    --danger: #e5484d;
+    --danger-hover: #cd2b31;
+    --danger-subtle: #fff0f0;
+    --success-bg: #f0fdf4;
+    --success-border: #bbf7d0;
+    --success-text: #15803d;
+    --radius: 10px;
+    --radius-sm: 6px;
+    --shadow-sm: 0 1px 2px rgba(0,0,0,0.04);
+    --shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+    --shadow-lg: 0 4px 12px rgba(0,0,0,0.06), 0 1px 3px rgba(0,0,0,0.04);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  .container {
+    max-width: 520px;
+    width: 100%;
+    padding: 1.25rem;
+  }
+
+  /* Header */
+  .header {
+    display: flex;
+    align-items: center;
+    gap: 0.875rem;
+    margin-bottom: 1.5rem;
+    animation: fadeSlideIn 0.4s ease both;
+  }
+
+  .avatar {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 1rem;
+    letter-spacing: -0.02em;
+    flex-shrink: 0;
+  }
+
+  .header-text { min-width: 0; }
+
+  .header-name {
+    font-size: 1.05rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .header-email {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    font-weight: 400;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* Card */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    overflow: hidden;
+    animation: fadeSlideIn 0.4s ease 0.08s both;
+  }
+
+  .card-header {
+    padding: 1.25rem 1.5rem;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .card-title {
+    font-size: 0.9rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    color: var(--text);
+  }
+
+  .badge {
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    background: var(--surface-alt);
+    border: 1px solid var(--border);
+    padding: 0.15rem 0.5rem;
+    border-radius: 999px;
+  }
+
+  .card-body { padding: 1.25rem 1.5rem; }
+
+  /* Password list */
+  .password-list { list-style: none; }
+
+  .password-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.75rem 0;
+    border-bottom: 1px solid var(--border);
+    animation: fadeIn 0.25s ease both;
+  }
+
+  .password-item:last-child { border-bottom: none; }
+
+  .password-info { display: flex; align-items: center; gap: 0.625rem; min-width: 0; }
+
+  .password-icon {
+    width: 30px;
+    height: 30px;
+    border-radius: var(--radius-sm);
+    background: var(--surface-alt);
+    border: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .password-icon svg { width: 14px; height: 14px; color: var(--text-secondary); }
+
+  .password-name {
+    font-size: 0.85rem;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .empty-state {
+    text-align: center;
+    padding: 1.5rem 0;
+  }
+
+  .empty-icon {
+    width: 40px;
+    height: 40px;
+    margin: 0 auto 0.75rem;
+    border-radius: 50%;
+    background: var(--surface-alt);
+    border: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .empty-icon svg { width: 18px; height: 18px; color: var(--text-muted); }
+
+  .empty-title {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 0.2rem;
+  }
+
+  .empty-desc {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    line-height: 1.4;
+  }
+
+  /* Create form */
+  .create-form {
+    display: flex;
+    gap: 0.5rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border);
+    margin-top: 0.25rem;
+  }
+
+  .create-form.first { border-top: none; margin-top: 0; padding-top: 0; }
+
+  input[type="text"] {
+    flex: 1;
+    padding: 0.55rem 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    font-size: 0.825rem;
+    font-family: inherit;
+    color: var(--text);
+    background: var(--surface);
+    transition: border-color 0.15s, box-shadow 0.15s;
+    outline: none;
+    min-width: 0;
+  }
+
+  input[type="text"]::placeholder { color: var(--text-muted); }
+  input[type="text"]:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-subtle);
+  }
+
+  /* Buttons */
+  button {
+    cursor: pointer;
+    border: none;
+    border-radius: var(--radius-sm);
+    font-family: inherit;
+    font-weight: 600;
+    transition: all 0.15s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
+    white-space: nowrap;
+  }
+
+  button:active { transform: scale(0.97); }
+  button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+  .btn-primary {
+    background: var(--accent);
+    color: #fff;
+    padding: 0.55rem 1rem;
+    font-size: 0.825rem;
+    box-shadow: var(--shadow-sm);
+  }
+
+  .btn-primary:hover { background: var(--accent-hover); }
+
+  .btn-danger-ghost {
+    background: transparent;
+    color: var(--danger);
+    padding: 0.3rem 0.55rem;
+    font-size: 0.725rem;
+    border: 1px solid transparent;
+  }
+
+  .btn-danger-ghost:hover {
+    background: var(--danger-subtle);
+    border-color: var(--danger);
+  }
+
+  .btn-copy {
+    background: var(--surface-alt);
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+    padding: 0.3rem 0.55rem;
+    font-size: 0.725rem;
+  }
+
+  .btn-copy:hover { background: var(--border); }
+  .btn-copy.copied { color: var(--success-text); border-color: var(--success-border); background: var(--success-bg); }
+
+  /* Generated password reveal */
+  .generated {
+    margin-top: 1rem;
+    padding: 1rem;
+    background: var(--success-bg);
+    border: 1px solid var(--success-border);
+    border-radius: var(--radius-sm);
+    animation: fadeSlideIn 0.3s ease both;
+  }
+
+  .generated-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--success-text);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.5rem;
+  }
+
+  .generated-value {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: #fff;
+    border: 1px solid var(--success-border);
+    border-radius: var(--radius-sm);
+    padding: 0.6rem 0.75rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .generated-value code {
+    flex: 1;
+    font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
+    font-size: 0.95rem;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    word-break: break-all;
+    user-select: all;
+    color: var(--text);
+  }
+
+  .generated-hint {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    line-height: 1.4;
+  }
+
+  /* Status */
+  #status {
+    margin-top: 0.75rem;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+  }
+
+  .error { color: var(--danger); }
+
+  /* Loading */
+  .loading {
+    text-align: center;
+    padding: 3rem 1rem;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+  }
+
+  .spinner {
+    width: 24px;
+    height: 24px;
+    border: 2.5px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    margin: 0 auto 0.75rem;
+  }
+
+  /* Animations */
+  @keyframes fadeSlideIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header" id="header" style="display:none"></div>
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">App Passwords</span>
+      <span class="badge" id="count"></span>
+    </div>
+    <div class="card-body">
+      <div id="app" class="loading">
+        <div class="spinner"></div>
+        Loading&hellip;
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+(async () => {
+  const app = document.getElementById("app");
+  const header = document.getElementById("header");
+  const countBadge = document.getElementById("count");
+  const SESSION_KEY = "mail_account_oidc";
+
+  const KEY_ICON = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.75" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 5.25a3 3 0 0 1 3 3m3 0a6 6 0 0 1-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1 1 21.75 8.25Z"/></svg>`;
+  const SHIELD_ICON = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.75" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z"/></svg>`;
+
+  // --- Config ---
+  let config;
+  try {
+    const resp = await fetch("/self-service-config.json");
+    config = await resp.json();
+  } catch {
+    app.innerHTML = '<p class="error">Failed to load configuration.</p>';
+    return;
+  }
+
+  // --- OIDC helpers ---
+  function randomBytes(n) {
+    const buf = new Uint8Array(n);
+    crypto.getRandomValues(buf);
+    return buf;
+  }
+
+  function base64url(buf) {
+    return btoa(String.fromCharCode(...new Uint8Array(buf)))
+      .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  }
+
+  async function sha256(str) {
+    return crypto.subtle.digest("SHA-256", new TextEncoder().encode(str));
+  }
+
+  function generatePassword() {
+    const charset = "abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ123456789";
+    const limit = 256 - (256 % charset.length);
+    const chars = [];
+    while (chars.length < 24) {
+      for (const b of randomBytes(32)) {
+        if (b < limit) chars.push(charset[b % charset.length]);
+        if (chars.length === 24) break;
+      }
+    }
+    const ts = String(Date.now()).slice(-2);
+    return chars.join("") + ts;
+  }
+
+  function initials(name) {
+    if (!name) return "?";
+    const parts = name.trim().split(/\s+/);
+    if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+    return parts[0][0].toUpperCase();
+  }
+
+  function escapeHtml(s) {
+    const el = document.createElement("span");
+    el.textContent = s;
+    return el.innerHTML;
+  }
+
+  // --- OIDC discovery ---
+  const discovery = await fetch(`${config.issuer}/.well-known/openid-configuration`).then(r => r.json());
+
+  // --- Check for callback ---
+  const params = new URLSearchParams(location.search);
+  if (params.has("code") && params.has("state")) {
+    const saved = JSON.parse(sessionStorage.getItem(SESSION_KEY) || "null");
+    if (saved && saved.state === params.get("state")) {
+      const body = new URLSearchParams({
+        grant_type: "authorization_code",
+        client_id: config.clientId,
+        code: params.get("code"),
+        redirect_uri: `${location.origin}${location.pathname}`,
+        code_verifier: saved.codeVerifier,
+      });
+      const tokenResp = await fetch(discovery.token_endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body,
+      });
+      if (tokenResp.ok) {
+        const tokens = await tokenResp.json();
+        sessionStorage.setItem(SESSION_KEY, JSON.stringify({ accessToken: tokens.access_token }));
+      }
+    }
+    history.replaceState(null, "", location.pathname);
+  }
+
+  // --- Get token or start OIDC flow ---
+  function getToken() {
+    const saved = JSON.parse(sessionStorage.getItem(SESSION_KEY) || "null");
+    return saved?.accessToken || null;
+  }
+
+  async function startOIDCFlow() {
+    const codeVerifier = base64url(randomBytes(32));
+    const codeChallenge = base64url(await sha256(codeVerifier));
+    const state = base64url(randomBytes(16));
+
+    sessionStorage.setItem(SESSION_KEY, JSON.stringify({ state, codeVerifier }));
+
+    const authUrl = new URL(discovery.authorization_endpoint);
+    authUrl.searchParams.set("client_id", config.clientId);
+    authUrl.searchParams.set("redirect_uri", `${location.origin}${location.pathname}`);
+    authUrl.searchParams.set("response_type", "code");
+    authUrl.searchParams.set("scope", "openid email profile");
+    authUrl.searchParams.set("code_challenge", codeChallenge);
+    authUrl.searchParams.set("code_challenge_method", "S256");
+    authUrl.searchParams.set("state", state);
+    location.href = authUrl;
+  }
+
+  let token = getToken();
+  if (!token) {
+    await startOIDCFlow();
+    return;
+  }
+
+  // --- Fetch user info ---
+  let userInfo = null;
+  try {
+    const resp = await fetch(discovery.userinfo_endpoint, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (resp.ok) userInfo = await resp.json();
+  } catch {}
+
+  if (userInfo) {
+    const displayName = userInfo.name || userInfo.preferred_username || userInfo.email || "User";
+    const email = userInfo.email || "";
+    header.innerHTML = `
+      <div class="avatar">${initials(displayName)}</div>
+      <div class="header-text">
+        <div class="header-name">${escapeHtml(displayName)}</div>
+        ${email ? `<div class="header-email">${escapeHtml(email)}</div>` : ""}
+      </div>
+    `;
+    header.style.display = "";
+  }
+  // --- Stalwart API ---
+  async function apiGet() {
+    const resp = await fetch("/api/account/auth", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (resp.status === 401) {
+      sessionStorage.removeItem(SESSION_KEY);
+      await startOIDCFlow();
+      return null;
+    }
+    if (!resp.ok) throw new Error(`API error: ${resp.status}`);
+    const json = await resp.json();
+    return json.data;
+  }
+
+  async function apiPost(requests) {
+    const resp = await fetch("/api/account/auth", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(requests),
+    });
+    if (resp.status === 401) {
+      sessionStorage.removeItem(SESSION_KEY);
+      await startOIDCFlow();
+      return;
+    }
+    if (!resp.ok) {
+      const text = await resp.text();
+      throw new Error(text || `API error: ${resp.status}`);
+    }
+  }
+
+  // --- UI ---
+  let generatedPassword = null;
+
+  async function render() {
+    let data;
+    try {
+      data = await apiGet();
+      if (!data) return;
+    } catch (e) {
+      app.innerHTML = `<p class="error">${escapeHtml(e.message)}</p>`;
+      return;
+    }
+
+    const passwords = data.appPasswords || [];
+    countBadge.textContent = passwords.length === 0 ? "none" : passwords.length;
+
+    const isEmpty = passwords.length === 0;
+
+    app.innerHTML = `
+      ${isEmpty ? `
+        <div class="empty-state">
+          <div class="empty-icon">${SHIELD_ICON}</div>
+          <div class="empty-title">No app passwords</div>
+          <div class="empty-desc">Create an app password to use with email clients like Thunderbird or Apple Mail.</div>
+        </div>` : `
+        <ul class="password-list">
+          ${passwords.map(name => `
+            <li class="password-item">
+              <div class="password-info">
+                <div class="password-icon">${KEY_ICON}</div>
+                <span class="password-name">${escapeHtml(name)}</span>
+              </div>
+              <button class="btn-danger-ghost" data-revoke="${escapeHtml(name)}">Revoke</button>
+            </li>`).join("")}
+        </ul>`}
+      <div class="create-form${isEmpty ? " first" : ""}">
+        <input id="pw-name" type="text" placeholder="Name (e.g. Thunderbird)" maxlength="50">
+        <button class="btn-primary" id="btn-create">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+          Create
+        </button>
+      </div>
+      ${generatedPassword ? `
+        <div class="generated">
+          <div class="generated-label">New app password</div>
+          <div class="generated-value">
+            <code>${generatedPassword}</code>
+            <button class="btn-copy" id="btn-copy">Copy</button>
+          </div>
+          <div class="generated-hint">Copy this now — it won't be shown again.</div>
+        </div>` : ""}
+      <div id="status"></div>
+    `;
+
+    // Bind events
+    document.getElementById("btn-create").addEventListener("click", async () => {
+      const nameInput = document.getElementById("pw-name");
+      const name = nameInput.value.trim();
+      if (!name) { nameInput.focus(); return; }
+
+      const status = document.getElementById("status");
+      const password = generatePassword();
+
+      try {
+        status.textContent = "Creating\u2026";
+        await apiPost([{ type: "addAppPassword", name, password }]);
+        generatedPassword = password;
+        await render();
+      } catch (e) {
+        status.innerHTML = `<span class="error">${escapeHtml(e.message)}</span>`;
+      }
+    });
+
+    const copyBtn = document.getElementById("btn-copy");
+    if (copyBtn) {
+      copyBtn.addEventListener("click", async () => {
+        try {
+          await navigator.clipboard.writeText(generatedPassword);
+          copyBtn.textContent = "Copied";
+          copyBtn.classList.add("copied");
+          setTimeout(() => { copyBtn.textContent = "Copy"; copyBtn.classList.remove("copied"); }, 2000);
+        } catch {
+          copyBtn.textContent = "Failed";
+        }
+      });
+    }
+
+    document.querySelectorAll("[data-revoke]").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const name = btn.dataset.revoke;
+        if (!confirm(`Revoke app password "${name}"?`)) return;
+
+        try {
+          await apiPost([{ type: "removeAppPassword", name: name + "$" }]);
+          generatedPassword = null;
+          await render();
+        } catch (e) {
+          document.getElementById("status").innerHTML = `<span class="error">${escapeHtml(e.message)}</span>`;
+        }
+      });
+    });
+  }
+
+  await render();
+})();
+</script>
+</body>
+</html>
