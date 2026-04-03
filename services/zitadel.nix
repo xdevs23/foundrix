@@ -13,6 +13,208 @@ let
 
   patPath = "/var/lib/zitadel/admin.pat";
 
+  nullableOption =
+    type: default:
+    lib.mkOption {
+      type = lib.types.nullOr type;
+      inherit default;
+    };
+
+  passwordComplexityType = lib.types.submodule {
+    options = {
+      minLength = lib.mkOption {
+        type = lib.types.int;
+        default = 8;
+        description = "Minimum password length";
+      };
+      hasNumber = lib.mkOption {
+        type = lib.types.bool;
+        default = true;
+        description = "Require at least one digit";
+      };
+      hasSymbol = lib.mkOption {
+        type = lib.types.bool;
+        default = true;
+        description = "Require at least one symbol";
+      };
+      hasLowercase = lib.mkOption {
+        type = lib.types.bool;
+        default = true;
+        description = "Require at least one lowercase letter";
+      };
+      hasUppercase = lib.mkOption {
+        type = lib.types.bool;
+        default = true;
+        description = "Require at least one uppercase letter";
+      };
+    };
+  };
+
+  brandingType = lib.types.submodule {
+    options = {
+      themeMode = lib.mkOption {
+        type = lib.types.enum [
+          "auto"
+          "light"
+          "dark"
+        ];
+        default = "auto";
+        description = "Theme mode restriction (auto = user chooses)";
+      };
+      primaryColor = lib.mkOption {
+        type = lib.types.str;
+        default = "#2073c4";
+        description = "Primary color (hex)";
+      };
+      backgroundColor = lib.mkOption {
+        type = lib.types.str;
+        default = "#fafafa";
+        description = "Background color for light mode (hex)";
+      };
+      warnColor = lib.mkOption {
+        type = lib.types.str;
+        default = "#cd3d56";
+        description = "Warning color for light mode (hex)";
+      };
+      fontColor = lib.mkOption {
+        type = lib.types.str;
+        default = "#000000";
+        description = "Font color for light mode (hex)";
+      };
+      primaryColorDark = lib.mkOption {
+        type = lib.types.str;
+        default = "#2073c4";
+        description = "Primary color for dark mode (hex)";
+      };
+      backgroundColorDark = lib.mkOption {
+        type = lib.types.str;
+        default = "#111827";
+        description = "Background color for dark mode (hex)";
+      };
+      warnColorDark = lib.mkOption {
+        type = lib.types.str;
+        default = "#ff3b5b";
+        description = "Warning color for dark mode (hex)";
+      };
+      fontColorDark = lib.mkOption {
+        type = lib.types.str;
+        default = "#ffffff";
+        description = "Font color for dark mode (hex)";
+      };
+      hideLoginNameSuffix = lib.mkOption {
+        type = lib.types.bool;
+        default = false;
+        description = "Hide the org domain suffix on the login form";
+      };
+      disableWatermark = lib.mkOption {
+        type = lib.types.bool;
+        default = false;
+        description = "Disable the ZITADEL watermark on the login page";
+      };
+      logoUrl = lib.mkOption {
+        type = lib.types.nullOr lib.types.path;
+        default = null;
+        description = "Logo image for light mode (path to image file)";
+      };
+      logoUrlDark = lib.mkOption {
+        type = lib.types.nullOr lib.types.path;
+        default = null;
+        description = "Logo image for dark mode (path to image file)";
+      };
+      iconUrl = lib.mkOption {
+        type = lib.types.nullOr lib.types.path;
+        default = null;
+        description = "Icon image for light mode (path to image file)";
+      };
+      iconUrlDark = lib.mkOption {
+        type = lib.types.nullOr lib.types.path;
+        default = null;
+        description = "Icon image for dark mode (path to image file)";
+      };
+    };
+  };
+
+  themeModeToInt = mode: {
+    auto = 1;
+    light = 3;
+    dark = 2;
+  }.${mode};
+
+  secretGeneratorType = lib.types.submodule {
+    options = {
+      expirationMinutes = lib.mkOption {
+        type = lib.types.int;
+        description = "Expiration time in minutes";
+      };
+      length = lib.mkOption {
+        type = lib.types.int;
+        description = "Length of the generated secret";
+      };
+      includeDigits = lib.mkOption {
+        type = lib.types.bool;
+        default = true;
+        description = "Include digits (0-9)";
+      };
+      includeSymbols = lib.mkOption {
+        type = lib.types.bool;
+        default = false;
+        description = "Include symbols";
+      };
+      includeLowerLetters = lib.mkOption {
+        type = lib.types.bool;
+        default = false;
+        description = "Include lowercase letters";
+      };
+      includeUpperLetters = lib.mkOption {
+        type = lib.types.bool;
+        default = true;
+        description = "Include uppercase letters";
+      };
+    };
+  };
+
+  orgSettingsType = lib.types.submodule {
+    options = {
+      passwordComplexity = nullableOption passwordComplexityType null;
+      branding = nullableOption brandingType null;
+    };
+  };
+
+  serializePasswordComplexity = pc: {
+    inherit (pc) minLength hasUppercase hasLowercase hasNumber hasSymbol;
+  };
+
+  serializeBranding = b: {
+    inherit (b)
+      primaryColor
+      backgroundColor
+      warnColor
+      fontColor
+      primaryColorDark
+      backgroundColorDark
+      warnColorDark
+      fontColorDark
+      hideLoginNameSuffix
+      disableWatermark
+      ;
+    themeMode = themeModeToInt b.themeMode;
+    logoUrl = if b.logoUrl != null then toString b.logoUrl else null;
+    logoUrlDark = if b.logoUrlDark != null then toString b.logoUrlDark else null;
+    iconUrl = if b.iconUrl != null then toString b.iconUrl else null;
+    iconUrlDark = if b.iconUrlDark != null then toString b.iconUrlDark else null;
+  };
+
+  serializeSecretGenerator = sg: {
+    inherit (sg)
+      length
+      includeDigits
+      includeSymbols
+      includeLowerLetters
+      includeUpperLetters
+      ;
+    expirySeconds = sg.expirationMinutes * 60;
+  };
+
   roleType = lib.types.submodule {
     options.displayName = lib.mkOption {
       type = lib.types.str;
@@ -139,13 +341,65 @@ let
     privacyPolicyLink =
       if cfg.privacyPolicy.enable then cfg.privacyPolicy.link
       else null;
+    instance = {
+      passwordComplexity =
+        if cfg.instance.passwordComplexity != null then
+          serializePasswordComplexity cfg.instance.passwordComplexity
+        else
+          null;
+      branding =
+        if cfg.instance.branding != null then
+          serializeBranding cfg.instance.branding
+        else
+          null;
+      languages =
+        let
+          l = cfg.instance.languages;
+        in
+        if l.default != null || l.allowed != null then
+          {
+            inherit (l) default allowed;
+          }
+        else
+          null;
+      oidcSettings =
+        if cfg.instance.oidcSettings != null then
+          let
+            o = cfg.instance.oidcSettings;
+          in
+          {
+            accessTokenLifetimeSeconds = o.accessTokenLifetimeHours * 3600;
+            idTokenLifetimeSeconds = o.idTokenLifetimeHours * 3600;
+            refreshTokenExpirationSeconds = o.refreshTokenLifetimeDays * 86400;
+            refreshTokenIdleExpirationSeconds = o.refreshTokenIdleLifetimeDays * 86400;
+          }
+        else
+          null;
+      secretGenerators =
+        if cfg.instance.secretGenerators != null then
+          lib.mapAttrs (_: serializeSecretGenerator) cfg.instance.secretGenerators
+        else
+          null;
+    };
+    orgs =
+      let
+        mapped = lib.mapAttrs (
+          _: org: {
+            passwordComplexity =
+              if org.passwordComplexity != null then serializePasswordComplexity org.passwordComplexity else null;
+            branding = if org.branding != null then serializeBranding org.branding else null;
+          }
+        ) cfg.orgs;
+      in
+      if mapped == { } then null else mapped;
     policies = {
       domainPolicy = {
         inherit (cfg.policies.domainPolicy) userLoginMustBeDomain validateOrgDomains;
       };
       loginPolicy = {
-        inherit (cfg.policies.loginPolicy) allowRegister;
+        inherit (cfg.policies.loginPolicy) allowRegister allowExternalIdp;
       };
+      inherit (cfg.policies) disallowPublicOrgRegistration;
     };
     projects = lib.mapAttrs (
       _: project: {
@@ -275,7 +529,74 @@ in
           default = false;
           description = "Allow self-registration of new users";
         };
+        allowExternalIdp = lib.mkOption {
+          type = lib.types.bool;
+          default = false;
+          description = "Allow login with external identity providers";
+        };
       };
+      disallowPublicOrgRegistration = lib.mkOption {
+        type = lib.types.bool;
+        default = true;
+        description = "Disallow public organization registration";
+      };
+    };
+
+    instance = {
+      passwordComplexity = nullableOption passwordComplexityType null;
+
+      branding = nullableOption brandingType null;
+
+      languages = {
+        default = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          description = "Default language code (e.g. 'en'). Null leaves the Zitadel default.";
+          example = "en";
+        };
+        allowed = lib.mkOption {
+          type = lib.types.nullOr (lib.types.listOf lib.types.str);
+          default = null;
+          description = "Restrict allowed languages. Null means all languages are allowed.";
+          example = [
+            "en"
+            "de"
+          ];
+        };
+      };
+
+      oidcSettings = nullableOption (lib.types.submodule {
+        options = {
+          accessTokenLifetimeHours = lib.mkOption {
+            type = lib.types.int;
+            default = 12;
+            description = "Access token maximum lifetime in hours";
+          };
+          idTokenLifetimeHours = lib.mkOption {
+            type = lib.types.int;
+            default = 12;
+            description = "ID token maximum lifetime in hours";
+          };
+          refreshTokenLifetimeDays = lib.mkOption {
+            type = lib.types.int;
+            default = 90;
+            description = "Refresh token maximum lifetime in days";
+          };
+          refreshTokenIdleLifetimeDays = lib.mkOption {
+            type = lib.types.int;
+            default = 30;
+            description = "Idle refresh token maximum lifetime in days";
+          };
+        };
+      }) null;
+
+      secretGenerators = nullableOption (lib.types.attrsOf secretGeneratorType) null;
+    };
+
+    orgs = lib.mkOption {
+      type = lib.types.attrsOf orgSettingsType;
+      default = { };
+      description = "Per-org settings that override instance defaults";
     };
 
     projects = lib.mkOption {
@@ -450,6 +771,7 @@ in
         DefaultInstance.DomainPolicy.ValidateOrgDomains = cfg.policies.domainPolicy.validateOrgDomains;
         DefaultInstance.DomainPolicy.UserLoginMustBeDomain = cfg.policies.domainPolicy.userLoginMustBeDomain;
         DefaultInstance.LoginPolicy.AllowRegister = cfg.policies.loginPolicy.allowRegister;
+        DefaultInstance.LoginPolicy.AllowExternalIdp = cfg.policies.loginPolicy.allowExternalIdp;
         Database.postgres = {
           Host = "/run/postgresql";
           Port = 5432;

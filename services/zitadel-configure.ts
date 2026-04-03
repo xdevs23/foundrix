@@ -1,3 +1,59 @@
+interface PasswordComplexityPolicy {
+  minLength: number;
+  hasUppercase: boolean;
+  hasLowercase: boolean;
+  hasNumber: boolean;
+  hasSymbol: boolean;
+}
+
+interface LabelPolicy {
+  primaryColor: string;
+  backgroundColor: string;
+  warnColor: string;
+  fontColor: string;
+  primaryColorDark: string;
+  backgroundColorDark: string;
+  warnColorDark: string;
+  fontColorDark: string;
+  hideLoginNameSuffix: boolean;
+  disableWatermark: boolean;
+  themeMode: number;
+  logoUrl: string | null;
+  logoUrlDark: string | null;
+  iconUrl: string | null;
+  iconUrlDark: string | null;
+}
+
+interface SecretGeneratorConfig {
+  length: number;
+  expirySeconds: number;
+  includeLowerLetters: boolean;
+  includeUpperLetters: boolean;
+  includeDigits: boolean;
+  includeSymbols: boolean;
+}
+
+interface InstanceSettings {
+  passwordComplexity: PasswordComplexityPolicy | null;
+  branding: LabelPolicy | null;
+  languages: {
+    default: string | null;
+    allowed: string[] | null;
+  } | null;
+  oidcSettings: {
+    accessTokenLifetimeSeconds: number;
+    idTokenLifetimeSeconds: number;
+    refreshTokenExpirationSeconds: number;
+    refreshTokenIdleExpirationSeconds: number;
+  } | null;
+  secretGenerators: Record<string, SecretGeneratorConfig> | null;
+}
+
+interface OrgSettings {
+  passwordComplexity: PasswordComplexityPolicy | null;
+  branding: LabelPolicy | null;
+}
+
 interface DesiredState {
   apiUrl: string;
   patPath: string;
@@ -11,9 +67,13 @@ interface DesiredState {
     };
     loginPolicy: {
       allowRegister: boolean;
+      allowExternalIdp: boolean;
     };
+    disallowPublicOrgRegistration: boolean;
   };
   privacyPolicyLink: string | null;
+  instance: InstanceSettings | null;
+  orgs: Record<string, OrgSettings> | null;
   projects: Record<string, ProjectSpec>;
 }
 
@@ -76,6 +136,10 @@ class ZitadelClient {
 
     const text = await resp.text();
     if (!resp.ok) {
+      if (resp.status === 400 && text.includes('"code":9')) {
+        console.log(`${method} ${path}: already up to date`);
+        return text ? JSON.parse(text) : {};
+      }
       throw new Error(`${method} ${path} → ${resp.status}: ${text}`);
     }
     return text ? JSON.parse(text) : {};
@@ -287,6 +351,175 @@ class ZitadelClient {
   async updatePrivacyPolicy(policy: { tosLink?: string; privacyLink?: string; helpLink?: string }): Promise<void> {
     await this.request("PUT", "/admin/v1/policies/privacy", policy);
   }
+
+  // Instance-level settings (admin API)
+
+  async getPasswordComplexityPolicy(): Promise<Record<string, unknown>> {
+    const resp = (await this.request("GET", "/admin/v1/policies/password/complexity")) as { policy: Record<string, unknown> };
+    return resp.policy;
+  }
+
+  async updatePasswordComplexityPolicy(policy: PasswordComplexityPolicy): Promise<void> {
+    await this.request("PUT", "/admin/v1/policies/password/complexity", {
+      minLength: policy.minLength,
+      hasUppercase: policy.hasUppercase,
+      hasLowercase: policy.hasLowercase,
+      hasNumber: policy.hasNumber,
+      hasSymbol: policy.hasSymbol,
+    });
+  }
+
+  async getLabelPolicy(): Promise<Record<string, unknown>> {
+    const resp = (await this.request("GET", "/admin/v1/policies/label")) as { policy: Record<string, unknown> };
+    return resp.policy;
+  }
+
+  async updateLabelPolicy(policy: LabelPolicy): Promise<void> {
+    await this.request("PUT", "/admin/v1/policies/label", {
+      primaryColor: policy.primaryColor,
+      backgroundColor: policy.backgroundColor,
+      warnColor: policy.warnColor,
+      fontColor: policy.fontColor,
+      primaryColorDark: policy.primaryColorDark,
+      backgroundColorDark: policy.backgroundColorDark,
+      warnColorDark: policy.warnColorDark,
+      fontColorDark: policy.fontColorDark,
+      hideLoginNameSuffix: policy.hideLoginNameSuffix,
+      disableWatermark: policy.disableWatermark,
+      themeMode: policy.themeMode,
+    });
+  }
+
+  async activateLabelPolicy(): Promise<void> {
+    await this.request("POST", "/admin/v1/policies/label/_activate", {});
+  }
+
+  async uploadAsset(path: string, filePath: string): Promise<void> {
+    const data = await Deno.readFile(filePath);
+    const ext = filePath.split(".").pop()?.toLowerCase() ?? "";
+    const mimeTypes: Record<string, string> = {
+      png: "image/png",
+      jpg: "image/jpeg",
+      jpeg: "image/jpeg",
+      svg: "image/svg+xml",
+      gif: "image/gif",
+      webp: "image/webp",
+    };
+    const contentType = mimeTypes[ext] ?? "image/png";
+    const filename = filePath.split("/").pop() ?? "logo";
+
+    const form = new FormData();
+    form.append("file", new File([data], filename, { type: contentType }));
+
+    const resp = await fetch(`${this.apiUrl}${path}`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${this.token}`,
+      },
+      body: form,
+    });
+    if (!resp.ok) {
+      const text = await resp.text();
+      throw new Error(`POST ${path} → ${resp.status}: ${text}`);
+    }
+  }
+
+  async setDefaultLanguage(language: string): Promise<void> {
+    await this.request("PUT", `/admin/v1/languages/default/${language}`, {});
+  }
+
+  async setRestrictions(body: Record<string, unknown>): Promise<void> {
+    await this.request("PUT", "/admin/v1/restrictions", body);
+  }
+
+  async updateOIDCSettings(settings: {
+    accessTokenLifetime: string;
+    idTokenLifetime: string;
+    refreshTokenExpiration: string;
+    refreshTokenIdleExpiration: string;
+  }): Promise<void> {
+    await this.request("PUT", "/admin/v1/settings/oidc", settings);
+  }
+
+  async updateSecretGenerator(generatorType: string, config: SecretGeneratorConfig): Promise<void> {
+    await this.request("PUT", `/admin/v1/secretgenerators/${generatorType}`, {
+      generatorType,
+      length: config.length,
+      expiry: `${config.expirySeconds}s`,
+      includeLowerLetters: config.includeLowerLetters,
+      includeUpperLetters: config.includeUpperLetters,
+      includeDigits: config.includeDigits,
+      includeSymbols: config.includeSymbols,
+    });
+  }
+
+  // Org-level settings (management API)
+
+  async getOrgPasswordComplexityPolicy(): Promise<{ policy: Record<string, unknown> }> {
+    const resp = (await this.request("GET", "/management/v1/policies/password/complexity")) as { policy: Record<string, unknown> };
+    return { policy: resp.policy };
+  }
+
+  async addCustomPasswordComplexityPolicy(policy: PasswordComplexityPolicy): Promise<void> {
+    await this.request("POST", "/management/v1/policies/password/complexity", {
+      minLength: policy.minLength,
+      hasUppercase: policy.hasUppercase,
+      hasLowercase: policy.hasLowercase,
+      hasNumber: policy.hasNumber,
+      hasSymbol: policy.hasSymbol,
+    });
+  }
+
+  async updateCustomPasswordComplexityPolicy(policy: PasswordComplexityPolicy): Promise<void> {
+    await this.request("PUT", "/management/v1/policies/password/complexity", {
+      minLength: policy.minLength,
+      hasUppercase: policy.hasUppercase,
+      hasLowercase: policy.hasLowercase,
+      hasNumber: policy.hasNumber,
+      hasSymbol: policy.hasSymbol,
+    });
+  }
+
+  async getOrgLabelPolicy(): Promise<{ policy: Record<string, unknown> }> {
+    const resp = (await this.request("GET", "/management/v1/policies/label")) as { policy: Record<string, unknown> };
+    return { policy: resp.policy };
+  }
+
+  async addCustomLabelPolicy(policy: LabelPolicy): Promise<void> {
+    await this.request("POST", "/management/v1/policies/label", {
+      primaryColor: policy.primaryColor,
+      backgroundColor: policy.backgroundColor,
+      warnColor: policy.warnColor,
+      fontColor: policy.fontColor,
+      primaryColorDark: policy.primaryColorDark,
+      backgroundColorDark: policy.backgroundColorDark,
+      warnColorDark: policy.warnColorDark,
+      fontColorDark: policy.fontColorDark,
+      hideLoginNameSuffix: policy.hideLoginNameSuffix,
+      disableWatermark: policy.disableWatermark,
+      themeMode: policy.themeMode,
+    });
+  }
+
+  async updateCustomLabelPolicy(policy: LabelPolicy): Promise<void> {
+    await this.request("PUT", "/management/v1/policies/label", {
+      primaryColor: policy.primaryColor,
+      backgroundColor: policy.backgroundColor,
+      warnColor: policy.warnColor,
+      fontColor: policy.fontColor,
+      primaryColorDark: policy.primaryColorDark,
+      backgroundColorDark: policy.backgroundColorDark,
+      warnColorDark: policy.warnColorDark,
+      fontColorDark: policy.fontColorDark,
+      hideLoginNameSuffix: policy.hideLoginNameSuffix,
+      disableWatermark: policy.disableWatermark,
+      themeMode: policy.themeMode,
+    });
+  }
+
+  async activateCustomLabelPolicy(): Promise<void> {
+    await this.request("POST", "/management/v1/policies/label/_activate", {});
+  }
 }
 
 async function waitForApi(client: ZitadelClient): Promise<void> {
@@ -352,16 +585,19 @@ async function convergeLoginPolicy(
 ): Promise<void> {
   const current = await client.getLoginPolicy();
 
-  if ((current.allowRegister ?? false) === desired.allowRegister) {
+  const registerMatch = (current.allowRegister ?? false) === desired.allowRegister;
+  const externalMatch = (current.allowExternalIdp ?? false) === desired.allowExternalIdp;
+  if (registerMatch && externalMatch) {
     console.log("Login policy already converged");
     return;
   }
 
   const { details: _, isDefault: __, ...settings } = current;
-  console.log(`Setting allowRegister: ${desired.allowRegister}`);
+  console.log(`Setting allowRegister: ${desired.allowRegister}, allowExternalIdp: ${desired.allowExternalIdp}`);
   await client.updateLoginPolicy({
     ...settings,
     allowRegister: desired.allowRegister,
+    allowExternalIdp: desired.allowExternalIdp,
   });
 }
 
@@ -573,6 +809,128 @@ async function convergeUserGrant(
   await client.createUserGrant(user.id, projectId, roleKeys);
 }
 
+async function convergeInstancePasswordComplexity(
+  client: ZitadelClient,
+  desired: PasswordComplexityPolicy,
+): Promise<void> {
+  console.log("Updating instance password complexity policy");
+  await client.updatePasswordComplexityPolicy(desired);
+}
+
+async function uploadBrandingAssets(
+  client: ZitadelClient,
+  prefix: string,
+  desired: LabelPolicy,
+): Promise<void> {
+  const assets: [string | null, string][] = [
+    [desired.logoUrl, `${prefix}/policy/label/logo`],
+    [desired.logoUrlDark, `${prefix}/policy/label/logo/dark`],
+    [desired.iconUrl, `${prefix}/policy/label/icon`],
+    [desired.iconUrlDark, `${prefix}/policy/label/icon/dark`],
+  ];
+  for (const [filePath, uploadPath] of assets) {
+    if (filePath) {
+      console.log(`Uploading asset: ${uploadPath} ← ${filePath}`);
+      await client.uploadAsset(uploadPath, filePath);
+    }
+  }
+}
+
+async function convergeInstanceBranding(
+  client: ZitadelClient,
+  desired: LabelPolicy,
+): Promise<void> {
+  console.log("Updating instance branding");
+  await client.updateLabelPolicy(desired);
+  await uploadBrandingAssets(client, "/assets/v1/instance", desired);
+  await client.activateLabelPolicy();
+  console.log("Instance branding activated");
+}
+
+async function convergeInstanceLanguages(
+  client: ZitadelClient,
+  languages: { default: string | null; allowed: string[] | null },
+): Promise<void> {
+  if (languages.default) {
+    console.log(`Setting default language: ${languages.default}`);
+    await client.setDefaultLanguage(languages.default);
+  }
+  if (languages.allowed) {
+    console.log(`Setting allowed languages: ${languages.allowed.join(", ")}`);
+    await client.setRestrictions({ allowedLanguages: { list: languages.allowed } });
+  }
+}
+
+async function convergeInstanceOIDCSettings(
+  client: ZitadelClient,
+  settings: NonNullable<InstanceSettings["oidcSettings"]>,
+): Promise<void> {
+  console.log("Updating OIDC settings");
+  await client.updateOIDCSettings({
+    accessTokenLifetime: `${settings.accessTokenLifetimeSeconds}s`,
+    idTokenLifetime: `${settings.idTokenLifetimeSeconds}s`,
+    refreshTokenExpiration: `${settings.refreshTokenExpirationSeconds}s`,
+    refreshTokenIdleExpiration: `${settings.refreshTokenIdleExpirationSeconds}s`,
+  });
+}
+
+const SECRET_GENERATOR_TYPES: Record<string, string> = {
+  initializationMail: "1",
+  emailVerification: "2",
+  phoneVerification: "3",
+  passwordReset: "4",
+  passwordlessInitialization: "5",
+  appSecret: "6",
+  otpSms: "7",
+  otpEmail: "8",
+};
+
+async function convergeInstanceSecretGenerators(
+  client: ZitadelClient,
+  generators: Record<string, SecretGeneratorConfig>,
+): Promise<void> {
+  for (const [name, config] of Object.entries(generators)) {
+    const typeId = SECRET_GENERATOR_TYPES[name];
+    if (!typeId) {
+      console.log(`Unknown secret generator type: ${name}, skipping`);
+      continue;
+    }
+    console.log(`Updating secret generator: ${name}`);
+    await client.updateSecretGenerator(typeId, config);
+  }
+}
+
+async function convergeOrgPasswordComplexity(
+  client: ZitadelClient,
+  desired: PasswordComplexityPolicy,
+): Promise<void> {
+  const { policy } = await client.getOrgPasswordComplexityPolicy();
+  if (policy.isDefault) {
+    console.log("Adding custom org password complexity policy");
+    await client.addCustomPasswordComplexityPolicy(desired);
+  } else {
+    console.log("Updating custom org password complexity policy");
+    await client.updateCustomPasswordComplexityPolicy(desired);
+  }
+}
+
+async function convergeOrgBranding(
+  client: ZitadelClient,
+  desired: LabelPolicy,
+): Promise<void> {
+  const { policy } = await client.getOrgLabelPolicy();
+  if (policy.isDefault) {
+    console.log("Adding custom org branding");
+    await client.addCustomLabelPolicy(desired);
+  } else {
+    console.log("Updating custom org branding");
+    await client.updateCustomLabelPolicy(desired);
+  }
+  await uploadBrandingAssets(client, "/assets/v1/org", desired);
+  await client.activateCustomLabelPolicy();
+  console.log("Org branding activated");
+}
+
 async function convergePrivacyPolicy(
   client: ZitadelClient,
   link: string | null,
@@ -612,6 +970,42 @@ async function main(): Promise<void> {
   await convergeOrgDomain(client, spec.org.primaryDomain);
   await convergeUserEmails(client, spec.org.primaryDomain);
   await convergePrivacyPolicy(client, spec.privacyPolicyLink);
+
+  if (spec.policies.disallowPublicOrgRegistration) {
+    console.log("Disabling public organization registration");
+    await client.setRestrictions({ disallowPublicOrgRegistration: true });
+  }
+
+  // Instance-level settings
+  if (spec.instance) {
+    if (spec.instance.passwordComplexity) {
+      await convergeInstancePasswordComplexity(client, spec.instance.passwordComplexity);
+    }
+    if (spec.instance.branding) {
+      await convergeInstanceBranding(client, spec.instance.branding);
+    }
+    if (spec.instance.languages) {
+      await convergeInstanceLanguages(client, spec.instance.languages);
+    }
+    if (spec.instance.oidcSettings) {
+      await convergeInstanceOIDCSettings(client, spec.instance.oidcSettings);
+    }
+    if (spec.instance.secretGenerators) {
+      await convergeInstanceSecretGenerators(client, spec.instance.secretGenerators);
+    }
+  }
+
+  // Org-level settings
+  if (spec.orgs) {
+    for (const [_orgName, orgSettings] of Object.entries(spec.orgs)) {
+      if (orgSettings.passwordComplexity) {
+        await convergeOrgPasswordComplexity(client, orgSettings.passwordComplexity);
+      }
+      if (orgSettings.branding) {
+        await convergeOrgBranding(client, orgSettings.branding);
+      }
+    }
+  }
 
   for (const [projectName, projectSpec] of Object.entries(spec.projects)) {
     const projectId = await convergeProject(client, projectName);
