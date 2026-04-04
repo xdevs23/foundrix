@@ -131,6 +131,11 @@ let
         default = null;
         description = "Icon image for dark mode (path to image file)";
       };
+      fontUrl = lib.mkOption {
+        type = lib.types.nullOr lib.types.path;
+        default = null;
+        description = "Custom font file for the login interface (TTF, OTF, WOFF, WOFF2)";
+      };
     };
   };
 
@@ -202,6 +207,7 @@ let
     logoUrlDark = if b.logoUrlDark != null then toString b.logoUrlDark else null;
     iconUrl = if b.iconUrl != null then toString b.iconUrl else null;
     iconUrlDark = if b.iconUrlDark != null then toString b.iconUrlDark else null;
+    fontUrl = if b.fontUrl != null then toString b.fontUrl else null;
   };
 
   serializeSecretGenerator = sg: {

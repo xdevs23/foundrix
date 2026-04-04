@@ -22,6 +22,7 @@ interface LabelPolicy {
   logoUrlDark: string | null;
   iconUrl: string | null;
   iconUrlDark: string | null;
+  fontUrl: string | null;
 }
 
 interface SecretGeneratorConfig {
@@ -404,6 +405,10 @@ class ZitadelClient {
       svg: "image/svg+xml",
       gif: "image/gif",
       webp: "image/webp",
+      ttf: "font/ttf",
+      otf: "font/otf",
+      woff: "font/woff",
+      woff2: "font/woff2",
     };
     const contentType = mimeTypes[ext] ?? "image/png";
     const filename = filePath.split("/").pop() ?? "logo";
@@ -827,6 +832,7 @@ async function uploadBrandingAssets(
     [desired.logoUrlDark, `${prefix}/policy/label/logo/dark`],
     [desired.iconUrl, `${prefix}/policy/label/icon`],
     [desired.iconUrlDark, `${prefix}/policy/label/icon/dark`],
+    [desired.fontUrl, `${prefix}/policy/label/font`],
   ];
   for (const [filePath, uploadPath] of assets) {
     if (filePath) {
