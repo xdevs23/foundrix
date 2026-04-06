@@ -255,6 +255,19 @@ let
           description = "Post-logout redirect URIs (primarily for public apps)";
         };
 
+        accessTokenType = lib.mkOption {
+          type = lib.types.enum [
+            "bearer"
+            "jwt"
+          ];
+          default = "bearer";
+          description = ''
+            Access token format issued by Zitadel for this app.
+            `bearer` issues opaque tokens (default).
+            `jwt` issues signed JWT access tokens.
+          '';
+        };
+
         outputPath = lib.mkOption {
           type = lib.types.str;
           default =
@@ -410,7 +423,7 @@ let
     projects = lib.mapAttrs (
       _: project: {
         apps = lib.mapAttrs (_: app: {
-          inherit (app) type redirectUris postLogoutRedirectUris outputPath;
+          inherit (app) type redirectUris postLogoutRedirectUris outputPath accessTokenType;
         }) project.apps;
         roles = lib.mapAttrs (_: role: {
           inherit (role) displayName;

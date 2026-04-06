@@ -90,6 +90,7 @@ interface ConfidentialAppSpec {
   type: "confidential";
   redirectUris: string[];
   outputPath: string;
+  accessTokenType: "bearer" | "jwt";
 }
 
 interface PublicAppSpec {
@@ -97,6 +98,7 @@ interface PublicAppSpec {
   redirectUris: string[];
   postLogoutRedirectUris: string[];
   outputPath: string;
+  accessTokenType: "bearer" | "jwt";
 }
 
 interface OrgDomain {
@@ -219,6 +221,7 @@ class ZitadelClient {
       clientId: string;
       redirectUris?: string[];
       postLogoutRedirectUris?: string[];
+      accessTokenType?: string;
     };
   }[]> {
     const resp = (await this.request(
@@ -233,6 +236,7 @@ class ZitadelClient {
           clientId: string;
           redirectUris?: string[];
           postLogoutRedirectUris?: string[];
+          accessTokenType?: string;
         };
       }[];
     };
@@ -251,6 +255,7 @@ class ZitadelClient {
       authMethodType: string;
       accessTokenRoleAssertion?: boolean;
       idTokenRoleAssertion?: boolean;
+      accessTokenType?: string;
     },
   ): Promise<{ clientId: string; clientSecret: string }> {
     const resp = (await this.request(
@@ -282,6 +287,7 @@ class ZitadelClient {
       authMethodType: string;
       accessTokenRoleAssertion?: boolean;
       idTokenRoleAssertion?: boolean;
+      accessTokenType?: string;
     },
   ): Promise<void> {
     await this.request(
@@ -527,6 +533,10 @@ class ZitadelClient {
   }
 }
 
+function zitadelAccessTokenType(t: "bearer" | "jwt"): string {
+  return t === "jwt" ? "OIDC_TOKEN_TYPE_JWT" : "OIDC_TOKEN_TYPE_BEARER";
+}
+
 async function waitForApi(client: ZitadelClient): Promise<void> {
   for (;;) {
     try {
@@ -681,6 +691,7 @@ async function convergeConfidentialApp(
       grantTypes: ["OIDC_GRANT_TYPE_AUTHORIZATION_CODE"],
       appType: "OIDC_APP_TYPE_WEB",
       authMethodType: "OIDC_AUTH_METHOD_TYPE_BASIC",
+      accessTokenType: zitadelAccessTokenType(spec.accessTokenType),
     });
     clientId = creds.clientId;
     clientSecret = creds.clientSecret;
@@ -700,6 +711,7 @@ async function convergeConfidentialApp(
         authMethodType: "OIDC_AUTH_METHOD_TYPE_BASIC",
         accessTokenRoleAssertion: true,
         idTokenRoleAssertion: true,
+        accessTokenType: zitadelAccessTokenType(spec.accessTokenType),
       });
       console.log(`Enabled role assertions on: ${appName}`);
     } catch (e) {
@@ -738,8 +750,11 @@ async function convergePublicApp(
     const currentPostLogout = app.oidcConfig?.postLogoutRedirectUris ?? [];
     const missingRedirects = spec.redirectUris.filter((u) => !currentRedirects.includes(u));
     const missingPostLogout = spec.postLogoutRedirectUris.filter((u) => !currentPostLogout.includes(u));
-    if (missingRedirects.length > 0 || missingPostLogout.length > 0) {
-      console.log(`Updating ${appName}: syncing redirect URIs`);
+    const currentTokenType = app.oidcConfig?.accessTokenType ?? "OIDC_TOKEN_TYPE_BEARER";
+    const desiredTokenType = zitadelAccessTokenType(spec.accessTokenType);
+    const tokenTypeMismatch = currentTokenType !== desiredTokenType;
+    if (missingRedirects.length > 0 || missingPostLogout.length > 0 || tokenTypeMismatch) {
+      console.log(`Updating ${appName}: syncing config${tokenTypeMismatch ? ` (accessTokenType: ${currentTokenType} → ${desiredTokenType})` : ""}`);
       await client.updateOIDCAppConfig(projectId, app.id, {
         redirectUris: spec.redirectUris,
         postLogoutRedirectUris: spec.postLogoutRedirectUris,
@@ -747,6 +762,7 @@ async function convergePublicApp(
         grantTypes: ["OIDC_GRANT_TYPE_AUTHORIZATION_CODE"],
         appType: "OIDC_APP_TYPE_USER_AGENT",
         authMethodType: "OIDC_AUTH_METHOD_TYPE_NONE",
+        accessTokenType: zitadelAccessTokenType(spec.accessTokenType),
       });
     }
   } else {
@@ -759,6 +775,7 @@ async function convergePublicApp(
       grantTypes: ["OIDC_GRANT_TYPE_AUTHORIZATION_CODE"],
       appType: "OIDC_APP_TYPE_USER_AGENT",
       authMethodType: "OIDC_AUTH_METHOD_TYPE_NONE",
+      accessTokenType: zitadelAccessTokenType(spec.accessTokenType),
     });
     clientId = creds.clientId;
     console.log(`Created public OIDC app: ${appName} (client_id: ${clientId})`);
