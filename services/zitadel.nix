@@ -520,8 +520,9 @@ in
       domainPolicy = {
         userLoginMustBeDomain = lib.mkOption {
           type = lib.types.bool;
-          default = true;
-          description = "Require login names to include the org domain";
+          default = builtins.length (builtins.attrNames cfg.orgs) > 1;
+          defaultText = "true if more than one org is defined, false otherwise";
+          description = "Add organization domain as suffix to login names. Useful with multiple orgs to ensure uniqueness.";
         };
         validateOrgDomains = lib.mkOption {
           type = lib.types.bool;
