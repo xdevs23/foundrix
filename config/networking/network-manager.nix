@@ -24,9 +24,9 @@ in
     }
 
     (lib.mkIf isVolatileRoot {
-      environment.etc."NetworkManager".source = "/var/etc/NetworkManager";
+      environment.etc."NetworkManager/system-connections".source = "/var/etc/NetworkManager/system-connections";
 
-      systemd.tmpfiles.settings."var-etc-nm"."/var/etc/NetworkManager".d = {
+      systemd.tmpfiles.settings."var-etc-nm"."/var/etc/NetworkManager/system-connections".d = {
         mode = "0755";
         user = "0";
         group = "0";
