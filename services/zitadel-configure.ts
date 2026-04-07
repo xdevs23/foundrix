@@ -76,12 +76,25 @@ interface DesiredState {
   instance: InstanceSettings | null;
   orgs: Record<string, OrgSettings> | null;
   projects: Record<string, ProjectSpec>;
+  actions: Record<string, ActionSpec>;
 }
 
 interface ProjectSpec {
   apps: Record<string, AppSpec>;
   roles: Record<string, { displayName: string }>;
   userGrants: Record<string, string[]>;
+}
+
+interface ActionTrigger {
+  flowType: string;
+  triggerType: string;
+}
+
+interface ActionSpec {
+  script: string;
+  triggers: ActionTrigger[];
+  timeout: string;
+  allowedToFail: boolean;
 }
 
 type AppSpec = ConfidentialAppSpec | PublicAppSpec;
@@ -531,6 +544,73 @@ class ZitadelClient {
   async activateCustomLabelPolicy(): Promise<void> {
     await this.request("POST", "/management/v1/policies/label/_activate", {});
   }
+
+  // Actions v1 API
+
+  async listActions(): Promise<{
+    id: string;
+    name: string;
+    script: string;
+    state: string;
+    timeout: string;
+    allowedToFail: boolean;
+  }[]> {
+    const resp = (await this.request("POST", "/management/v1/actions/_search", {})) as {
+      result?: {
+        id: string;
+        name: string;
+        script: string;
+        state: string;
+        timeout: string;
+        allowedToFail: boolean;
+      }[];
+    };
+    return resp.result ?? [];
+  }
+
+  async createAction(action: {
+    name: string;
+    script: string;
+    timeout: string;
+    allowedToFail: boolean;
+  }): Promise<string> {
+    const resp = (await this.request("POST", "/management/v1/actions", action)) as { id: string };
+    return resp.id;
+  }
+
+  async updateAction(id: string, action: {
+    name: string;
+    script: string;
+    timeout: string;
+    allowedToFail: boolean;
+  }): Promise<void> {
+    await this.request("PUT", `/management/v1/actions/${id}`, action);
+  }
+
+  async getFlow(flowType: string): Promise<{
+    triggerActions: {
+      triggerType: { id: string };
+      actions: { id: string; name: string }[];
+    }[];
+  }> {
+    const resp = (await this.request("GET", `/management/v1/flows/${flowType}`)) as {
+      flow?: {
+        triggerActions?: {
+          triggerType: { id: string };
+          actions: { id: string; name: string }[];
+        }[];
+      };
+    };
+    return {
+      triggerActions: resp.flow?.triggerActions ?? [],
+    };
+  }
+
+  async setTriggerActions(flowType: string, triggerType: string, actionIds: string[]): Promise<void> {
+    await this.request("POST", `/management/v1/flows/${flowType}/trigger/${triggerType}`, {
+      actionIds,
+    });
+  }
 }
 
 function zitadelAccessTokenType(t: "bearer" | "jwt"): string {
@@ -746,15 +826,7 @@ async function convergePublicApp(
     clientId = app.oidcConfig!.clientId;
     console.log(`Public OIDC app exists: ${appName} (client_id: ${clientId})`);
 
-    const currentRedirects = app.oidcConfig?.redirectUris ?? [];
-    const currentPostLogout = app.oidcConfig?.postLogoutRedirectUris ?? [];
-    const missingRedirects = spec.redirectUris.filter((u) => !currentRedirects.includes(u));
-    const missingPostLogout = spec.postLogoutRedirectUris.filter((u) => !currentPostLogout.includes(u));
-    const currentTokenType = app.oidcConfig?.accessTokenType ?? "OIDC_TOKEN_TYPE_BEARER";
-    const desiredTokenType = zitadelAccessTokenType(spec.accessTokenType);
-    const tokenTypeMismatch = currentTokenType !== desiredTokenType;
-    if (missingRedirects.length > 0 || missingPostLogout.length > 0 || tokenTypeMismatch) {
-      console.log(`Updating ${appName}: syncing config${tokenTypeMismatch ? ` (accessTokenType: ${currentTokenType} → ${desiredTokenType})` : ""}`);
+    try {
       await client.updateOIDCAppConfig(projectId, app.id, {
         redirectUris: spec.redirectUris,
         postLogoutRedirectUris: spec.postLogoutRedirectUris,
@@ -762,8 +834,17 @@ async function convergePublicApp(
         grantTypes: ["OIDC_GRANT_TYPE_AUTHORIZATION_CODE"],
         appType: "OIDC_APP_TYPE_USER_AGENT",
         authMethodType: "OIDC_AUTH_METHOD_TYPE_NONE",
+        accessTokenRoleAssertion: true,
+        idTokenRoleAssertion: true,
         accessTokenType: zitadelAccessTokenType(spec.accessTokenType),
       });
+      console.log(`Updated config on: ${appName}`);
+    } catch (e) {
+      if (e instanceof Error && e.message.includes("already up to date")) {
+        console.log(`Config already up to date: ${appName}`);
+      } else {
+        throw e;
+      }
     }
   } else {
     console.log(`Creating public OIDC app: ${appName}`);
@@ -775,6 +856,8 @@ async function convergePublicApp(
       grantTypes: ["OIDC_GRANT_TYPE_AUTHORIZATION_CODE"],
       appType: "OIDC_APP_TYPE_USER_AGENT",
       authMethodType: "OIDC_AUTH_METHOD_TYPE_NONE",
+      accessTokenRoleAssertion: true,
+      idTokenRoleAssertion: true,
       accessTokenType: zitadelAccessTokenType(spec.accessTokenType),
     });
     clientId = creds.clientId;
@@ -829,6 +912,91 @@ async function convergeUserGrant(
 
   console.log(`Granting roles ${roleKeys.join(", ")} to user "${userName}"`);
   await client.createUserGrant(user.id, projectId, roleKeys);
+}
+
+const FLOW_TYPE_IDS: Record<string, string> = {
+  externalAuthentication: "1",
+  complementToken: "2",
+  internalAuthentication: "3",
+  complementSAMLResponse: "4",
+};
+
+const TRIGGER_TYPE_IDS: Record<string, string> = {
+  postAuthentication: "1",
+  preCreation: "2",
+  postCreation: "3",
+  preUserinfoCreation: "4",
+  preAccessTokenCreation: "5",
+  preSAMLResponseCreation: "6",
+};
+
+async function convergeActions(
+  client: ZitadelClient,
+  actions: Record<string, ActionSpec>,
+): Promise<void> {
+  if (Object.keys(actions).length === 0) return;
+
+  const existing = await client.listActions();
+  const actionIdByName: Record<string, string> = {};
+
+  for (const [name, spec] of Object.entries(actions)) {
+    const found = existing.find((a) => a.name === name);
+
+    if (found) {
+      if (found.script !== spec.script || found.timeout !== spec.timeout || found.allowedToFail !== spec.allowedToFail) {
+        console.log(`Updating action: ${name}`);
+        await client.updateAction(found.id, {
+          name,
+          script: spec.script,
+          timeout: spec.timeout,
+          allowedToFail: spec.allowedToFail,
+        });
+      } else {
+        console.log(`Action already converged: ${name}`);
+      }
+      actionIdByName[name] = found.id;
+    } else {
+      console.log(`Creating action: ${name}`);
+      const id = await client.createAction({
+        name,
+        script: spec.script,
+        timeout: spec.timeout,
+        allowedToFail: spec.allowedToFail,
+      });
+      actionIdByName[name] = id;
+      console.log(`Created action: ${name} (${id})`);
+    }
+  }
+
+  // Group triggers by flow+trigger combination
+  const triggerMap: Record<string, string[]> = {};
+  for (const [name, spec] of Object.entries(actions)) {
+    for (const trigger of spec.triggers) {
+      const flowId = FLOW_TYPE_IDS[trigger.flowType];
+      const triggerId = TRIGGER_TYPE_IDS[trigger.triggerType];
+      const key = `${flowId}:${triggerId}`;
+      if (!triggerMap[key]) triggerMap[key] = [];
+      triggerMap[key].push(actionIdByName[name]);
+    }
+  }
+
+  // Wire actions to their flow triggers
+  for (const [key, actionIds] of Object.entries(triggerMap)) {
+    const [flowId, triggerId] = key.split(":");
+    const flow = await client.getFlow(flowId);
+    const existingTrigger = flow.triggerActions.find((t) => t.triggerType.id === triggerId);
+    const existingIds = existingTrigger?.actions.map((a) => a.id) ?? [];
+
+    const needsUpdate = actionIds.length !== existingIds.length ||
+      actionIds.some((id, i) => existingIds[i] !== id);
+
+    if (needsUpdate) {
+      console.log(`Setting trigger actions: flow=${flowId} trigger=${triggerId} → [${actionIds.join(", ")}]`);
+      await client.setTriggerActions(flowId, triggerId, actionIds);
+    } else {
+      console.log(`Trigger already wired: flow=${flowId} trigger=${triggerId}`);
+    }
+  }
 }
 
 async function convergeInstancePasswordComplexity(
@@ -1049,6 +1217,8 @@ async function main(): Promise<void> {
       await convergeUserGrant(client, projectId, userName, roleKeys);
     }
   }
+
+  await convergeActions(client, spec.actions);
 
   console.log("Configuration complete");
 }

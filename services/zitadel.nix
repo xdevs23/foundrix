@@ -228,6 +228,58 @@ let
     };
   };
 
+  actionType = lib.types.submodule {
+    options = {
+      script = lib.mkOption {
+        type = lib.types.str;
+        description = ''
+          JavaScript function body for the Zitadel Action (v1).
+          The function name must match the action's attribute name.
+        '';
+      };
+
+      triggers = lib.mkOption {
+        type = lib.types.listOf (lib.types.submodule {
+          options = {
+            flowType = lib.mkOption {
+              type = lib.types.enum [
+                "complementToken"
+                "externalAuthentication"
+                "internalAuthentication"
+                "complementSAMLResponse"
+              ];
+              description = "The flow type this action is triggered on";
+            };
+            triggerType = lib.mkOption {
+              type = lib.types.enum [
+                "postAuthentication"
+                "preCreation"
+                "postCreation"
+                "preUserinfoCreation"
+                "preAccessTokenCreation"
+                "preSAMLResponseCreation"
+              ];
+              description = "The specific trigger within the flow";
+            };
+          };
+        });
+        description = "Flow/trigger combinations this action should be wired to";
+      };
+
+      timeout = lib.mkOption {
+        type = lib.types.str;
+        default = "10s";
+        description = "Maximum execution time for this action";
+      };
+
+      allowedToFail = lib.mkOption {
+        type = lib.types.bool;
+        default = false;
+        description = "Whether action failure should be non-fatal";
+      };
+    };
+  };
+
   appType = lib.types.submodule (
     { name, config, ... }:
     {
@@ -431,6 +483,11 @@ let
         inherit (project) userGrants;
       }
     ) cfg.projects;
+    actions = lib.mapAttrs (
+      _: action: {
+        inherit (action) script triggers timeout allowedToFail;
+      }
+    ) cfg.actions;
   };
 
   configureScript = ./zitadel-configure.ts;
@@ -623,6 +680,16 @@ in
       type = lib.types.attrsOf projectType;
       default = { };
       description = "Zitadel projects with OIDC apps, roles, and user grants";
+    };
+
+    actions = lib.mkOption {
+      type = lib.types.attrsOf actionType;
+      default = { };
+      description = ''
+        Zitadel Actions (v1) — inline JavaScript snippets that run on
+        specific flows/triggers (e.g., complement token to add custom claims).
+        Attribute names become both the action name and the JS function name.
+      '';
     };
 
     database = {
