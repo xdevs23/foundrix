@@ -336,7 +336,6 @@
                   focus_on_activate = true;
                   allow_session_lock_restore = true;
                   render_unfocused_fps = 240;
-                  vfr = true;
                   vrr = true;
                 };
                 layerrule = [
@@ -360,7 +359,7 @@
                   "$mainMod, M, fullscreen, 1"
                   "$mainMod, F, fullscreen, 0"
                   "$mainMod SHIFT, Q, exec, hyprctl kill"
-                  "$mainMod, J, togglesplit,"
+                  "$mainMod, J, layoutmsg, togglesplit"
                   "$mainMod, B, exec, ${uwsmApp (lib.getExe cfg.browser)}"
                   "$mainMod, E, exec, ${uwsmApp (lib.getExe cfg.fileManager)}"
                   "$mainMod, T, exec, ${uwsmApp (lib.getExe cfg.terminal)}"
