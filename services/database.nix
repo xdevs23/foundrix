@@ -64,6 +64,15 @@ let
               ${lib.getExe' pkgs.acl "setfacl"} -m 'u:${user}:r--' "$cred"
               ${lib.getExe' pkgs.acl "setfacl"} -m 'u:postgres:r--' "$cred"
               ${lib.getExe' pkgs.acl "setfacl"} -m 'u:root:r--' "$cred"
+
+              # Variant file (e.g. pgpass format) — use plain ownership
+              # instead of ACLs, since tools like psql reject files where
+              # traditional group bits are set (ACL mask side-effect).
+              variant="${generatedPassword.variantPath}"
+              if [ -f "$variant" ]; then
+                chown ${user}:${user} "$variant"
+                chmod 0600 "$variant"
+              fi
             '';
           };
         };
