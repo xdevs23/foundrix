@@ -655,6 +655,9 @@ let
       echo "=== Running migrations ==="
       ${lib.getExe pkgs.supabase-cli} db push --db-url "$DB_URL"
 
+      echo "=== Reloading PostgREST schema cache ==="
+      ${lib.getExe' pkgs.postgresql "psql"} "$DB_URL" -c "NOTIFY pgrst, 'reload schema'"
+
       echo "=== Syncing JWT_SECRET to database ==="
       JWT_SECRET=$(< ${secretsPrefix}-jwt-secret)
       PGPASS=$(< ${secretsPrefix}-postgres-password)
