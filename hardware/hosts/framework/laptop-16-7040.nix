@@ -140,5 +140,7 @@
       services.udev.extraRules = ''
         KERNEL=="hidraw*", ATTRS{idVendor}=="32ac", ATTRS{idProduct}=="0018", MODE="0660", GROUP="users", TAG+="uaccess", TAG+="udev-acl"
       '';
+
+      hardware.inputmodule.enable = true;
     };
 }
