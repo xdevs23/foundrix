@@ -154,6 +154,27 @@
           };
         };
         home-manager = applyHomeManagerUsers cfg.users {
+          systemd.user.services.hyprpolkitagent = {
+            Unit = {
+              Description = "Hyprland Polkit Authentication Agent";
+              PartOf = [ "graphical-session.target" ];
+              After = [ "graphical-session.target" ];
+              ConditionEnvironment = "WAYLAND_DISPLAY";
+            };
+            Service = {
+              ExecStart = "${pkgs.hyprpolkitagent}/libexec/hyprpolkitagent";
+              Slice = "session.slice";
+              Restart = "on-failure";
+              TimeoutStopSec = "5sec";
+              # adwaita-qt's QT_STYLE_OVERRIDE is a widget-only style name, but
+              # QtQuickControls2 tries to import it as a QML module and crashes
+              # the agent's dialog (QTBUG-99889). Scrub it for this unit only.
+              UnsetEnvironment = "QT_STYLE_OVERRIDE QT_QPA_PLATFORMTHEME";
+            };
+            Install = {
+              WantedBy = [ "graphical-session.target" ];
+            };
+          };
           systemd.user.services.hypr-workspaced = {
             Unit = {
               Description = "Hyprland workspace daemon for synchronized virtual workspaces";
@@ -204,12 +225,6 @@
                 wlPaste = lib.getExe' pkgs.wl-clipboard "wl-paste";
                 wlCopy = lib.getExe' pkgs.wl-clipboard "wl-copy";
                 cliphist = lib.getExe pkgs.cliphist;
-                polkitKdeAgent = "${pkgs.kdePackages.polkit-kde-agent-1}/libexec/polkit-kde-authentication-agent-1";
-                polkitAuthAgentScript = pkgs.writeShellScript "polkit-auth-agent" ''
-                  while ! "${polkitKdeAgent}"; do
-                    sleep 5
-                  done
-                '';
                 loginctl = lib.getExe' pkgs.systemd "loginctl";
                 ydotool = lib.getExe pkgs.ydotool;
                 hyprshot = lib.getExe pkgs.hyprshot;
@@ -234,7 +249,6 @@
                   "${wlPaste} --type text --watch ${cliphist} store -max-dedupe-search 40 -max-items 100"
                   # For images
                   "${wlPaste} --type image --watch ${cliphist} store -max-items 100"
-                  (uwsmApp polkitAuthAgentScript)
                 ]
                 ++ map uwsmApp cfg.execOnce;
 
@@ -346,7 +360,6 @@
                 ];
                 windowrule = [
                   "float on, size 640 360, match:title ^(Picture-in-Picture)$"
-                  "float on, match:class ^(org.kde.polkit-kde-authentication-agent.*)$"
                   "no_blur on, match:xwayland 1"
                   "suppress_event maximize, match:class .*"
                   "stay_focused on, match:class ^(wofi)$"
