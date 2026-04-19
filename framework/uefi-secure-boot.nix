@@ -115,14 +115,14 @@ in
           shimSources =
             {
               "x86_64-linux" = {
-                url = "https://kojipkgs.fedoraproject.org/packages/shim/16.1/6/x86_64/shim-x64-16.1-6.x86_64.rpm";
-                sha256 = "sha256-pxYLRFhEHbDQPwZutICcZoCwdf65pIvwqBHBJcEo6zQ=";
+                url = "https://kojipkgs.fedoraproject.org/packages/shim/16.1/7/x86_64/shim-x64-16.1-7.x86_64.rpm";
+                sha256 = "sha256-ChGfNIjl2ifKVcGGTujhMa+l7PJ2iThboJuAXrAN1gg=";
                 shimFile = "shimx64.efi";
                 mmFile = "mmx64.efi";
               };
               "aarch64-linux" = {
-                url = "https://kojipkgs.fedoraproject.org/packages/shim/16.1/6/aarch64/shim-aa64-16.1-6.aarch64.rpm";
-                sha256 = "sha256-8OELVfGQd2MGWz+5ne/boF5W4kRBDznprFVp7YK4oPk=";
+                url = "https://kojipkgs.fedoraproject.org/packages/shim/16.1/7/aarch64/shim-aa64-16.1-7.aarch64.rpm";
+                sha256 = "sha256-M1l9JwduLdQu8Sx4JThmbymTgDtgsql2GVDyEppu0dU=";
                 shimFile = "shimaa64.efi";
                 mmFile = "mmaa64.efi";
               };
@@ -131,7 +131,7 @@ in
         in
         pkgs.stdenv.mkDerivation rec {
           pname = "shim";
-          version = "15.8-5";
+          version = "16.1-7";
           src = pkgs.fetchurl {
             url = shimSources.url;
             sha256 = shimSources.sha256;
