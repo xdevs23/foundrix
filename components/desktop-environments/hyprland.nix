@@ -127,6 +127,7 @@
               system = pkgs.stdenv.targetPlatform.system;
             in
             {
+              enable = true;
               package = inputs.hyprland.packages.${system}.hyprland;
               portalPackage = inputs.hyprland.packages.${system}.xdg-desktop-portal-hyprland;
               xwayland.enable = true;
@@ -142,6 +143,19 @@
               extraArgs = [ "--no-nixgl" ];
             };
           };
+        };
+        # Portal backend selection must be declared at the NixOS level: the daemon
+        # reads portals.conf from /etc/xdg/xdg-desktop-portal/, and NixOS's
+        # xdg-desktop-portal patch hard-codes NIX_XDG_DESKTOP_PORTAL_DIR to the
+        # system profile, so portals installed via home-manager are invisible
+        # (see home-manager#7124). programs.hyprland.enable above registers
+        # xdg-desktop-portal-hyprland there; wayland-session.nix adds the gtk portal.
+        xdg.portal.config = {
+          hyprland.default = [
+            "hyprland"
+            "gtk"
+          ];
+          common.default = [ "gtk" ];
         };
         environment.systemPackages = [ pkgs.uwsm ];
         services.greetd = {
@@ -197,21 +211,6 @@
             };
             Install = {
               WantedBy = [ "graphical-session.target" ];
-            };
-          };
-          xdg.portal.extraPortals = [
-            config.programs.hyprland.portalPackage
-            pkgs.xdg-desktop-portal-gtk
-          ];
-          xdg.portal.config = {
-            hyprland = {
-              default = [
-                "hyprland"
-                "gtk"
-              ];
-            };
-            common = {
-              default = [ "gtk" ];
             };
           };
           wayland.windowManager.hyprland = {
