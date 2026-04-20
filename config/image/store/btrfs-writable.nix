@@ -19,7 +19,11 @@ in
   ];
 
   config = installedOnly config {
-    image.repart.compression.enable = lib.mkDefault true;
+    # Disabled by default: the btrfs filesystem itself already does zstd
+    # compression (see fsOptions below), so artifact-level compression is
+    # redundant for local image builds. Devices that distribute images over
+    # the network can opt back in by setting this to true.
+    image.repart.compression.enable = lib.mkDefault false;
 
     image.repart.partitions.${partitionIds.main} = {
       storePaths = [ config.system.build.toplevel ];
