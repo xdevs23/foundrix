@@ -1,0 +1,20 @@
+[package]
+name = "nsw2-service"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.86"
+description = "Linux userspace driver for Nintendo Switch 2 controllers (initialization, HID translation, force feedback)"
+license = "GPL-3.0-only"
+
+[[bin]]
+name = "nsw2-service"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+rusb = "0.9"
+
+[profile.release]
+lto = true
+strip = true
+panic = "abort"
