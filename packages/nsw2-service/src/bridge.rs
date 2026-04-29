@@ -37,6 +37,9 @@ const HID_REPORT_BUF: usize = 64;
 
 const STICK_MIN: i32 = i16::MIN as i32;
 const STICK_MAX: i32 = i16::MAX as i32;
+/// Trigger raw byte range. The hardware sits at ~36 at rest and reaches
+/// ~240 on a normal full press, but can hit 255 with a hard press, so we
+/// declare the whole byte range and pass it through unmodified.
 const TRIG_MIN: i32 = 0;
 const TRIG_MAX: i32 = 255;
 
