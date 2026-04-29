@@ -17,6 +17,10 @@ use anyhow::Result;
 mod bridge;
 mod init;
 mod report;
+// Retained for future use when rumble routing through the vendor bulk
+// endpoint is added; see comment in bridge.rs::hid_loop.
+#[allow(dead_code)]
+mod rumble;
 
 fn main() -> Result<()> {
     init::run()?;
