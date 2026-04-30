@@ -2,24 +2,28 @@
 //!
 //! Threading model:
 //!
-//! * **HID thread** owns the [`HidDevice`] and the [`UsbCommandChannel`]
-//!   carried over from init (claimed interface 1 + bulk OUT endpoint).
-//!   It reads input reports off /dev/hidraw and sends parsed
-//!   [`ControllerState`]s on the *state channel*. It also receives
-//!   [`RumbleCmd`]s on the *rumble channel* and writes the corresponding
-//!   command frames out the bulk OUT endpoint.
+//! * **HID thread** reads input reports from `/dev/hidrawN` (opened
+//!   directly for a pollable fd) and sends parsed [`ControllerState`]s
+//!   on the *state channel*. It also receives [`RumbleCmd`]s on the
+//!   *rumble channel* and writes the corresponding command frames out
+//!   the bulk OUT endpoint.
 //!
 //! * **Main thread** owns the [`VirtualDevice`]. It drains the state
 //!   channel and emits to uinput, and it drains kernel-side FF events
-//!   off the vdev fd (put in `O_NONBLOCK`), translating play/stop into
-//!   `RumbleCmd`s for the HID thread.
+//!   off the vdev fd, translating play/stop into `RumbleCmd`s for the
+//!   HID thread.
 //!
-//! Two unidirectional `mpsc` channels, no shared mutable state.
+//! Both threads use `poll(2)` to multiplex their fd sets — no timeouts,
+//! pure event-driven wakeups. Two unidirectional `mpsc` channels
+//! bridged with `eventfd(2)`, no shared mutable state.
 
 use std::collections::{BTreeSet, HashMap};
-use std::io;
+use std::ffi::OsStr;
+use std::fs::File;
+use std::io::{self, Read};
 use std::os::fd::{AsFd, AsRawFd, BorrowedFd};
-use std::sync::mpsc;
+use std::os::unix::ffi::OsStrExt;
+use std::path::PathBuf;
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -29,9 +33,10 @@ use evdev::{
     FFEffectKind, FFStatusCode, InputEvent, InputId, KeyCode, UInputCode, UinputAbsSetup,
     uinput::VirtualDevice,
 };
-use hidapi::{HidApi, HidDevice};
+use hidapi::HidApi;
 
 use crate::init::UsbCommandChannel;
+use crate::poll::{self, PollableReceiver, PollableSender};
 use crate::report::{self, ControllerState};
 use crate::rumble;
 
@@ -42,16 +47,7 @@ const PRODUCT_ID: u16 = 0x2073;
 const HIDRAW_OPEN_TIMEOUT: Duration = Duration::from_secs(3);
 const HIDRAW_OPEN_INTERVAL: Duration = Duration::from_millis(100);
 
-/// HID read timeout, in milliseconds. We wake periodically so we don't
-/// miss SIGTERM forever (systemd's stop sequence) and so the rumble
-/// channel gets drained between reads.
-const HID_READ_TIMEOUT_MS: i32 = 50;
 const HID_REPORT_BUF: usize = 64;
-
-/// Roughly one HID frame at the controller's ~250 Hz polling rate. We
-/// block on the state channel up to this long before re-checking FF
-/// events, balancing FF latency vs. wakeup count when idle.
-const MAIN_TICK: Duration = Duration::from_millis(4);
 
 /// Bulk-OUT write timeout for rumble frames. Generous because we don't
 /// want a slow-USB hiccup to kill the bridge, but bounded so we never
@@ -78,25 +74,26 @@ enum RumbleCmd {
 
 pub fn run(usb: UsbCommandChannel) -> Result<()> {
     let mut api = HidApi::new().context("initialize hidapi")?;
-    let hid = open_with_retry(&mut api).context("open hidraw device")?;
+    let hidraw_path = find_hidraw_path(&mut api).context("find hidraw device path")?;
+    let hidraw = open_hidraw(&hidraw_path).context("open hidraw device")?;
 
     let mut vdev = build_virtual_device().context("create virtual gamepad via uinput")?;
     set_nonblocking(vdev.as_fd()).context("put vdev fd in O_NONBLOCK")?;
 
-    let (state_tx, state_rx) = mpsc::channel::<ControllerState>();
-    let (rumble_tx, rumble_rx) = mpsc::channel::<RumbleCmd>();
+    let (state_tx, state_rx) =
+        poll::pollable_channel::<ControllerState>().context("create state channel")?;
+    let (rumble_tx, rumble_rx) =
+        poll::pollable_channel::<RumbleCmd>().context("create rumble channel")?;
 
     println!(
         "nsw2-service: bridging HID -> uinput for {VENDOR_ID:04X}:{PRODUCT_ID:04X}; \
          press Ctrl-C or unplug the controller to exit"
     );
 
-    let hid_handle = thread::spawn(move || hid_loop(hid, usb, state_tx, rumble_rx));
+    let hid_handle = thread::spawn(move || hid_loop(hidraw, usb, state_tx, rumble_rx));
 
     let result = main_loop(&mut vdev, state_rx, rumble_tx);
 
-    // Whatever happens, surface the HID thread's verdict — its error is
-    // the most informative one (controller unplugged, etc.).
     let hid_result = hid_handle.join().map_err(|_| anyhow!("HID thread panicked"))?;
     match (result, hid_result) {
         (Err(e), _) => Err(e),
@@ -107,75 +104,97 @@ pub fn run(usb: UsbCommandChannel) -> Result<()> {
 
 fn main_loop(
     vdev: &mut VirtualDevice,
-    state_rx: mpsc::Receiver<ControllerState>,
-    rumble_tx: mpsc::Sender<RumbleCmd>,
+    state_rx: PollableReceiver<ControllerState>,
+    rumble_tx: PollableSender<RumbleCmd>,
 ) -> Result<()> {
     let mut last = ControllerState::default();
     let mut effects: HashMap<u16, FFEffectKind> = HashMap::new();
     let mut available_ids: BTreeSet<u16> = (0..MAX_FF_EFFECTS as u16).collect();
 
+    let vdev_fd = vdev.as_fd().as_raw_fd();
+    let state_fd = state_rx.raw_fd();
+    let mut fds = [poll::pollfd(state_fd), poll::pollfd(vdev_fd)];
+
     loop {
-        match state_rx.recv_timeout(MAIN_TICK) {
-            Ok(state) => {
-                emit_state(vdev, &state, &last)?;
-                last = state;
-                while let Ok(state) = state_rx.try_recv() {
-                    emit_state(vdev, &state, &last)?;
-                    last = state;
+        let mut ps = poll::PollSet::new(&mut fds);
+        ps.wait().context("main_loop poll")?;
+
+        if ps.readable(0) {
+            let disconnected = state_rx.drain(|state| {
+                if let Err(e) = emit_state(vdev, &state, &last) {
+                    eprintln!("nsw2-service: emit_state error: {e}");
                 }
-            }
-            Err(mpsc::RecvTimeoutError::Timeout) => {}
-            Err(mpsc::RecvTimeoutError::Disconnected) => {
-                // HID thread exited (controller unplugged or fatal error).
-                // Its return value carries the real reason.
+                last = state;
+            });
+            if disconnected {
                 return Ok(());
             }
         }
 
-        process_ff(vdev, &mut effects, &mut available_ids, &rumble_tx)?;
+        if ps.readable(1) || ps.has_error(1) {
+            process_ff(vdev, &mut effects, &mut available_ids, &rumble_tx)?;
+        }
     }
 }
 
 fn hid_loop(
-    hid: HidDevice,
+    mut hidraw: File,
     usb: UsbCommandChannel,
-    state_tx: mpsc::Sender<ControllerState>,
-    rumble_rx: mpsc::Receiver<RumbleCmd>,
+    state_tx: PollableSender<ControllerState>,
+    rumble_rx: PollableReceiver<RumbleCmd>,
 ) -> Result<()> {
+    let hidraw_fd = hidraw.as_raw_fd();
+    let rumble_fd = rumble_rx.raw_fd();
+    let mut fds = [poll::pollfd(hidraw_fd), poll::pollfd(rumble_fd)];
     let mut buf = [0u8; HID_REPORT_BUF];
 
     loop {
-        // Drain pending rumble commands; only the latest matters since the
-        // hardware has a single binary motor and intermediate updates
-        // produce no observable difference.
-        let mut latest: Option<RumbleCmd> = None;
-        while let Ok(cmd) = rumble_rx.try_recv() {
-            latest = Some(cmd);
-        }
-        if let Some(cmd) = latest {
-            let frame = match cmd {
-                RumbleCmd::Stop => rumble::neutral_frame(),
-                RumbleCmd::Play { strong, weak } => rumble::rumble_frame(
-                    strong as f32 / u16::MAX as f32,
-                    weak as f32 / u16::MAX as f32,
-                ),
-            };
-            usb.handle
-                .write_bulk(usb.bulk_out, &frame, RUMBLE_WRITE_TIMEOUT)
-                .map_err(|e| anyhow!("write rumble bulk frame: {e}"))?;
+        let mut ps = poll::PollSet::new(&mut fds);
+        ps.wait().context("hid_loop poll")?;
+
+        if ps.readable(1) {
+            let mut latest: Option<RumbleCmd> = None;
+            rumble_rx.drain(|cmd| {
+                latest = Some(cmd);
+            });
+            if let Some(cmd) = latest {
+                let frame = match cmd {
+                    RumbleCmd::Stop => rumble::neutral_frame(),
+                    RumbleCmd::Play { strong, weak } => rumble::rumble_frame(
+                        strong as f32 / u16::MAX as f32,
+                        weak as f32 / u16::MAX as f32,
+                    ),
+                };
+                usb.handle
+                    .write_bulk(usb.bulk_out, &frame, RUMBLE_WRITE_TIMEOUT)
+                    .map_err(|e| anyhow!("write rumble bulk frame: {e}"))?;
+            }
         }
 
-        match hid.read_timeout(&mut buf, HID_READ_TIMEOUT_MS) {
-            Ok(0) => continue,
-            Ok(n) => {
-                if let Some(state) = ControllerState::parse(&buf[..n])
-                    && state_tx.send(state).is_err()
-                {
-                    return Ok(()); // main thread dropped the receiver
+        if ps.has_error(0) {
+            return Err(anyhow!(
+                "hidraw fd error (controller likely unplugged)"
+            ));
+        }
+
+        if ps.readable(0) {
+            loop {
+                match hidraw.read(&mut buf) {
+                    Ok(0) => break,
+                    Ok(n) => {
+                        if let Some(state) = ControllerState::parse(&buf[..n])
+                            && state_tx.send(state).is_err()
+                        {
+                            return Ok(());
+                        }
+                    }
+                    Err(e) if e.kind() == io::ErrorKind::WouldBlock => break,
+                    Err(e) => {
+                        return Err(anyhow!(
+                            "HID read failed (controller likely unplugged): {e}"
+                        ));
+                    }
                 }
-            }
-            Err(e) => {
-                return Err(anyhow!("HID read failed (controller likely unplugged): {e}"));
             }
         }
     }
@@ -185,7 +204,7 @@ fn process_ff(
     vdev: &mut VirtualDevice,
     effects: &mut HashMap<u16, FFEffectKind>,
     available_ids: &mut BTreeSet<u16>,
-    rumble_tx: &mpsc::Sender<RumbleCmd>,
+    rumble_tx: &PollableSender<RumbleCmd>,
 ) -> Result<()> {
     const STOPPED: i32 = FFStatusCode::FF_STATUS_STOPPED.0 as i32;
     const PLAYING: i32 = FFStatusCode::FF_STATUS_PLAYING.0 as i32;
@@ -242,24 +261,32 @@ fn process_ff(
     Ok(())
 }
 
-fn open_with_retry(api: &mut HidApi) -> Result<HidDevice> {
+fn find_hidraw_path(api: &mut HidApi) -> Result<PathBuf> {
     let deadline = Instant::now() + HIDRAW_OPEN_TIMEOUT;
     loop {
-        match api.open(VENDOR_ID, PRODUCT_ID) {
-            Ok(d) => return Ok(d),
-            Err(e) => {
-                if Instant::now() >= deadline {
-                    return Err(anyhow!(
-                        "could not open HID device {VENDOR_ID:04X}:{PRODUCT_ID:04X} \
-                         within {:?}: {e}",
-                        HIDRAW_OPEN_TIMEOUT
-                    ));
-                }
-                thread::sleep(HIDRAW_OPEN_INTERVAL);
-                let _ = api.refresh_devices();
+        let _ = api.refresh_devices();
+        for dev in api.device_list() {
+            if dev.vendor_id() == VENDOR_ID && dev.product_id() == PRODUCT_ID {
+                let bytes = dev.path().to_bytes();
+                return Ok(PathBuf::from(OsStr::from_bytes(bytes)));
             }
         }
+        if Instant::now() >= deadline {
+            return Err(anyhow!(
+                "could not find HID device {VENDOR_ID:04X}:{PRODUCT_ID:04X} \
+                 within {HIDRAW_OPEN_TIMEOUT:?}"
+            ));
+        }
+        thread::sleep(HIDRAW_OPEN_INTERVAL);
     }
+}
+
+fn open_hidraw(path: &PathBuf) -> Result<File> {
+    let file = File::open(path)
+        .with_context(|| format!("open {}", path.display()))?;
+    set_nonblocking(file.as_fd())
+        .with_context(|| format!("set O_NONBLOCK on {}", path.display()))?;
+    Ok(file)
 }
 
 fn build_virtual_device() -> Result<VirtualDevice> {
@@ -341,8 +368,7 @@ fn abs_event(code: AbsoluteAxisCode, value: i16) -> InputEvent {
     InputEvent::new(EventType::ABSOLUTE.0, code.0, value as i32)
 }
 
-/// Put a borrowed fd into `O_NONBLOCK`. Used so `fetch_events` returns
-/// `WouldBlock` instead of waiting forever.
+/// Put a borrowed fd into `O_NONBLOCK`.
 fn set_nonblocking(fd: BorrowedFd) -> io::Result<()> {
     let raw = fd.as_raw_fd();
     let flags = unsafe { libc::fcntl(raw, libc::F_GETFL) };

@@ -16,6 +16,7 @@ use anyhow::Result;
 
 mod bridge;
 mod init;
+mod poll;
 mod report;
 mod rumble;
 

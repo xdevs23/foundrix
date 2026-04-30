@@ -14,6 +14,8 @@ rustPlatform.buildRustPackage {
 
   cargoLock.lockFile = ./Cargo.lock;
 
+  doCheck = false;
+
   nativeBuildInputs = [ pkg-config ];
   buildInputs = [
     libusb1

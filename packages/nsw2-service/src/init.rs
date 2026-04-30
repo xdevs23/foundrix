@@ -112,9 +112,23 @@ fn find_endpoints<T: UsbContext>(device: &rusb::Device<T>, interface: u8) -> Res
 /// A claimed handle to interface 1 plus the bulk OUT endpoint address —
 /// returned from [`run`] so the bridge can keep the channel alive and use
 /// it for runtime commands (rumble, etc.).
+///
+/// Drops with a best-effort "rumble off" write, so the controller's motor
+/// doesn't keep spinning if the bridge exits while a play effect is in
+/// flight (clean shutdown, panic, or any other unwind path).
 pub struct UsbCommandChannel {
     pub handle: rusb::DeviceHandle<rusb::Context>,
     pub bulk_out: u8,
+}
+
+impl Drop for UsbCommandChannel {
+    fn drop(&mut self) {
+        let _ = self.handle.write_bulk(
+            self.bulk_out,
+            &crate::rumble::neutral_frame(),
+            std::time::Duration::from_millis(100),
+        );
+    }
 }
 
 pub fn run() -> Result<UsbCommandChannel> {
