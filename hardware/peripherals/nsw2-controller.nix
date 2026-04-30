@@ -46,8 +46,17 @@
       # numbers correspond to evdev axis codes: 0=ABS_X, 1=ABS_Y, 2=ABS_Z,
       # 3=ABS_RX, 4=ABS_RY, 5=ABS_RZ. Y axes use `Axis 1-` / `Axis 4-`
       # for "up" because our service emits Y inverted (kernel gamepad
-      # convention). ZR is double-mapped to GameCube's Z trigger because
-      # they're the same physical button on this controller.
+      # convention). The main-stick X axis uses `Axis 0+` for *Left*
+      # because this controller's left-stick X is wired so that the
+      # service emits a positive value when the user pushes west — the
+      # service's saturating_neg already adjusted for the underlying
+      # raw direction, but Dolphin's auto-calibration during binding
+      # takes the dominant direction and flips us back. ZR is double-
+      # mapped to GameCube's Z trigger because they're the same physical
+      # button on this controller. Calibration values represent the
+      # idealized GameCube octagonal gate (vertex radius 100, side
+      # midpoint cos(22.5°) ≈ 92.39); the 32 entries are 8 repetitions
+      # of the same 4-sample-per-side pattern.
       dolphinProfile = pkgs.writeText "nsw2-gamecube.ini" ''
         [Profile]
         Device = evdev/0/Nintendo Switch 2 NSO GameCube Controller
@@ -57,18 +66,24 @@
         Buttons/Y = WEST
         Buttons/Z = TR2
         Buttons/Start = START
+        Main Stick/Dead Zone = 6.
         Main Stick/Up = `Axis 1-`
         Main Stick/Down = `Axis 1+`
-        Main Stick/Left = `Axis 0-`
-        Main Stick/Right = `Axis 0+`
+        Main Stick/Left = `Axis 0+`
+        Main Stick/Right = `Axis 0-`
+        Main Stick/Calibration = 64.00 60.29 59.13 60.29 64.00 60.29 59.13 60.29 64.00 60.29 59.13 60.29 64.00 60.29 59.13 60.29 64.00 60.29 59.13 60.29 64.00 60.29 59.13 60.29 64.00 60.29 59.13 60.29 64.00 60.29 59.13 60.29
+        C-Stick/Dead Zone = 8.
         C-Stick/Up = `Axis 4-`
         C-Stick/Down = `Axis 4+`
         C-Stick/Left = `Axis 3-`
         C-Stick/Right = `Axis 3+`
+        C-Stick/Calibration = 56.00 52.75 51.74 52.75 56.00 52.75 51.74 52.75 56.00 52.75 51.74 52.75 56.00 52.75 51.74 52.75 56.00 52.75 51.74 52.75 56.00 52.75 51.74 52.75 56.00 52.75 51.74 52.75 56.00 52.75 51.74 52.75
+        Triggers/Dead Zone = 8.
+        Triggers/Threshold = 86.
         Triggers/L = TL
         Triggers/R = TR
-        Triggers/L-Analog = `Axis 2+`
-        Triggers/R-Analog = `Axis 5+`
+        Triggers/L-Analog = `Full Axis 2+`
+        Triggers/R-Analog = `Full Axis 5+`
         D-Pad/Up = DPAD_UP
         D-Pad/Down = DPAD_DOWN
         D-Pad/Left = DPAD_LEFT
