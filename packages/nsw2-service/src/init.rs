@@ -109,7 +109,15 @@ fn find_endpoints<T: UsbContext>(device: &rusb::Device<T>, interface: u8) -> Res
     })
 }
 
-pub fn run() -> Result<()> {
+/// A claimed handle to interface 1 plus the bulk OUT endpoint address —
+/// returned from [`run`] so the bridge can keep the channel alive and use
+/// it for runtime commands (rumble, etc.).
+pub struct UsbCommandChannel {
+    pub handle: rusb::DeviceHandle<rusb::Context>,
+    pub bulk_out: u8,
+}
+
+pub fn run() -> Result<UsbCommandChannel> {
     let context = rusb::Context::new().context("initialize libusb")?;
 
     let device = context
@@ -154,10 +162,16 @@ pub fn run() -> Result<()> {
         thread::sleep(INTER_PACKET_DELAY);
     }
 
-    handle.release_interface(INTERFACE).ok();
     println!(
         "nsw2-service: sent {} init packets to {VENDOR_ID:04X}:{PRODUCT_ID:04X}",
         INIT_SEQUENCE.len()
     );
-    Ok(())
+    // Deliberately do *not* release interface 1: post-init runtime commands
+    // (rumble) also go out on this bulk OUT endpoint. Releasing here would
+    // make the bridge's later writes fail. The handle is dropped when the
+    // bridge exits, at which point libusb releases the interface.
+    Ok(UsbCommandChannel {
+        handle,
+        bulk_out: endpoints.bulk_out,
+    })
 }

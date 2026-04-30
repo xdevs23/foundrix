@@ -53,7 +53,7 @@ responses to some packets and is drained between writes.
 | 13 | 0x10 | 0x01 |  8 | — |
 | 14 | 0x01 | 0x0C |  8 | — |
 | 15 | 0x03 | 0x01 |  7 | — |
-| 16 | 0x0A | 0x02 | 11 | — |
+| 16 | 0x0A | 0x02 | 11 | Initial haptic state (motor byte = 0x03; same command/subcmd as the runtime rumble write below) |
 | 17 | 0x09 | 0x07 | 16 | Player LED final (player 1) |
 
 The haptics-enable packet (#12) is required before the rumble actuator
@@ -173,6 +173,32 @@ central bulge of the casing. There is no second actuator and no LRA;
 this is not an HD Rumble device.
 
 The actuator must be enabled during init (handshake packet 12) before it
-will respond. The exact rumble command byte sequence on the vendor bulk
-endpoint has not been determined and is not documented in the broader
-ecosystem.
+will respond. After init, motor state is set with the following 12-byte
+command on the vendor bulk OUT endpoint of interface 1:
+
+| Offset | Width | Value | Meaning |
+|--------|-------|-------|---------|
+| 0 | 1 byte | 0x0A | Command code |
+| 1 | 1 byte | 0x91 | Request type |
+| 2 | 1 byte | 0x00 | Interface (USB) |
+| 3 | 1 byte | 0x02 | Subcommand |
+| 4 | 1 byte | 0x00 | — |
+| 5 | 1 byte | 0x04 | Payload header |
+| 6 | 2 bytes | 0x0000 | — |
+| 8 | 1 byte | 0x01 / 0x00 | Motor state: 0x01 = on, 0x00 = off |
+| 9 | 3 bytes | 0x000000 | Trailing zeros |
+
+Unlike the Bluetooth rumble path used by Joy-Con 2 and Pro Controller 2,
+no transaction-counter byte is required and no sequence-id wrapping
+applies. The controller acts on each command immediately and holds the
+motor in the requested state until a new command arrives.
+
+## Sources
+
+- ikz87/NSW2-controller-enabler — USB init handshake byte sequences and ordering.
+- HandHeldLegend/handheldlegend.github.io (procon2tool) — Pro Controller 2 BLE rumble report layout.
+- darthcloud/BlueRetro — Switch 2 controller-family BLE protocol structure, output-frame sizes, and the GC-vs-Pro-2 single-vs-dual actuator distinction.
+- dekuNukem/Nintendo_Switch_Reverse_Engineering — Joy-Con/Pro Controller HD-Rumble HF/LF encoding (does not apply to the GC ERM but documents the protocol family).
+- DanielOgorchock/linux (hid-nintendo branch) — kernel-side reference for Joy-Con/Pro Controller rumble encoding.
+- RyanCopley/NSO-GameCube-Controller-Pairing-App — confirmed working USB rumble command (`0x0A`/`0x02`) on Linux via libusb to the bulk OUT endpoint of interface 1.
+- D-tech-pro/NSO-GC-Controller-PC — corroborating cross-platform GC controller enabler implementation.

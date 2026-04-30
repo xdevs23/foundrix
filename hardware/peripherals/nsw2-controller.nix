@@ -88,6 +88,7 @@
         D-Pad/Down = DPAD_DOWN
         D-Pad/Left = DPAD_LEFT
         D-Pad/Right = DPAD_RIGHT
+        Rumble/Motor = `Strong`
       '';
     in
     lib.mkIf cfg.enable {

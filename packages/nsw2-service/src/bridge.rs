@@ -2,10 +2,12 @@
 //!
 //! Threading model:
 //!
-//! * **HID thread** owns the [`HidDevice`]. It reads input reports and
-//!   sends parsed [`ControllerState`]s on the *state channel*. It also
-//!   receives [`RumbleCmd`]s on the *rumble channel* and writes the
-//!   corresponding HID output reports back to the controller.
+//! * **HID thread** owns the [`HidDevice`] and the [`UsbCommandChannel`]
+//!   carried over from init (claimed interface 1 + bulk OUT endpoint).
+//!   It reads input reports off /dev/hidraw and sends parsed
+//!   [`ControllerState`]s on the *state channel*. It also receives
+//!   [`RumbleCmd`]s on the *rumble channel* and writes the corresponding
+//!   command frames out the bulk OUT endpoint.
 //!
 //! * **Main thread** owns the [`VirtualDevice`]. It drains the state
 //!   channel and emits to uinput, and it drains kernel-side FF events
@@ -29,7 +31,9 @@ use evdev::{
 };
 use hidapi::{HidApi, HidDevice};
 
+use crate::init::UsbCommandChannel;
 use crate::report::{self, ControllerState};
+use crate::rumble;
 
 const VENDOR_ID: u16 = 0x057E;
 const PRODUCT_ID: u16 = 0x2073;
@@ -49,6 +53,11 @@ const HID_REPORT_BUF: usize = 64;
 /// events, balancing FF latency vs. wakeup count when idle.
 const MAIN_TICK: Duration = Duration::from_millis(4);
 
+/// Bulk-OUT write timeout for rumble frames. Generous because we don't
+/// want a slow-USB hiccup to kill the bridge, but bounded so we never
+/// stall input forever.
+const RUMBLE_WRITE_TIMEOUT: Duration = Duration::from_millis(200);
+
 /// How many concurrent FF effects the kernel can upload before we start
 /// rejecting them. Plenty for normal use; games rarely use more than 2.
 const MAX_FF_EFFECTS: u32 = 16;
@@ -67,7 +76,7 @@ enum RumbleCmd {
     Stop,
 }
 
-pub fn run() -> Result<()> {
+pub fn run(usb: UsbCommandChannel) -> Result<()> {
     let mut api = HidApi::new().context("initialize hidapi")?;
     let hid = open_with_retry(&mut api).context("open hidraw device")?;
 
@@ -82,7 +91,7 @@ pub fn run() -> Result<()> {
          press Ctrl-C or unplug the controller to exit"
     );
 
-    let hid_handle = thread::spawn(move || hid_loop(hid, state_tx, rumble_rx));
+    let hid_handle = thread::spawn(move || hid_loop(hid, usb, state_tx, rumble_rx));
 
     let result = main_loop(&mut vdev, state_rx, rumble_tx);
 
@@ -129,25 +138,32 @@ fn main_loop(
 
 fn hid_loop(
     hid: HidDevice,
+    usb: UsbCommandChannel,
     state_tx: mpsc::Sender<ControllerState>,
     rumble_rx: mpsc::Receiver<RumbleCmd>,
 ) -> Result<()> {
     let mut buf = [0u8; HID_REPORT_BUF];
 
     loop {
-        // Rumble HID writes are disabled on this controller. The HID
-        // descriptor declares output report 0x03 but writes to it cause
-        // the controller's USB stack to drop off the bus within a few
-        // milliseconds — confirmed empirically and corroborated by
-        // RyanCopley/NSO-GameCube-Controller-Pairing-App, which notes
-        // the command interface "is not accessible through the HID
-        // driver". The actual rumble command path is the vendor bulk
-        // endpoint on interface 1 (the channel we use for init), which
-        // we don't keep open here. Drain the channel so the main thread
-        // doesn't fill the queue, but drop the bytes; the threading and
-        // `rumble.rs` packet builder are retained so we can wire them up
-        // once we add a bulk-OUT writer.
-        while rumble_rx.try_recv().is_ok() {}
+        // Drain pending rumble commands; only the latest matters since the
+        // hardware has a single binary motor and intermediate updates
+        // produce no observable difference.
+        let mut latest: Option<RumbleCmd> = None;
+        while let Ok(cmd) = rumble_rx.try_recv() {
+            latest = Some(cmd);
+        }
+        if let Some(cmd) = latest {
+            let frame = match cmd {
+                RumbleCmd::Stop => rumble::neutral_frame(),
+                RumbleCmd::Play { strong, weak } => rumble::rumble_frame(
+                    strong as f32 / u16::MAX as f32,
+                    weak as f32 / u16::MAX as f32,
+                ),
+            };
+            usb.handle
+                .write_bulk(usb.bulk_out, &frame, RUMBLE_WRITE_TIMEOUT)
+                .map_err(|e| anyhow!("write rumble bulk frame: {e}"))?;
+        }
 
         match hid.read_timeout(&mut buf, HID_READ_TIMEOUT_MS) {
             Ok(0) => continue,

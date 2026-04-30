@@ -8,21 +8,18 @@
 //! so we expose the controller as our own properly-laid-out virtual gamepad.
 //!
 //! Current scope: NSO GameCube Controller (057e:2073) — init handshake,
-//! plus an HID-to-uinput translation bridge for buttons, sticks, and
-//! analog triggers. Pro Controller 2, Joy-Con 2 L/R, and rumble are still
-//! to come.
+//! HID-to-uinput translation bridge for buttons, sticks, and analog
+//! triggers, plus binary on/off rumble for the central ERM motor. Pro
+//! Controller 2 and Joy-Con 2 L/R are still to come.
 
 use anyhow::Result;
 
 mod bridge;
 mod init;
 mod report;
-// Retained for future use when rumble routing through the vendor bulk
-// endpoint is added; see comment in bridge.rs::hid_loop.
-#[allow(dead_code)]
 mod rumble;
 
 fn main() -> Result<()> {
-    init::run()?;
-    bridge::run()
+    let usb = init::run()?;
+    bridge::run(usb)
 }
