@@ -627,7 +627,7 @@ let
           if [ -f "$seed_file" ]; then
             if ! grep -Fxq "$seed_file" "${seedsAppliedFile}"; then
               echo "Running new seed: $seed_file"
-              ${lib.getExe' pkgs.postgresql "psql"} "$DB_URL" -f "$seed_file"
+              ${lib.getExe' pkgs.postgresql "psql"} "$DB_URL" -v ON_ERROR_STOP=1 -f "$seed_file"
               echo "$seed_file" >> "${seedsAppliedFile}"
             else
               echo "Already applied: $seed_file"

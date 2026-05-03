@@ -8,6 +8,7 @@
   imports = [
     foundrixModules.profiles.desktop-base
     foundrixModules.config.appimage
+    foundrixModules.config.bluetooth
     foundrixModules.config.media.pipewire
     foundrixModules.config.compat
     foundrixModules.config.gstreamer
