@@ -7,11 +7,11 @@
         # gh api repos/CachyOS/proton-cachyos/releases/latest --jq '.tag_name, (.assets[] | select(.name | test("x86_64_v[34]")) | .browser_download_url)'
         # nix-prefetch-url --unpack --type sha512 <url> | nix hash convert --hash-algo sha512 --to sri
         src = pkgsUnstable.fetchzip {
-          url = "https://github.com/CachyOS/proton-cachyos/releases/download/cachyos-10.0-20260409-slr/proton-cachyos-10.0-20260409-slr-x86_64_v3.tar.xz";
-          hash = "sha512-QKVtl+4+oyYH01iBzeUDfAdGxHrcO8aIP+L2tQcqY37QpcjkJgcUujmrTlHsq34Tqj/UfdQfYmaI9JQ8PE6KaA==";
+          url = "https://github.com/CachyOS/proton-cachyos/releases/download/cachyos-11.0-20260429-slr/proton-cachyos-11.0-20260429-slr-x86_64_v3.tar.xz";
+          hash = "sha512-3qH8Pxm0kldKY7SlTDsEO1sJDN6zn4TyOhMda5UM/64QUm14AHovH8cC4TocorVaZZkYvTW82PM8R8RMETQ24w==";
         };
         pname = "proton-cachyos";
-        version = "proton-cachyos-10.0-20260409-slr-x86_64_v3";
+        version = "proton-cachyos-11.0-20260429-slr-x86_64_v3";
       }
     )).override
       { steamDisplayName = "Proton-CachyOS x86_64_v3"; };

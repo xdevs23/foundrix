@@ -12,10 +12,10 @@ in
 {
   studio = pullImage {
     imageName = "supabase/studio";
-    imageDigest = "sha256:6df01717260781224d6e5fc24532511a184d43b705be39ba592b4958ccf4109d";
-    hash = "sha256-0rfaiO78AubxCe8DUUyXI6ZfEOMwwyz/bk69hxUvuD0=";
+    imageDigest = "sha256:ce3bb53c1cadc9f6b5b41cbbac768924505777dc3d0d30791fad3e0431d232d3";
+    hash = "sha256-bE3uDUqEjBlxINNe/zS9LrS9RHdtwmz46QS357wQvw4=";
     finalImageName = "supabase/studio";
-    finalImageTag = "2026.04.08-sha-205cbe7";
+    finalImageTag = "2026.04.27-sha-5f60601";
   };
 
   kong = pullImage {
