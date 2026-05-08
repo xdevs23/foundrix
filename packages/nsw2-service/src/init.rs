@@ -131,20 +131,34 @@ impl Drop for UsbCommandChannel {
     }
 }
 
-pub fn run() -> Result<UsbCommandChannel> {
+pub fn run(target_bus: Option<u8>, target_dev: Option<u8>) -> Result<UsbCommandChannel> {
     let context = rusb::Context::new().context("initialize libusb")?;
 
-    let device = context
-        .devices()?
-        .iter()
-        .find(|d| {
-            d.device_descriptor()
-                .map(|dd| dd.vendor_id() == VENDOR_ID && dd.product_id() == PRODUCT_ID)
-                .unwrap_or(false)
-        })
-        .ok_or_else(|| {
-            anyhow!("device {VENDOR_ID:04X}:{PRODUCT_ID:04X} (NS2 GameCube Controller) not found")
-        })?;
+    let device = if let (Some(bus), Some(dev)) = (target_bus, target_dev) {
+        context
+            .devices()?
+            .iter()
+            .find(|d| {
+                d.device_descriptor()
+                    .map(|dd| dd.vendor_id() == VENDOR_ID && dd.product_id() == PRODUCT_ID)
+                    .unwrap_or(false)
+                    && d.bus_number() == bus
+                    && d.address() == dev
+            })
+            .ok_or_else(|| anyhow!("device {VENDOR_ID:04X}:{PRODUCT_ID:04X} at USB {bus}:{dev} not found"))?
+    } else {
+        context
+            .devices()?
+            .iter()
+            .find(|d| {
+                d.device_descriptor()
+                    .map(|dd| dd.vendor_id() == VENDOR_ID && dd.product_id() == PRODUCT_ID)
+                    .unwrap_or(false)
+            })
+            .ok_or_else(|| {
+                anyhow!("device {VENDOR_ID:04X}:{PRODUCT_ID:04X} (NS2 GameCube Controller) not found")
+            })?
+    };
 
     let endpoints = find_endpoints(&device, INTERFACE)?;
 

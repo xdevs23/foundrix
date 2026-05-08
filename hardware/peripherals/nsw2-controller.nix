@@ -105,16 +105,18 @@
 
       services.udev.extraRules = ''
         # Run the userspace driver when an NS2 controller is plugged in.
-        ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="057e", ATTR{idProduct}=="2073", TAG+="systemd", ENV{SYSTEMD_WANTS}+="nsw2-service.service"
+        # One service instance per physical device (%k = kernel name, e.g. 1-1.2).
+        ACTION=="add", SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ATTR{idVendor}=="057e", ATTR{idProduct}=="2073", TAG+="systemd", ENV{SYSTEMD_WANTS}+="nsw2-service@%k.service"
       '';
 
-      systemd.services.nsw2-service = {
-        description = "Nintendo Switch 2 controller userspace driver";
+      # Template service — one instance per controller.
+      systemd.services."nsw2-service@" = {
+        description = "Nintendo Switch 2 controller userspace driver (%i)";
         # Long-running: init then HID->uinput bridge until the controller
         # is unplugged. udev re-fires us on the next plug-in.
         serviceConfig = {
           Type = "simple";
-          ExecStart = lib.getExe service;
+          ExecStart = "${lib.getExe service} /sys/bus/usb/devices/%i";
           Restart = "no";
         };
       };

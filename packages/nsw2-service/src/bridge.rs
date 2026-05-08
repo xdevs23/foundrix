@@ -72,9 +72,17 @@ enum RumbleCmd {
     Stop,
 }
 
-pub fn run(usb: UsbCommandChannel) -> Result<()> {
+pub fn run(
+    usb: UsbCommandChannel,
+    target_bus: Option<u8>,
+    target_dev: Option<u8>,
+) -> Result<()> {
     let mut api = HidApi::new().context("initialize hidapi")?;
-    let hidraw_path = find_hidraw_path(&mut api).context("find hidraw device path")?;
+    let hidraw_path = if let (Some(bus), Some(dev)) = (target_bus, target_dev) {
+        find_specific_hidraw_path(&mut api, bus, dev).context("find hidraw device path")?
+    } else {
+        find_hidraw_path(&mut api).context("find hidraw device path")?
+    };
     let hidraw = open_hidraw(&hidraw_path).context("open hidraw device")?;
 
     let mut vdev = build_virtual_device().context("create virtual gamepad via uinput")?;
@@ -85,14 +93,19 @@ pub fn run(usb: UsbCommandChannel) -> Result<()> {
     let (rumble_tx, rumble_rx) =
         poll::pollable_channel::<RumbleCmd>().context("create rumble channel")?;
 
+    // One-shot eventfd so the HID thread can wake main_loop when it exits.
+    let shutdown_efd = poll::EventFd::new().context("create shutdown eventfd")?;
+    let shutdown_tx = shutdown_efd.try_clone().context("dup shutdown eventfd")?;
+
     println!(
         "nsw2-service: bridging HID -> uinput for {VENDOR_ID:04X}:{PRODUCT_ID:04X}; \
          press Ctrl-C or unplug the controller to exit"
     );
 
-    let hid_handle = thread::spawn(move || hid_loop(hidraw, usb, state_tx, rumble_rx));
+    let hid_handle =
+        thread::spawn(move || hid_loop(hidraw, usb, state_tx, rumble_rx, shutdown_tx));
 
-    let result = main_loop(&mut vdev, state_rx, rumble_tx);
+    let result = main_loop(&mut vdev, state_rx, rumble_tx, shutdown_efd);
 
     let hid_result = hid_handle.join().map_err(|_| anyhow!("HID thread panicked"))?;
     match (result, hid_result) {
@@ -106,6 +119,7 @@ fn main_loop(
     vdev: &mut VirtualDevice,
     state_rx: PollableReceiver<ControllerState>,
     rumble_tx: PollableSender<RumbleCmd>,
+    shutdown_efd: poll::EventFd,
 ) -> Result<()> {
     let mut last = ControllerState::default();
     let mut effects: HashMap<u16, FFEffectKind> = HashMap::new();
@@ -113,7 +127,12 @@ fn main_loop(
 
     let vdev_fd = vdev.as_fd().as_raw_fd();
     let state_fd = state_rx.raw_fd();
-    let mut fds = [poll::pollfd(state_fd), poll::pollfd(vdev_fd)];
+    let shutdown_fd = shutdown_efd.raw_fd();
+    let mut fds = [
+        poll::pollfd(state_fd),
+        poll::pollfd(vdev_fd),
+        poll::pollfd(shutdown_fd),
+    ];
 
     loop {
         let mut ps = poll::PollSet::new(&mut fds);
@@ -134,6 +153,11 @@ fn main_loop(
         if ps.readable(1) || ps.has_error(1) {
             process_ff(vdev, &mut effects, &mut available_ids, &rumble_tx)?;
         }
+
+        if ps.readable(2) || ps.has_error(2) {
+            let _ = shutdown_efd.drain();
+            return Ok(());
+        }
     }
 }
 
@@ -142,6 +166,7 @@ fn hid_loop(
     usb: UsbCommandChannel,
     state_tx: PollableSender<ControllerState>,
     rumble_rx: PollableReceiver<RumbleCmd>,
+    shutdown_tx: poll::EventFd,
 ) -> Result<()> {
     let hidraw_fd = hidraw.as_raw_fd();
     let rumble_fd = rumble_rx.raw_fd();
@@ -172,9 +197,9 @@ fn hid_loop(
         }
 
         if ps.has_error(0) {
-            return Err(anyhow!(
-                "hidraw fd error (controller likely unplugged)"
-            ));
+            println!("nsw2-service: controller disconnected (hidraw fd error)");
+            let _ = shutdown_tx.notify();
+            return Ok(());
         }
 
         if ps.readable(0) {
@@ -185,14 +210,15 @@ fn hid_loop(
                         if let Some(state) = ControllerState::parse(&buf[..n])
                             && state_tx.send(state).is_err()
                         {
+                            let _ = shutdown_tx.notify();
                             return Ok(());
                         }
                     }
                     Err(e) if e.kind() == io::ErrorKind::WouldBlock => break,
                     Err(e) => {
-                        return Err(anyhow!(
-                            "HID read failed (controller likely unplugged): {e}"
-                        ));
+                        println!("nsw2-service: controller disconnected: {e}");
+                        let _ = shutdown_tx.notify();
+                        return Ok(());
                     }
                 }
             }
@@ -281,6 +307,58 @@ fn find_hidraw_path(api: &mut HidApi) -> Result<PathBuf> {
     }
 }
 
+fn find_specific_hidraw_path(api: &mut HidApi, target_bus: u8, target_dev: u8) -> Result<PathBuf> {
+    let deadline = Instant::now() + HIDRAW_OPEN_TIMEOUT;
+    loop {
+        let _ = api.refresh_devices();
+        for dev in api.device_list() {
+            if dev.vendor_id() == VENDOR_ID && dev.product_id() == PRODUCT_ID {
+                let bytes = dev.path().to_bytes();
+                let path = PathBuf::from(OsStr::from_bytes(bytes));
+                if let Some((bus, dev_addr)) = get_hidraw_usb_ids(&path) {
+                    if bus == target_bus && dev_addr == target_dev {
+                        return Ok(path);
+                    }
+                }
+            }
+        }
+        if Instant::now() >= deadline {
+            return Err(anyhow!(
+                "could not find HID device {VENDOR_ID:04X}:{PRODUCT_ID:04X} \
+                 at USB {target_bus}:{target_dev} within {HIDRAW_OPEN_TIMEOUT:?}"
+            ));
+        }
+        thread::sleep(HIDRAW_OPEN_INTERVAL);
+    }
+}
+
+fn get_hidraw_usb_ids(hidraw_path: &std::path::Path) -> Option<(u8, u8)> {
+    let hidraw_name = hidraw_path.file_name()?.to_str()?;
+    let device_link =
+        std::path::PathBuf::from(format!("/sys/class/hidraw/{hidraw_name}/device"));
+    let resolved = std::fs::canonicalize(&device_link).ok()?;
+    let mut path = resolved.as_path();
+    while let Some(parent) = path.parent() {
+        let busnum_file = parent.join("busnum");
+        let devnum_file = parent.join("devnum");
+        if busnum_file.exists() && devnum_file.exists() {
+            let busnum = std::fs::read_to_string(&busnum_file)
+                .ok()?
+                .trim()
+                .parse::<u8>()
+                .ok()?;
+            let devnum = std::fs::read_to_string(&devnum_file)
+                .ok()?
+                .trim()
+                .parse::<u8>()
+                .ok()?;
+            return Some((busnum, devnum));
+        }
+        path = parent;
+    }
+    None
+}
+
 fn open_hidraw(path: &PathBuf) -> Result<File> {
     let file = File::open(path)
         .with_context(|| format!("open {}", path.display()))?;
@@ -303,9 +381,9 @@ fn build_virtual_device() -> Result<VirtualDevice> {
     // games may consult — we don't apply it ourselves so apps get full
     // precision when they want it.
     let stick = AbsInfo::new(0, STICK_MIN, STICK_MAX, 64, 512, 0);
-    /// Trigger raw byte range. The hardware sits at ~36 at rest and reaches
-    /// ~240 on a normal full press, but can hit 255 with a hard press, so we
-    /// declare the whole byte range and pass it through unmodified.
+    // Trigger raw byte range. The hardware sits at ~36 at rest and reaches
+    // ~240 on a normal full press, but can hit 255 with a hard press, so we
+    // declare the whole byte range and pass it through unmodified.
     let trigger = AbsInfo::new(0, TRIG_MIN, TRIG_MAX, 2, 4, 0);
 
     let dev = VirtualDevice::builder()?

@@ -11,8 +11,14 @@
 //! HID-to-uinput translation bridge for buttons, sticks, and analog
 //! triggers, plus binary on/off rumble for the central ERM motor. Pro
 //! Controller 2 and Joy-Con 2 L/R are still to come.
+//!
+//! When started with a sysfs path argument (e.g. `/sys/bus/usb/devices/1-1.2`)
+//! the service targets that specific controller. Without an argument it
+//! auto-detects the first available controller (legacy behaviour).
 
-use anyhow::Result;
+use std::path::Path;
+
+use anyhow::{Context, Result};
 
 mod bridge;
 mod init;
@@ -20,7 +26,38 @@ mod poll;
 mod report;
 mod rumble;
 
+fn parse_sysfs_path(path: &str) -> Result<(u8, u8)> {
+    let p = Path::new(path);
+    let busnum = std::fs::read_to_string(p.join("busnum"))
+        .with_context(|| format!("read busnum from {path}"))?
+        .trim()
+        .parse::<u8>()
+        .context("parse busnum")?;
+    let devnum = std::fs::read_to_string(p.join("devnum"))
+        .with_context(|| format!("read devnum from {path}"))?
+        .trim()
+        .parse::<u8>()
+        .context("parse devnum")?;
+    Ok((busnum, devnum))
+}
+
 fn main() -> Result<()> {
-    let usb = init::run()?;
-    bridge::run(usb)
+    let (target_bus, target_dev) = match std::env::args().nth(1) {
+        Some(path) => {
+            let (bus, dev) = parse_sysfs_path(&path)?;
+            println!(
+                "nsw2-service: targeting USB device {bus}:{dev} ({path})"
+            );
+            (Some(bus), Some(dev))
+        }
+        None => {
+            println!(
+                "nsw2-service: auto-detecting first available controller"
+            );
+            (None, None)
+        }
+    };
+
+    let usb = init::run(target_bus, target_dev)?;
+    bridge::run(usb, target_bus, target_dev)
 }

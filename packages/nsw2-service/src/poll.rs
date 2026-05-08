@@ -21,7 +21,15 @@ impl EventFd {
         Ok(Self(unsafe { OwnedFd::from_raw_fd(fd) }))
     }
 
-    fn notify(&self) -> io::Result<()> {
+    pub fn try_clone(&self) -> io::Result<Self> {
+        let dup = unsafe { libc::dup(self.0.as_raw_fd()) };
+        if dup < 0 {
+            return Err(io::Error::last_os_error());
+        }
+        Ok(Self(unsafe { OwnedFd::from_raw_fd(dup) }))
+    }
+
+    pub fn notify(&self) -> io::Result<()> {
         let val: u64 = 1;
         let r = unsafe {
             libc::write(
@@ -37,7 +45,7 @@ impl EventFd {
         }
     }
 
-    fn drain(&self) -> io::Result<u64> {
+    pub fn drain(&self) -> io::Result<u64> {
         let mut val: u64 = 0;
         let r = unsafe {
             libc::read(
