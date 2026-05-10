@@ -27,6 +27,11 @@
       default = true;
       description = "Open firewall ports for the Satisfactory server";
     };
+    beta = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = "Use the experimental beta branch";
+    };
   };
 
   config =
@@ -60,7 +65,7 @@
           ${pkgs.steamcmd}/bin/steamcmd \
             +force_install_dir /var/lib/${stateDir}/server \
             +login anonymous \
-            +app_update ${steamAppId} validate \
+            +app_update ${steamAppId} ${lib.optionalString cfg.beta "-beta experimental"} validate \
             +quit
         '';
 
