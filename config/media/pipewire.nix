@@ -10,6 +10,9 @@
     pulse = (lib.mkEnableOption "pulse support") // {
       default = true;
     };
+    jack = (lib.mkEnableOption "JACK support") // {
+      default = true;
+    };
   };
 
   config =
@@ -20,6 +23,7 @@
       services.pipewire = {
         enable = true;
         pulse.enable = cfg.pulse;
+        jack.enable = cfg.jack;
         alsa.enable = true;
         alsa.support32Bit = lib.mkDefault cfg.support32Bit;
       };
