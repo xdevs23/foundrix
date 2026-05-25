@@ -14,8 +14,8 @@
         {
           name = "qt-qml";
           publisher = "TheQtCompany";
-          version = "1.13.0";
-          sha256 = "sha256-WPzierXLQM+HdVb0XAx80f4Fdd34Vf7WbFzFapr5VHE=";
+          version = "1.15.0";
+          sha256 = "sha256-UiInoW6OYRpTeiMQlQ9IQChb7k2o4ploxeNRNgAv3do=";
         }
         # chore: update qt-core extension
         # check https://marketplace.visualstudio.com/items?itemName=TheQtCompany.qt-core for latest version
@@ -23,8 +23,8 @@
         {
           name = "qt-core";
           publisher = "TheQtCompany";
-          version = "1.13.0";
-          sha256 = "sha256-/SAoJmKfOfLtbYn4jvtbAFIa6O7kDouv0xQVhnxFOKM=";
+          version = "1.15.0";
+          sha256 = "sha256-GVffx5YoLyemzLJ7jIEk0+0vwfP9mACwDJtenyhEN0Y=";
         }
       ];
     })
