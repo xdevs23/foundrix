@@ -406,9 +406,10 @@ let
   '';
 
   desiredState = builtins.toJSON {
-    apiUrl = "http://${cfg.domain}:${toString cfg.port}";
+    apiUrl = "http://${cfg.webDomain}:${toString cfg.port}";
     inherit patPath;
-    org.primaryDomain = cfg.orgDomain;
+    adminOrg = cfg.adminOrg;
+    orgDomains = builtins.attrNames cfg.orgDomains;
     privacyPolicyLink =
       if cfg.privacyPolicy.enable then cfg.privacyPolicy.link
       else null;
@@ -460,7 +461,7 @@ let
               if org.passwordComplexity != null then serializePasswordComplexity org.passwordComplexity else null;
             branding = if org.branding != null then serializeBranding org.branding else null;
           }
-        ) cfg.orgs;
+        ) cfg.orgDomains;
       in
       if mapped == { } then null else mapped;
     policies = {
@@ -501,16 +502,22 @@ in
   options = namespaced __curPos {
     enable = lib.mkEnableOption "Zitadel identity provider with automated first-time setup";
 
-    domain = lib.mkOption {
+    webDomain = lib.mkOption {
       type = lib.types.str;
-      description = "External SSO domain (e.g. sso.example.com)";
+      description = "External SSO/web domain (e.g. sso.example.com)";
       example = "sso.example.com";
     };
 
-    orgDomain = lib.mkOption {
+    adminOrg = lib.mkOption {
       type = lib.types.str;
-      description = "Primary organization domain for login names (e.g. example.com)";
+      description = "Organization domain that serves as the bootstrap/admin org. Must be a key in orgDomains.";
       example = "example.com";
+    };
+
+    orgDomains = lib.mkOption {
+      type = lib.types.attrsOf orgSettingsType;
+      default = { };
+      description = "Organization domains and their settings. Each key is a domain (e.g. example.com). All domains are peers.";
     };
 
     port = lib.mkOption {
@@ -566,8 +573,8 @@ in
 
       email = lib.mkOption {
         type = lib.types.str;
-        default = "${cfg.admin.username}@${cfg.orgDomain}";
-        defaultText = "<username>@<orgDomain>";
+        default = "${cfg.admin.username}@${cfg.adminOrg}";
+        defaultText = "<username>@<adminOrg>";
         description = "Admin user email address";
       };
     };
@@ -590,7 +597,7 @@ in
       domainPolicy = {
         userLoginMustBeDomain = lib.mkOption {
           type = lib.types.bool;
-          default = builtins.length (builtins.attrNames cfg.orgs) > 1;
+          default = builtins.length (builtins.attrNames cfg.orgDomains) > 1;
           defaultText = "true if more than one org is defined, false otherwise";
           description = "Add organization domain as suffix to login names. Useful with multiple orgs to ensure uniqueness.";
         };
@@ -670,11 +677,7 @@ in
       secretGenerators = nullableOption (lib.types.attrsOf secretGeneratorType) null;
     };
 
-    orgs = lib.mkOption {
-      type = lib.types.attrsOf orgSettingsType;
-      default = { };
-      description = "Per-org settings that override instance defaults";
-    };
+
 
     projects = lib.mkOption {
       type = lib.types.attrsOf projectType;
@@ -726,8 +729,8 @@ in
 
       contactEmail = lib.mkOption {
         type = lib.types.str;
-        default = "privacy@${cfg.orgDomain}";
-        defaultText = "privacy@<orgDomain>";
+        default = "privacy@${cfg.adminOrg}";
+        defaultText = "privacy@<adminOrg>";
         description = "Privacy-related contact email address";
       };
 
@@ -796,8 +799,8 @@ in
 
       link = lib.mkOption {
         type = lib.types.str;
-        default = "https://${cfg.domain}/privacy-policy";
-        defaultText = "https://<domain>/privacy-policy";
+        default = "https://${cfg.webDomain}/privacy-policy";
+        defaultText = "https://<webDomain>/privacy-policy";
         description = "URL set as Zitadel's 'Link to Privacy Policy'";
       };
     };
@@ -849,7 +852,7 @@ in
       masterKeyFile = "/run/credentials/zitadel.service/master-key";
       settings = {
         Port = cfg.port;
-        ExternalDomain = cfg.domain;
+        ExternalDomain = cfg.webDomain;
         ExternalPort = cfg.externalPort;
         ExternalSecure = cfg.externalSecure;
         Machine.Identification.Hostname.Enabled = true;
@@ -1014,7 +1017,7 @@ in
       after = [ cfg.configureService ];
     };
 
-    services.caddy.virtualHosts.${cfg.domain} = lib.mkIf cfg.caddy.enable {
+    services.caddy.virtualHosts.${cfg.webDomain} = lib.mkIf cfg.caddy.enable {
       logFormat = lib.mkForce ''
         level INFO
         output stdout

@@ -58,9 +58,8 @@ interface OrgSettings {
 interface DesiredState {
   apiUrl: string;
   patPath: string;
-  org: {
-    primaryDomain: string;
-  };
+  adminOrg: string;
+  orgDomains: string[];
   policies: {
     domainPolicy: {
       userLoginMustBeDomain: boolean;
@@ -174,6 +173,39 @@ class ZitadelClient {
 
   async setPrimaryOrgDomain(domain: string): Promise<void> {
     await this.request("POST", `/management/v1/orgs/me/domains/${domain}/_set_primary`, {});
+  }
+
+  async createOrg(name: string, domain: string): Promise<string> {
+    const resp = (await this.request("POST", "/admin/v1/orgs", {
+      name,
+      domain,
+    })) as { org: { id: string } };
+    return resp.org.id;
+  }
+
+  async listOrgs(): Promise<{ id: string; name: string }[]> {
+    const resp = (await this.request("POST", "/admin/v1/orgs/_search", {})) as {
+      result?: { id: string; name: string }[];
+    };
+    return resp.result ?? [];
+  }
+
+  async createProjectGrant(
+    projectId: string,
+    grantedOrgId: string,
+    roleKeys: string[],
+  ): Promise<void> {
+    await this.request("POST", `/management/v1/projects/${projectId}/grants`, {
+      grantedOrgId,
+      roleKeys,
+    });
+  }
+
+  async listProjectGrants(projectId: string): Promise<{ grantedOrgId: string }[]> {
+    const resp = (await this.request("POST", `/management/v1/projects/${projectId}/grants/_search`, {})) as {
+      result?: { grantedOrgId: string }[];
+    };
+    return resp.result ?? [];
   }
 
   async getDomainPolicy(): Promise<Record<string, unknown>> {
@@ -651,6 +683,49 @@ async function convergeOrgDomain(
   }
 
   console.log(`Org domain already converged: ${primaryDomain}`);
+}
+
+async function convergeOrgs(
+  client: ZitadelClient,
+  orgDomains: string[],
+): Promise<Map<string, string>> {
+  const orgMap = new Map<string, string>();
+  const existingOrgs = await client.listOrgs();
+
+  for (const domain of orgDomains) {
+    const existing = existingOrgs.find((o) => o.name === domain);
+    if (existing) {
+      console.log(`Org already exists: ${domain} (${existing.id})`);
+      orgMap.set(domain, existing.id);
+      continue;
+    }
+
+    console.log(`Creating org: ${domain}`);
+    const orgId = await client.createOrg(domain, domain);
+    console.log(`Created org: ${domain} (${orgId})`);
+    orgMap.set(domain, orgId);
+  }
+
+  return orgMap;
+}
+
+async function convergeProjectGrants(
+  client: ZitadelClient,
+  projectId: string,
+  grantedOrgIds: string[],
+  roleKeys: string[],
+): Promise<void> {
+  const existing = await client.listProjectGrants(projectId);
+  const existingOrgIds = new Set(existing.map((g) => g.grantedOrgId));
+
+  for (const orgId of grantedOrgIds) {
+    if (existingOrgIds.has(orgId)) {
+      console.log(`Project grant already exists: ${orgId}`);
+      continue;
+    }
+    console.log(`Granting project to org: ${orgId}`);
+    await client.createProjectGrant(projectId, orgId, roleKeys);
+  }
 }
 
 async function convergeDomainPolicy(
@@ -1158,9 +1233,12 @@ async function main(): Promise<void> {
   await waitForApi(client);
   await convergeDomainPolicy(client, spec.policies.domainPolicy);
   await convergeLoginPolicy(client, spec.policies.loginPolicy);
-  await convergeOrgDomain(client, spec.org.primaryDomain);
-  await convergeUserEmails(client, spec.org.primaryDomain);
+
+  await convergeOrgDomain(client, spec.adminOrg);
+  await convergeUserEmails(client, spec.adminOrg);
   await convergePrivacyPolicy(client, spec.privacyPolicyLink);
+
+  const orgMap = await convergeOrgs(client, spec.orgDomains);
 
   if (spec.policies.disallowPublicOrgRegistration) {
     console.log("Disabling public organization registration");
@@ -1198,6 +1276,10 @@ async function main(): Promise<void> {
     }
   }
 
+  const allOrgIds = spec.orgDomains.map((d) => orgMap.get(d)!).filter(Boolean);
+  const adminOrgId = orgMap.get(spec.adminOrg)!;
+  const grantedOrgIds = allOrgIds.filter((id) => id !== adminOrgId);
+
   for (const [projectName, projectSpec] of Object.entries(spec.projects)) {
     const projectId = await convergeProject(client, projectName);
 
@@ -1215,6 +1297,11 @@ async function main(): Promise<void> {
 
     for (const [userName, roleKeys] of Object.entries(projectSpec.userGrants)) {
       await convergeUserGrant(client, projectId, userName, roleKeys);
+    }
+
+    if (grantedOrgIds.length > 0) {
+      const roleKeys = Object.keys(projectSpec.roles);
+      await convergeProjectGrants(client, projectId, grantedOrgIds, roleKeys);
     }
   }
 

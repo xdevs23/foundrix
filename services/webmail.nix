@@ -68,8 +68,8 @@ in
 
     ssoDomain = lib.mkOption {
       type = lib.types.str;
-      default = zitadelCfg.domain;
-      defaultText = "foundrix.services.zitadel.domain";
+      default = zitadelCfg.webDomain;
+      defaultText = "foundrix.services.zitadel.webDomain";
       description = "SSO domain for OIDC authentication";
     };
 

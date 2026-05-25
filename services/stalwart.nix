@@ -25,7 +25,7 @@ let
   desiredState = builtins.toJSON {
     stalwartUrl = "http://127.0.0.1:${toString cfg.httpPort}";
     inherit adminPasswordPath;
-    domain = cfg.orgDomain;
+    domain = builtins.head (builtins.attrNames zitadelCfg.orgDomains);
     publicUrl = "'https://${cfg.domain}'";
   };
 
@@ -48,15 +48,15 @@ in
 
     orgDomain = lib.mkOption {
       type = lib.types.str;
-      default = zitadelCfg.orgDomain;
-      defaultText = "foundrix.services.zitadel.orgDomain";
+      default = zitadelCfg.adminOrg;
+      defaultText = "foundrix.services.zitadel.adminOrg";
       description = "Organization domain for email addresses (e.g. example.com)";
     };
 
     ssoDomain = lib.mkOption {
       type = lib.types.str;
-      default = zitadelCfg.domain;
-      defaultText = "foundrix.services.zitadel.domain";
+      default = zitadelCfg.webDomain;
+      defaultText = "foundrix.services.zitadel.webDomain";
       description = "SSO domain for OIDC authentication";
     };
 
