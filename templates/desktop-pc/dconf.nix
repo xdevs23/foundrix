@@ -9,7 +9,7 @@
   home-manager = applyHomeManagerShared {
     dconf.settings =
       lib.optionalAttrs
-        (config.services.desktopManager.gnome.enable or config.services.xserver.desktopManager.gnome.enable)
+        config.services.desktopManager.gnome.enable
         (
           with libHm.hm.gvariant;
           {

@@ -205,7 +205,7 @@ in
 
     # ── Stalwart mail service ────────────────────────────────────────────
 
-    services.stalwart-mail = {
+    services.stalwart = {
       enable = true;
       package = cfg.package;
 
@@ -238,7 +238,7 @@ in
 
         authentication.fallback-admin = {
           user = "admin";
-          secret = "%{file:/run/credentials/stalwart-mail.service/admin-password}%";
+          secret = "%{file:/run/credentials/stalwart.service/admin-password}%";
         };
 
         session.rcpt.catch-all = true;
@@ -268,15 +268,15 @@ in
       );
     };
 
-    systemd.tmpfiles.settings."stalwart-mail-state" = {
-      "/var/lib/stalwart-mail".Z = {
+    systemd.tmpfiles.settings."stalwart-state" = {
+      "/var/lib/stalwart".Z = {
         mode = "0750";
-        user = "stalwart-mail";
-        group = "stalwart-mail";
+        user = "stalwart";
+        group = "stalwart";
       };
     };
 
-    systemd.services.stalwart-mail = lib.mkMerge [
+    systemd.services.stalwart = lib.mkMerge [
       {
         requires = [
           config.foundrix.services.secrets.stalwart-admin-password.service
@@ -314,11 +314,11 @@ in
     systemd.services.stalwart-configure = {
       description = "Configure Stalwart mail server";
       requires = [
-        "stalwart-mail.service"
+        "stalwart.service"
         zitadelCfg.configureService
       ];
       after = [
-        "stalwart-mail.service"
+        "stalwart.service"
         zitadelCfg.configureService
       ];
       requiredBy = lib.optionals cfg.caddy.enable [ "caddy.service" ];

@@ -1,17 +1,20 @@
-{ pkgs, ... }:
+{ pkgs, lib, ... }:
+let
+  xorgPkgs = if lib.versionAtLeast lib.version "26.04" then pkgs else pkgs.xorg;
+in
 {
   programs.nix-ld.enable = true;
   programs.nix-ld.libraries = with pkgs; [
     alsa-lib
     libGL
-    xorg.libICE
-    xorg.libSM
-    xorg.libX11
-    xorg.libXcursor
-    xorg.libXext
-    xorg.libXi
-    xorg.libXinerama
-    xorg.libXrandr
+    xorgPkgs.libICE
+    xorgPkgs.libSM
+    xorgPkgs.libX11
+    xorgPkgs.libXcursor
+    xorgPkgs.libXext
+    xorgPkgs.libXi
+    xorgPkgs.libXinerama
+    xorgPkgs.libXrandr
     libpulseaudio
     libxkbcommon
     wayland

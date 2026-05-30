@@ -122,7 +122,7 @@
         ];
         fonts.fontDir.enable = true;
         services.libinput.enable = true;
-        services.xserver.displayManager.lightdm.greeter.enable = false;
+        services.displayManager.lightdm.greeter.enable = false;
         services.displayManager.autoLogin.user = cfg.user;
         # We want to have ALSA as sound system. Kodi will play well with this
         # and it allows us to do HDMI passthrough.
