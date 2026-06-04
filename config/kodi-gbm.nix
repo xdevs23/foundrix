@@ -122,7 +122,8 @@
         ];
         fonts.fontDir.enable = true;
         services.libinput.enable = true;
-        services.displayManager.lightdm.greeter.enable = false;
+        # Kodi launches as a standalone systemd service in GBM mode (see above),
+        # so there is no display manager or greeter to configure here.
         services.displayManager.autoLogin.user = cfg.user;
         # We want to have ALSA as sound system. Kodi will play well with this
         # and it allows us to do HDMI passthrough.

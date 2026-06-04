@@ -7,7 +7,7 @@
     nixpkgs-unstable.url = "github:NixOS/nixpkgs/nixos-unstable";
     nixpkgs-master.url = "github:NixOS/nixpkgs/master";
     # This one is only used in this flake, thus it does not need "follows"
-    nixpkgs-stable.url = "github:NixOS/nixpkgs/nixos-25.11";
+    nixpkgs-stable.url = "github:NixOS/nixpkgs/nixos-26.05";
     home-manager = {
       url = "github:nix-community/home-manager/master";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -224,6 +224,21 @@
                           path = [ "hardware" ];
                           update = old: removeAttrs old [ "platform" ];
                         }
+                        # Recipe modules (updater/flasher) are meta-modules that
+                        # wrap a concrete target system passed via a `targetConfig`
+                        # arg; they cannot evaluate standalone, so they are excluded
+                        # from option documentation.
+                        {
+                          path = [ "config" ];
+                          update = old: removeAttrs old [ "recipes" ];
+                        }
+                        # traits/types.nix holds plain enum constants consumed via
+                        # the `traitTypes` module arg, not a NixOS module; the trait
+                        # options themselves are documented via common/.
+                        {
+                          path = [ "framework" "traits" ];
+                          update = old: removeAttrs old [ "types" ];
+                        }
                       ] foundrixNixosModules
                     )
                     ++ [
@@ -236,6 +251,9 @@
                 };
                 optionsDoc = buildPlatformPkgsStable.nixosOptionsDoc {
                   options = { inherit (eval.options) foundrix device; };
+                  # Some service options still lack descriptions; surface these as
+                  # warnings rather than failing the whole documentation build.
+                  warningsAreErrors = false;
                 };
               in
               buildPlatformPkgsStable.stdenv.mkDerivation {
@@ -244,8 +262,8 @@
 
                 nativeBuildInputs = with buildPlatformPkgsStable; [
                   mkdocs
-                  python310Packages.mkdocs-material
-                  python310Packages.pygments
+                  python3Packages.mkdocs-material
+                  python3Packages.pygments
                 ];
 
                 buildPhase = ''

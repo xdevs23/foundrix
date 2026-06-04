@@ -2,22 +2,29 @@
 {
   foundrixModules,
   inputs,
+  foundrixIgnoreMissingInputs,
   lib,
   namespaced,
   namespacedCfg,
   ...
 }:
 {
-  imports = with inputs.nixos-hardware.nixosModules; [
-    common-pc
-    common-cpu-amd
-    common-cpu-amd-pstate
-    common-gpu-amd
-    common-pc-ssd
-    framework-16-7040-amd
-    foundrixModules.hardware.gpu.amd
-    foundrixModules.hardware.peripherals.fingerprint
-  ];
+  imports =
+    lib.optionals (!foundrixIgnoreMissingInputs) (
+      with inputs.nixos-hardware.nixosModules;
+      [
+        common-pc
+        common-cpu-amd
+        common-cpu-amd-pstate
+        common-gpu-amd
+        common-pc-ssd
+        framework-16-7040-amd
+      ]
+    )
+    ++ [
+      foundrixModules.hardware.gpu.amd
+      foundrixModules.hardware.peripherals.fingerprint
+    ];
 
   options = namespaced __curPos {
     vram = lib.mkOption {

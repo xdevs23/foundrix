@@ -4,13 +4,21 @@
 {
   foundrixModules,
   inputs,
+  foundrixIgnoreMissingInputs,
+  lib,
   ...
 }:
 {
-  imports = with inputs.nixos-hardware.nixosModules; [
-    common-pc
-    common-cpu-intel
-    common-pc-ssd
-    foundrixModules.hardware.gpu.intel
-  ];
+  imports =
+    lib.optionals (!foundrixIgnoreMissingInputs) (
+      with inputs.nixos-hardware.nixosModules;
+      [
+        common-pc
+        common-cpu-intel
+        common-pc-ssd
+      ]
+    )
+    ++ [
+      foundrixModules.hardware.gpu.intel
+    ];
 }

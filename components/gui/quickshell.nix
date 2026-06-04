@@ -1,5 +1,6 @@
 {
   inputs,
+  foundrixIgnoreMissingInputs,
   pkgs,
   lib,
   config,
@@ -24,7 +25,12 @@ in
           options = {
             package = lib.mkOption {
               type = lib.types.package;
-              default = inputs.quickshell.packages.${pkgs.stdenv.hostPlatform.system}.default;
+              default =
+                if foundrixIgnoreMissingInputs then
+                  pkgs.quickshell
+                else
+                  inputs.quickshell.packages.${pkgs.stdenv.hostPlatform.system}.default;
+              defaultText = lib.literalExpression "inputs.quickshell.packages.\${system}.default";
               description = "The quickshell package to use for this instance";
             };
             configPath = lib.mkOption {
