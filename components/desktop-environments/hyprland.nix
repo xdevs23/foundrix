@@ -444,6 +444,12 @@
                 ]
                 ++ cfg.additionalBinde;
               };
+          }
+          # Pin the legacy default so the configType warning introduced in
+          # 26.05 stays silent without changing behavior. The option does not
+          # exist before 26.05, so guard it to keep 25.11 evaluating.
+          // lib.optionalAttrs (lib.versionAtLeast lib.version "26.04") {
+            configType = "hyprlang";
           };
           services.hypridle = {
             enable = true;

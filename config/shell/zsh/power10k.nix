@@ -98,126 +98,132 @@
       programs.zsh.enable = true;
       programs.direnv.enableZshIntegration = true;
 
-      home-manager = applyHomeManagerUsers cfg.users {
-        home.packages = with pkgs; [
-          zsh-history-substring-search
-          zsh-completions
-          zsh-z
-          pay-respects
-        ];
-        programs.zsh = {
-          enable = true;
-          enableCompletion = true;
-          autosuggestion = {
+      home-manager = applyHomeManagerUsers cfg.users (
+        { config, ... }:
+        {
+          home.packages = with pkgs; [
+            zsh-history-substring-search
+            zsh-completions
+            zsh-z
+            pay-respects
+          ];
+          programs.zsh = {
             enable = true;
-            highlight = "fg=#cacaca";
-          };
-          syntaxHighlighting = {
-            enable = true;
-          };
-          autocd = true;
+            # Pin the legacy default (home directory) so the dotDir warning
+            # introduced in 26.05 stays silent without changing behavior.
+            dotDir = config.home.homeDirectory;
+            enableCompletion = true;
+            autosuggestion = {
+              enable = true;
+              highlight = "fg=#cacaca";
+            };
+            syntaxHighlighting = {
+              enable = true;
+            };
+            autocd = true;
 
-          history = {
-            size = 402000;
-            save = 400000;
-            expireDuplicatesFirst = true;
-            extended = true;
-            ignoreDups = true;
-            share = true;
-            ignoreSpace = false;
-          };
+            history = {
+              size = 402000;
+              save = 400000;
+              expireDuplicatesFirst = true;
+              extended = true;
+              ignoreDups = true;
+              share = true;
+              ignoreSpace = false;
+            };
 
-          historySubstringSearch = {
-            enable = true;
-            searchDownKey = "$terminfo[kcud1]";
-            searchUpKey = "$terminfo[kcuu1]";
-          };
+            historySubstringSearch = {
+              enable = true;
+              searchDownKey = "$terminfo[kcud1]";
+              searchUpKey = "$terminfo[kcuu1]";
+            };
 
-          initContent =
-            let
-              p10kConfigFile = ./.p10k.zsh;
-            in
-            ''
-              mkdir -p "${zshCacheDir}"
-              ZSH_CACHE_DIR="${zshCacheDir}"
-              DISABLE_AUTO_UPDATE="true"
-              DISABLE_UPDATE_PROMPT="true"
-              COMPLETION_WAITING_DOTS="true"
-              alias ll='ls -alF'
-              alias la='ls -A'
-              alias l='ls -CF'
+            initContent =
+              let
+                p10kConfigFile = ./.p10k.zsh;
+              in
+              ''
+                mkdir -p "${zshCacheDir}"
+                ZSH_CACHE_DIR="${zshCacheDir}"
+                DISABLE_AUTO_UPDATE="true"
+                DISABLE_UPDATE_PROMPT="true"
+                COMPLETION_WAITING_DOTS="true"
+                alias ll='ls -alF'
+                alias la='ls -A'
+                alias l='ls -CF'
 
-              # Skip p10k on TTY or low-color terminals - use simple prompt instead
-              if [[ "$(tty)" == *"/tty"* ]] || [[ $(tput colors 2>/dev/null) -lt 256 ]]; then
-                autoload -Uz promptinit && promptinit
-                PROMPT='%F{green}%n@%m%f:%F{blue}%~%f$ '
-              else
-                source "${p10kConfigFile}"
-                if [[ $COLORTERM =~ ^(truecolor|24bit)$ ]]; then
-                  typeset -g POWERLEVEL9K_CUSTOM_OS_ICON_BACKGROUND="${cfg.colors.osIconBackground}"
-                  typeset -g POWERLEVEL9K_HOST_BACKGROUND="${cfg.colors.hostBackground}"
-                  typeset -g POWERLEVEL9K_USER_BACKGROUND="${cfg.colors.userBackground}"
-                  typeset -g POWERLEVEL9K_DIR_BACKGROUND="${cfg.colors.dirBackground}"
-                  typeset -g POWERLEVEL9K_DIR_ANCHOR_BACKGROUND="${cfg.colors.dirAnchorBackground}"
+                # Skip p10k on TTY or low-color terminals - use simple prompt instead
+                if [[ "$(tty)" == *"/tty"* ]] || [[ $(tput colors 2>/dev/null) -lt 256 ]]; then
+                  autoload -Uz promptinit && promptinit
+                  PROMPT='%F{green}%n@%m%f:%F{blue}%~%f$ '
+                else
+                  source "${p10kConfigFile}"
+                  if [[ $COLORTERM =~ ^(truecolor|24bit)$ ]]; then
+                    typeset -g POWERLEVEL9K_CUSTOM_OS_ICON_BACKGROUND="${cfg.colors.osIconBackground}"
+                    typeset -g POWERLEVEL9K_HOST_BACKGROUND="${cfg.colors.hostBackground}"
+                    typeset -g POWERLEVEL9K_USER_BACKGROUND="${cfg.colors.userBackground}"
+                    typeset -g POWERLEVEL9K_DIR_BACKGROUND="${cfg.colors.dirBackground}"
+                    typeset -g POWERLEVEL9K_DIR_ANCHOR_BACKGROUND="${cfg.colors.dirAnchorBackground}"
 
-                  typeset -g POWERLEVEL9K_CUSTOM_OS_ICON_FOREGROUND="${cfg.colors.osIconForeground}"
-                  typeset -g POWERLEVEL9K_HOST_FOREGROUND="${cfg.colors.hostForeground}"
-                  typeset -g POWERLEVEL9K_USER_FOREGROUND="${cfg.colors.userForeground}"
-                  typeset -g POWERLEVEL9K_DIR_FOREGROUND="${cfg.colors.dirForeground}"
-                  typeset -g POWERLEVEL9K_DIR_ANCHOR_FOREGROUND="${cfg.colors.dirAnchorForeground}"
+                    typeset -g POWERLEVEL9K_CUSTOM_OS_ICON_FOREGROUND="${cfg.colors.osIconForeground}"
+                    typeset -g POWERLEVEL9K_HOST_FOREGROUND="${cfg.colors.hostForeground}"
+                    typeset -g POWERLEVEL9K_USER_FOREGROUND="${cfg.colors.userForeground}"
+                    typeset -g POWERLEVEL9K_DIR_FOREGROUND="${cfg.colors.dirForeground}"
+                    typeset -g POWERLEVEL9K_DIR_ANCHOR_FOREGROUND="${cfg.colors.dirAnchorForeground}"
 
-                  typeset -g POWERLEVEL9K_CUSTOM_OS_ICON="echo $'\u${cfg.osIconCodepoint}'"
+                    typeset -g POWERLEVEL9K_CUSTOM_OS_ICON="echo $'\u${cfg.osIconCodepoint}'"
+                  fi
+                  source ${pkgs.zsh-powerlevel10k}/share/zsh-powerlevel10k/powerlevel10k.zsh-theme
                 fi
-                source ${pkgs.zsh-powerlevel10k}/share/zsh-powerlevel10k/powerlevel10k.zsh-theme
-              fi
-              eval "$(pay-respects zsh --nocnf)"
-              [[ -z "$ZSH_LAST_WORKING_DIRECTORY" ]] || return
-              [[ "$PWD" == "$HOME" ]] || return
+                eval "$(pay-respects zsh --nocnf)"
+                [[ -z "$ZSH_LAST_WORKING_DIRECTORY" ]] || return
+                [[ "$PWD" == "$HOME" ]] || return
 
-              if lwd 2>/dev/null; then
-                ZSH_LAST_WORKING_DIRECTORY=1
-              fi
-            '';
+                if lwd 2>/dev/null; then
+                  ZSH_LAST_WORKING_DIRECTORY=1
+                fi
+              '';
 
-          plugins = [
-          ]
-          ++ (oh-my-zsh-plugins [
-            "git"
-            "adb"
-            "battery"
-            "colorize"
-            "cp"
-            "emoji"
-            "fancy-ctrl-z"
-            "fd"
-            "git-flow"
-            "github"
-            "gitignore"
-            "gnu-utils"
-            "golang"
-            "history"
-            "httpie"
-            "jsontools"
-            "jump"
-            "last-working-dir"
-            "lol"
-            "man"
-            "mosh"
-            "nmap"
-            "node"
-            "pep8"
-            "pip"
-            "pj"
-            "ripgrep"
-            "rsync"
-            "shrink-path"
-            "sudo"
-            "themes"
-            "transfer"
-            "yarn"
-            "z"
-          ]);
-        };
-      };
+            plugins = [
+            ]
+            ++ (oh-my-zsh-plugins [
+              "git"
+              "adb"
+              "battery"
+              "colorize"
+              "cp"
+              "emoji"
+              "fancy-ctrl-z"
+              "fd"
+              "git-flow"
+              "github"
+              "gitignore"
+              "gnu-utils"
+              "golang"
+              "history"
+              "httpie"
+              "jsontools"
+              "jump"
+              "last-working-dir"
+              "lol"
+              "man"
+              "mosh"
+              "nmap"
+              "node"
+              "pep8"
+              "pip"
+              "pj"
+              "ripgrep"
+              "rsync"
+              "shrink-path"
+              "sudo"
+              "themes"
+              "transfer"
+              "yarn"
+              "z"
+            ]);
+          };
+        }
+      );
     };
 }

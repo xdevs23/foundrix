@@ -155,7 +155,7 @@ let
     fi
   '';
 
-  gamescopeArgs = lib.cli.toGNUCommandLineShell { } (
+  gamescopeArgs = lib.cli.toCommandLineShellGNU { } (
     {
       fullscreen = true;
       steam = true;
