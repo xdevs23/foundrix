@@ -14,10 +14,10 @@ let
   patPath = "/var/lib/zitadel/admin.pat";
 
   nullableOption =
-    type: default:
+    type: default: description:
     lib.mkOption {
       type = lib.types.nullOr type;
-      inherit default;
+      inherit default description;
     };
 
   passwordComplexityType = lib.types.submodule {
@@ -180,8 +180,12 @@ let
 
   orgSettingsType = lib.types.submodule {
     options = {
-      passwordComplexity = nullableOption passwordComplexityType null;
-      branding = nullableOption brandingType null;
+      passwordComplexity =
+        nullableOption passwordComplexityType null
+          "Password complexity policy for this organization. Null inherits the Zitadel default.";
+      branding =
+        nullableOption brandingType null
+          "Login UI branding for this organization. Null inherits the Zitadel default.";
     };
   };
 
@@ -627,9 +631,13 @@ in
     };
 
     instance = {
-      passwordComplexity = nullableOption passwordComplexityType null;
+      passwordComplexity =
+        nullableOption passwordComplexityType null
+          "Instance-wide default password complexity policy. Null leaves the Zitadel default.";
 
-      branding = nullableOption brandingType null;
+      branding =
+        nullableOption brandingType null
+          "Instance-wide default login UI branding. Null leaves the Zitadel default.";
 
       languages = {
         default = lib.mkOption {
@@ -649,32 +657,38 @@ in
         };
       };
 
-      oidcSettings = nullableOption (lib.types.submodule {
-        options = {
-          accessTokenLifetimeHours = lib.mkOption {
-            type = lib.types.int;
-            default = 12;
-            description = "Access token maximum lifetime in hours";
-          };
-          idTokenLifetimeHours = lib.mkOption {
-            type = lib.types.int;
-            default = 12;
-            description = "ID token maximum lifetime in hours";
-          };
-          refreshTokenLifetimeDays = lib.mkOption {
-            type = lib.types.int;
-            default = 90;
-            description = "Refresh token maximum lifetime in days";
-          };
-          refreshTokenIdleLifetimeDays = lib.mkOption {
-            type = lib.types.int;
-            default = 30;
-            description = "Idle refresh token maximum lifetime in days";
-          };
-        };
-      }) null;
+      oidcSettings =
+        nullableOption
+          (lib.types.submodule {
+            options = {
+              accessTokenLifetimeHours = lib.mkOption {
+                type = lib.types.int;
+                default = 12;
+                description = "Access token maximum lifetime in hours";
+              };
+              idTokenLifetimeHours = lib.mkOption {
+                type = lib.types.int;
+                default = 12;
+                description = "ID token maximum lifetime in hours";
+              };
+              refreshTokenLifetimeDays = lib.mkOption {
+                type = lib.types.int;
+                default = 90;
+                description = "Refresh token maximum lifetime in days";
+              };
+              refreshTokenIdleLifetimeDays = lib.mkOption {
+                type = lib.types.int;
+                default = 30;
+                description = "Idle refresh token maximum lifetime in days";
+              };
+            };
+          })
+          null
+          "Instance-wide OIDC token lifetime settings. Null leaves the Zitadel defaults.";
 
-      secretGenerators = nullableOption (lib.types.attrsOf secretGeneratorType) null;
+      secretGenerators =
+        nullableOption (lib.types.attrsOf secretGeneratorType) null
+          "Per-type secret/code generator settings (e.g. verification codes). Null leaves the Zitadel defaults.";
     };
 
 

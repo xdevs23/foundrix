@@ -24,6 +24,7 @@
             compressedExtension = lib.mkOption {
               type = lib.types.str;
               default = "gz";
+              description = "File extension appended to the compressed artifact";
             };
             compressor = lib.mkOption {
               type = lib.types.functionTo lib.types.package;

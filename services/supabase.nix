@@ -701,26 +701,31 @@ in
     stateDir = lib.mkOption {
       type = lib.types.path;
       default = "/var/lib/supabase";
+      description = "Directory where Supabase persists database, storage and function state";
     };
 
     domain = lib.mkOption {
       type = lib.types.str;
       default = "supabase.example.com";
+      description = "Public domain the Supabase stack is served on";
     };
 
     siteUrl = lib.mkOption {
       type = lib.types.str;
       default = "https://supabase.example.com";
+      description = "Base site URL used by Auth for redirects and email links";
     };
 
     postgres = {
       host = lib.mkOption {
         type = lib.types.str;
         default = "db";
+        description = "Hostname of the PostgreSQL database the services connect to";
       };
       port = lib.mkOption {
         type = lib.types.port;
         default = 5432;
+        description = "Port of the PostgreSQL database";
       };
       database = lib.mkOption {
         type = lib.types.str;
@@ -739,39 +744,47 @@ in
       httpPort = lib.mkOption {
         type = lib.types.port;
         default = 8000;
+        description = "HTTP port the Kong API gateway listens on";
       };
       httpsPort = lib.mkOption {
         type = lib.types.port;
         default = 8443;
+        description = "HTTPS port the Kong API gateway listens on";
       };
     };
 
     studio.enable = lib.mkOption {
       type = lib.types.bool;
       default = true;
+      description = "Whether to run the Supabase Studio dashboard";
     };
 
     dashboardUsername = lib.mkOption {
       type = lib.types.str;
       default = "supabase";
+      description = "Username for basic-auth access to the Studio dashboard";
     };
 
     auth = {
       enableSignup = lib.mkOption {
         type = lib.types.bool;
         default = true;
+        description = "Whether new users may sign up";
       };
       enableAnonymousUsers = lib.mkOption {
         type = lib.types.bool;
         default = false;
+        description = "Whether anonymous (guest) sign-ins are allowed";
       };
       enableEmailAutoconfirm = lib.mkOption {
         type = lib.types.bool;
         default = false;
+        description = "Whether to auto-confirm email addresses without verification";
       };
       jwtExpiry = lib.mkOption {
         type = lib.types.int;
         default = 3600;
+        description = "Lifetime of issued JWT access tokens, in seconds";
       };
       otpExpiry = lib.mkOption {
         type = lib.types.int;
@@ -786,23 +799,28 @@ in
       additionalRedirectUrls = lib.mkOption {
         type = lib.types.listOf lib.types.str;
         default = [ ];
+        description = "Extra URLs Auth is allowed to redirect to after authentication";
       };
       mailerUrlPaths = {
         confirmation = lib.mkOption {
           type = lib.types.str;
           default = "/auth/v1/verify";
+          description = "URL path used in signup confirmation emails";
         };
         invite = lib.mkOption {
           type = lib.types.str;
           default = "/auth/v1/verify";
+          description = "URL path used in invite emails";
         };
         recovery = lib.mkOption {
           type = lib.types.str;
           default = "/auth/v1/verify";
+          description = "URL path used in password recovery emails";
         };
         emailChange = lib.mkOption {
           type = lib.types.str;
           default = "/auth/v1/verify";
+          description = "URL path used in email-change confirmation emails";
         };
       };
     };
@@ -820,6 +838,7 @@ in
       fileSizeLimit = lib.mkOption {
         type = lib.types.str;
         default = "52428800";
+        description = "Maximum upload size in bytes (default 50 MiB)";
       };
       backend = lib.mkOption {
         type = lib.types.enum [
@@ -827,35 +846,43 @@ in
           "s3"
         ];
         default = "file";
+        description = "Storage backend: local files or an S3-compatible service";
       };
       tenantId = lib.mkOption {
         type = lib.types.str;
         default = "default";
+        description = "Tenant identifier used to namespace storage and the connection pooler";
       };
       s3 = {
         bucket = lib.mkOption {
           type = lib.types.str;
           default = "";
+          description = "S3 bucket name (used when backend is \"s3\")";
         };
         region = lib.mkOption {
           type = lib.types.str;
           default = "";
+          description = "S3 region (used when backend is \"s3\")";
         };
         endpoint = lib.mkOption {
           type = lib.types.str;
           default = "";
+          description = "Custom S3 endpoint URL; leave empty to use AWS";
         };
         forcePathStyle = lib.mkOption {
           type = lib.types.bool;
           default = false;
+          description = "Use path-style addressing instead of virtual-hosted-style; required by most S3-compatible services";
         };
         accessKeyIdFile = lib.mkOption {
           type = lib.types.nullOr lib.types.path;
           default = null;
+          description = "Path to a file containing the S3 access key ID";
         };
         secretAccessKeyFile = lib.mkOption {
           type = lib.types.nullOr lib.types.path;
           default = null;
+          description = "Path to a file containing the S3 secret access key";
         };
       };
     };
@@ -863,6 +890,7 @@ in
     functions.verifyJwt = lib.mkOption {
       type = lib.types.bool;
       default = true;
+      description = "Whether Edge Functions require a valid JWT by default";
     };
 
     rest.dbSchemas = lib.mkOption {
@@ -872,16 +900,19 @@ in
         "storage"
         "graphql_public"
       ];
+      description = "Database schemas PostgREST exposes through the REST API";
     };
 
     pooler = {
       defaultPoolSize = lib.mkOption {
         type = lib.types.int;
         default = 20;
+        description = "Default number of server connections per pool";
       };
       maxClientConn = lib.mkOption {
         type = lib.types.int;
         default = 100;
+        description = "Maximum number of client connections accepted by the pooler";
       };
     };
 

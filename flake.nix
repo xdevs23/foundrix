@@ -251,9 +251,6 @@
                 };
                 optionsDoc = buildPlatformPkgsStable.nixosOptionsDoc {
                   options = { inherit (eval.options) foundrix device; };
-                  # Some service options still lack descriptions; surface these as
-                  # warnings rather than failing the whole documentation build.
-                  warningsAreErrors = false;
                 };
               in
               buildPlatformPkgsStable.stdenv.mkDerivation {
