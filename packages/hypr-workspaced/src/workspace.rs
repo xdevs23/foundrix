@@ -623,6 +623,25 @@ impl WorkspaceManager {
         Ok(())
     }
 
+    /// Prime pointer focus on startup.
+    ///
+    /// With `input:follow_mouse = 1`, Hyprland does not compute the
+    /// window-under-cursor focus until the first real pointer motion, so a
+    /// freshly started session leaves every window unfocused until the mouse is
+    /// moved or a workspace is switched. Replaying the same focus logic the
+    /// workspace-switch path uses primes that state without warping the cursor.
+    pub async fn prime_focus(&self) -> Result<()> {
+        let _guard = self.ipc_lock.lock().await;
+
+        let focused = Monitor::get_active_async().await?;
+        let vws = match VirtualWorkspace::from_hyprland_id(focused.active_workspace.id) {
+            Some(v) => v,
+            None => return Ok(()),
+        };
+
+        self.focus_window_under_cursor(vws).await
+    }
+
     pub async fn move_to_virtual(&self, vws: VirtualWorkspace) -> Result<()> {
         let _guard = self.ipc_lock.lock().await;
 

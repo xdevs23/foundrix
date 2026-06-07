@@ -120,6 +120,16 @@ pub async fn run(log_handle: LogReloadHandle, on_reconnect_restart: Option<Strin
         error!("Initial workspace assignment failed: {e}");
     }
 
+    // Monitors are ready once the initial assignment has run. Prime pointer
+    // focus now so the session does not start with every window unfocused
+    // under input:follow_mouse (see WorkspaceManager::prime_focus). The short
+    // settle delay mirrors the monitor-change path and lets window geometry
+    // populate before we test what is under the cursor.
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    if let Err(e) = manager.prime_focus().await {
+        warn!("Initial focus priming failed: {e}");
+    }
+
     loop {
         tokio::select! {
             event = rx.recv() => {
