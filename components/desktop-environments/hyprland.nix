@@ -324,7 +324,8 @@
                   ];
                 };
                 dwindle = {
-                  pseudotile = false;
+                  # dwindle:pseudotile was removed in Hyprland 0.55 (it was a
+                  # no-op); setting it now errors on config parse.
                   preserve_split = true;
                 };
                 gestures = {
