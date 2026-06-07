@@ -769,13 +769,5 @@ in
       allowNullPassword = true;
       startSession = true;
     };
-
-    # This is set by gamescopeSession in nixpkgs, so set it here, too
-    security.wrappers.bwrap = lib.mkIf cfg.realtimeScheduling {
-      owner = "root";
-      group = "root";
-      source = lib.getExe' pkgs.bubblewrap "bwrap";
-      setuid = true;
-    };
   };
 }
