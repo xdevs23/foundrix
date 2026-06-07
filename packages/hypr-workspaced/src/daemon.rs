@@ -10,7 +10,7 @@ use tracing_subscriber::reload::Handle;
 use tracing_subscriber::EnvFilter;
 
 use crate::error::Result;
-use crate::ipc::{socket_path, CollapseMode, Command, Response};
+use crate::ipc::{socket_path, Command, Response};
 use crate::workspace::{VirtualWorkspace, WorkspaceManager};
 
 type LogReloadHandle = Handle<EnvFilter, tracing_subscriber::Registry>;

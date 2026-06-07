@@ -35,6 +35,7 @@ impl VirtualWorkspace {
         }
     }
 
+    #[cfg(test)]
     pub fn number(self) -> u8 {
         self.0
     }
@@ -238,10 +239,6 @@ impl MonitorLayout {
             .get(&monitor_id)
             .copied()
             .unwrap_or(MonitorSlot::new(monitor_id as u8))
-    }
-
-    pub fn num_monitors(&self) -> usize {
-        self.slots.len()
     }
 
     /// Build a reverse mapping: slot → monitor name.
