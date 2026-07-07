@@ -39,5 +39,17 @@
       default = false;
       description = "Nix store is read-only (erofs) and cannot be modified at runtime";
     };
+
+    varProvisioner = lib.mkOption {
+      type = lib.types.nullOr (
+        lib.types.enum (builtins.attrValues traitTypes.filesystem.varProvisioner)
+      );
+      default = null;
+      description = ''
+        How the /var data volume is provisioned at runtime. Being an enum,
+        importing two provisioning modules at once fails eval with a
+        definition conflict — they are mutually exclusive by construction.
+      '';
+    };
   };
 }

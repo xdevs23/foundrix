@@ -9,6 +9,7 @@
   namespaced,
   namespacedCfg,
   foundrixModules,
+  traitTypes,
   ...
 }:
 let
@@ -67,6 +68,10 @@ in
       dataBlkDevUnit = "${utils.escapeSystemdPath dataBlkDevPath}.device";
     in
     {
+      # Announce ownership of /var provisioning; a second provisioner
+      # (e.g. filesystem.var-luks) conflicts at eval by enum construction.
+      foundrix.traits.filesystem.varProvisioner = traitTypes.filesystem.varProvisioner.repart;
+
       assertions = [
         {
           assertion = deviceCfg.dataDevice != null;

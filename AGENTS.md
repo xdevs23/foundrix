@@ -18,5 +18,6 @@ reaches EOL.
 ## Other references
 
 - [docs/traits.md](docs/traits.md) — cross-module capability announcements
+- [docs/var-luks.md](docs/var-luks.md) — encrypted /var (LUKS2) with automatic migration
 - [docs/images.md](docs/images.md) — image build/output conventions
 - [TIPS_AND_TRICKS.md](TIPS_AND_TRICKS.md) — practical recipes

@@ -4,8 +4,17 @@
   pkgs,
   modulesPath,
   foundrixModules,
+  traitTypes,
   ...
 }:
+let
+  # Repart-driven online growth only makes sense when repart owns the data
+  # volume. With the LUKS manager as provisioner there are no repart.d
+  # definitions and growth is a manual crypt-aware procedure (see
+  # docs/var-luks.md) — the trait tells us without coupling to the module.
+  varProvisioner = config.foundrix.traits.filesystem.varProvisioner or null;
+  repartResize = varProvisioner != traitTypes.filesystem.varProvisioner.luks-manager;
+in
 {
   imports = [
     "${modulesPath}/profiles/qemu-guest.nix"
@@ -15,11 +24,11 @@
   services.cloud-init.enable = false;
 
   # Online disk resize: detect capacity changes and grow filesystem
-  services.udev.extraRules = ''
+  services.udev.extraRules = lib.mkIf repartResize ''
     ACTION=="change", SUBSYSTEM=="block", ENV{RESIZE}=="1", ENV{DEVTYPE}=="disk", TAG+="systemd", ENV{SYSTEMD_WANTS}="disk-online-resize@%k.service"
   '';
 
-  systemd.services."disk-online-resize@" = {
+  systemd.services."disk-online-resize@" = lib.mkIf repartResize {
     description = "Online resize for /dev/%i";
     serviceConfig = {
       Type = "oneshot";

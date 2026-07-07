@@ -5,6 +5,7 @@
   namespaced,
   namespacedCfg,
   foundrixModules,
+  traitTypes,
   ...
 }:
 let
@@ -50,6 +51,10 @@ in
       repartEnabled = config.boot.initrd.systemd.repart.enable;
     in
     {
+      # Announce ownership of /var provisioning; a second provisioner
+      # (e.g. filesystem.var-luks) conflicts at eval by enum construction.
+      foundrix.traits.filesystem.varProvisioner = traitTypes.filesystem.varProvisioner.repart;
+
       # Partitioning is handled entirely in the initrd — the main-system
       # systemd-repart.service is not needed and fails to discover the root
       # block device / machine-id when running on a volatile root.

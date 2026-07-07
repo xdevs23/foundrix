@@ -7,6 +7,10 @@
       readonly = "readonly";
       persistent = "persistent";
     };
+    varProvisioner = {
+      repart = "repart";
+      luks-manager = "luks-manager";
+    };
   };
   homeManager = {
     method = {
@@ -34,6 +38,10 @@
         volatile = "tmpfs - state must be persisted elsewhere";
         readonly = "erofs/squashfs - immutable root";
         persistent = "btrfs/ext4 - normal persistent root";
+      };
+      varProvisioner = {
+        repart = "systemd-repart creates/grows the var partition in the initrd";
+        luks-manager = "var-disk-manager provides /var as LUKS2-encrypted btrfs";
       };
     };
     homeManager = {

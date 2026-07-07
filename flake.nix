@@ -164,6 +164,27 @@
             }
           ];
         };
+        smoke-test-var-luks = lib.nixosSystem {
+          specialArgs = self.nixosModules.foundrixSpecialArgs;
+          modules = [
+            ./common
+            self.nixosModules.profiles.image.server-writable
+            self.nixosModules.config.filesystem.var-luks
+            self.nixosModules.config.filesystem.root-tmpfs
+            self.nixosModules.config.filesystem.nix
+            self.nixosModules.config.debug
+            {
+              nixpkgs.hostPlatform = lib.mkOverride 1200 "x86_64-linux";
+              boot.uki.name = "smoke-test";
+              boot.initrd.systemd.enable = true;
+              foundrix.config.filesystem.var-luks.volumeGlob = "/dev/disk/by-id/scsi-0DATA_*";
+              # Dummy key to satisfy the initrd-ssh non-empty-keys assertion.
+              boot.initrd.network.ssh.authorizedKeys = [
+                "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA smoke-test"
+              ];
+            }
+          ];
+        };
         smoke-test-readonly-ab = lib.nixosSystem {
           specialArgs = self.nixosModules.foundrixSpecialArgs;
           modules = [
