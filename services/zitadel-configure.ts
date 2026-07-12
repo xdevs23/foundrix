@@ -139,13 +139,18 @@ class ZitadelClient {
     method: string,
     path: string,
     body?: unknown,
+    orgId?: string,
   ): Promise<unknown> {
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${this.token}`,
+      "Content-Type": "application/json",
+    };
+    // Management-API calls operate on the token's org unless overridden;
+    // needed to configure a freshly created org.
+    if (orgId) headers["x-zitadel-orgid"] = orgId;
     const resp = await fetch(`${this.apiUrl}${path}`, {
       method,
-      headers: {
-        Authorization: `Bearer ${this.token}`,
-        "Content-Type": "application/json",
-      },
+      headers,
       body: body ? JSON.stringify(body) : undefined,
     });
 
@@ -160,32 +165,43 @@ class ZitadelClient {
     return text ? JSON.parse(text) : {};
   }
 
-  async listOrgDomains(): Promise<OrgDomain[]> {
-    const resp = (await this.request("POST", "/management/v1/orgs/me/domains/_search", {})) as {
+  async listOrgDomains(orgId?: string): Promise<OrgDomain[]> {
+    const resp = (await this.request(
+      "POST",
+      "/management/v1/orgs/me/domains/_search",
+      {},
+      orgId,
+    )) as {
       result?: OrgDomain[];
     };
     return resp.result ?? [];
   }
 
-  async addOrgDomain(domain: string): Promise<void> {
-    await this.request("POST", "/management/v1/orgs/me/domains", { domain });
+  async addOrgDomain(domain: string, orgId?: string): Promise<void> {
+    await this.request("POST", "/management/v1/orgs/me/domains", { domain }, orgId);
   }
 
-  async setPrimaryOrgDomain(domain: string): Promise<void> {
-    await this.request("POST", `/management/v1/orgs/me/domains/${domain}/_set_primary`, {});
+  async setPrimaryOrgDomain(domain: string, orgId?: string): Promise<void> {
+    await this.request(
+      "POST",
+      `/management/v1/orgs/me/domains/${domain}/_set_primary`,
+      {},
+      orgId,
+    );
   }
 
-  async createOrg(name: string, domain: string): Promise<string> {
-    const resp = (await this.request("POST", "/admin/v1/orgs", {
-      name,
-      domain,
-    })) as { org: { id: string } };
-    return resp.org.id;
+  async createOrg(name: string): Promise<string> {
+    // AddOrg lives in the management API; POST /admin/v1/orgs does not
+    // exist (admin v1 only offers the deprecated _setup combo).
+    const resp = (await this.request("POST", "/management/v1/orgs", { name })) as {
+      id: string;
+    };
+    return resp.id;
   }
 
-  async listOrgs(): Promise<{ id: string; name: string }[]> {
+  async listOrgs(): Promise<{ id: string; name: string; primaryDomain?: string }[]> {
     const resp = (await this.request("POST", "/admin/v1/orgs/_search", {})) as {
-      result?: { id: string; name: string }[];
+      result?: { id: string; name: string; primaryDomain?: string }[];
     };
     return resp.result ?? [];
   }
@@ -692,16 +708,32 @@ async function convergeOrgs(
   const orgMap = new Map<string, string>();
   const existingOrgs = await client.listOrgs();
 
+  // An org "belongs" to a domain key when it carries that domain — in any
+  // position, not just primary. Orgs predating the orgDomains rework are
+  // named freely and must be adopted, never duplicated: creating a
+  // lookalike org would silently split users and grants.
+  const domainOwners = new Map<string, string>();
+  for (const org of existingOrgs) {
+    for (const d of await client.listOrgDomains(org.id)) {
+      if (!domainOwners.has(d.domainName)) {
+        domainOwners.set(d.domainName, org.id);
+      }
+    }
+  }
+
   for (const domain of orgDomains) {
-    const existing = existingOrgs.find((o) => o.name === domain);
-    if (existing) {
-      console.log(`Org already exists: ${domain} (${existing.id})`);
-      orgMap.set(domain, existing.id);
+    const existingId = domainOwners.get(domain) ??
+      existingOrgs.find((o) => o.primaryDomain === domain || o.name === domain)?.id;
+    if (existingId) {
+      console.log(`Org already exists: ${domain} (${existingId})`);
+      orgMap.set(domain, existingId);
       continue;
     }
 
     console.log(`Creating org: ${domain}`);
-    const orgId = await client.createOrg(domain, domain);
+    const orgId = await client.createOrg(domain);
+    await client.addOrgDomain(domain, orgId);
+    await client.setPrimaryOrgDomain(domain, orgId);
     console.log(`Created org: ${domain} (${orgId})`);
     orgMap.set(domain, orgId);
   }
