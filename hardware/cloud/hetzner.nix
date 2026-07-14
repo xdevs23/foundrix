@@ -115,7 +115,9 @@ in
 
         echo "Setting DNS on interface: $iface"
         ${pkgs.systemd}/bin/resolvectl dns "$iface" ${
-          lib.concatStringsSep " " (config.networking.nameservers ++ config.services.resolved.fallbackDns)
+          lib.concatStringsSep " " (
+            config.networking.nameservers ++ (config.services.resolved.settings.Resolve.FallbackDNS or [ ])
+          )
         }
         ${pkgs.systemd}/bin/resolvectl default-route "$iface" yes
 

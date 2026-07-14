@@ -37,7 +37,7 @@ in
 
     services.resolved = {
       enable = true;
-      fallbackDns = cfg.fallbackDns;
+      settings.Resolve.FallbackDNS = cfg.fallbackDns;
     };
   };
 }
