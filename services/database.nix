@@ -172,7 +172,61 @@ let
     ) dbNames
   );
 
-  allPrerequisiteServices = dbPwRotationServices // dbPwPermissionServices // dbGrantServices;
+  # Collation version migration — a libc upgrade (typically a NixOS release
+  # upgrade) changes the collation definitions text indexes were built with.
+  # PostgreSQL stamps every database with the collation version it was
+  # created under and then refuses CREATE DATABASE from a mismatched
+  # template (breaking ensureDatabases and services' first-time setup),
+  # while existing text indexes silently become unreliable. Rebuild indexes
+  # and refresh the stamp before postgresql-setup and any consumer touch
+  # the cluster.
+  collationRefreshServices = {
+    postgresql-collation-refresh = rec {
+      description = "Refresh PostgreSQL collation versions after a libc upgrade";
+      requires = [ "postgresql.service" ];
+      after = requires;
+      before = [ "postgresql-setup.service" ];
+      requiredBy = [ "postgresql-setup.service" ];
+
+      unitConfig.StartLimitIntervalSec = 0;
+
+      serviceConfig = {
+        Type = "oneshot";
+        RemainAfterExit = true;
+        User = "postgres";
+        Restart = "on-failure";
+
+        ExecStartPre = waitForPsql;
+        ExecStart = pkgs.writeShellScript "postgresql-collation-refresh" ''
+          set -euo pipefail
+
+          psql=${lib.getExe' config.services.postgresql.package "psql"}
+
+          mismatched=$("$psql" -qAt -F "$(printf '\t')" -v ON_ERROR_STOP=1 -d postgres -c "
+            SELECT datname, datallowconn,
+                   format('ALTER DATABASE %I REFRESH COLLATION VERSION', datname)
+            FROM pg_database
+            WHERE datcollversion IS NOT NULL
+              AND datcollversion IS DISTINCT FROM pg_database_collation_actual_version(oid)")
+
+          [ -n "$mismatched" ] || exit 0
+
+          while IFS="$(printf '\t')" read -r db allowconn alter; do
+            if [ "$allowconn" = t ]; then
+              echo "Collation version mismatch in database '$db', rebuilding indexes"
+              "$psql" -q -v ON_ERROR_STOP=1 -d "$db" -c "REINDEX DATABASE"
+            else
+              echo "Collation version mismatch in database '$db' (not connectable), skipping reindex"
+            fi
+            "$psql" -q -v ON_ERROR_STOP=1 -d postgres -c "$alter"
+          done <<< "$mismatched"
+        '';
+      };
+    };
+  };
+
+  allPrerequisiteServices =
+    dbPwRotationServices // dbPwPermissionServices // dbGrantServices // collationRefreshServices;
 in
 {
   options = namespaced __curPos {
@@ -217,6 +271,7 @@ ${lib.concatMapStrings (
             local  postgres  ${user}  scram-sha-256
         '') dbUsers}
         local  sameuser  all  peer map=superuser_map
+        local  all  postgres  peer map=superuser_map
       '';
 
       identMap = ''
