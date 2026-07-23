@@ -851,6 +851,85 @@ async function convergeProject(client: ZitadelClient, name: string): Promise<str
   return id;
 }
 
+async function ensureParentDir(path: string): Promise<void> {
+  const slash = path.lastIndexOf("/");
+  if (slash > 0) {
+    await Deno.mkdir(path.slice(0, slash), { recursive: true });
+  }
+}
+
+// Write a credential file atomically: create the temp file with the final
+// mode, fsync it, then rename into place. Zitadel cannot read a client
+// secret back, so this file is the ONLY recoverable copy — a truncate-in-
+// place write that is interrupted would destroy it, and the next converge
+// run would see no stored secret and force-regenerate, silently
+// invalidating every consumer's operator-carried copy. Mirrors what the
+// operator-secrets daemon does for the same reason.
+async function writeCredentialFile(
+  path: string,
+  contents: string,
+): Promise<void> {
+  await ensureParentDir(path);
+  const tmp = `${path}.tmp.${Deno.pid}`;
+  const file = await Deno.open(tmp, {
+    write: true,
+    createNew: true,
+    mode: 0o600,
+  });
+  try {
+    await file.write(new TextEncoder().encode(contents));
+    await file.sync();
+  } finally {
+    file.close();
+  }
+  try {
+    await Deno.rename(tmp, path);
+  } catch (e) {
+    await Deno.remove(tmp).catch(() => {});
+    throw e;
+  }
+}
+
+// Returns the CLIENT_SECRET previously written to `path`, but only if it
+// still belongs to `clientId` — a recreated app gets a new client id, and
+// its stale secret must not be handed back out.
+async function readStoredClientSecret(
+  path: string,
+  clientId: string,
+): Promise<string | null> {
+  let text: string;
+  try {
+    text = await Deno.readTextFile(path);
+  } catch (e) {
+    // ONLY "the file is not there" means "nothing stored yet". Any other
+    // failure — permissions, a transient I/O error, a directory in the
+    // way — must fail the converge run loudly. Treating it as "absent"
+    // would regenerate the client secret at Zitadel and overwrite the
+    // still-good file, invalidating every consumer's copy until a human
+    // re-enters the new value. This is the same error-vs-invalid
+    // distinction operator-secrets is built around, applied on the
+    // producing side.
+    if (e instanceof Deno.errors.NotFound) {
+      return null;
+    }
+    throw e;
+  }
+
+  const vars = new Map<string, string>();
+  for (const line of text.split("\n")) {
+    const eq = line.indexOf("=");
+    if (eq > 0) {
+      vars.set(line.slice(0, eq).trim(), line.slice(eq + 1).trim());
+    }
+  }
+
+  if (vars.get("CLIENT_ID") !== clientId) {
+    return null;
+  }
+  const secret = vars.get("CLIENT_SECRET");
+  return secret !== undefined && secret.length > 0 ? secret : null;
+}
+
 async function convergeConfidentialApp(
   client: ZitadelClient,
   projectId: string,
@@ -867,8 +946,21 @@ async function convergeConfidentialApp(
     const app = apps[0];
     appId = app.id;
     clientId = app.oidcConfig!.clientId;
-    console.log(`OIDC app exists: ${appName}, regenerating client secret`);
-    clientSecret = await client.regenerateClientSecret(projectId, appId);
+    // Zitadel cannot read a client secret back, so the only way to keep
+    // converge idempotent is to reuse the one we stored last time.
+    // Regenerating unconditionally would invalidate every consumer's copy
+    // on each run.
+    const stored = await readStoredClientSecret(spec.outputPath, clientId);
+    if (stored !== null) {
+      console.log(`OIDC app exists: ${appName}, keeping stored client secret`);
+      clientSecret = stored;
+    } else {
+      console.log(
+        `OIDC app exists: ${appName}, but no stored secret for client ${clientId} — ` +
+          "regenerating; consumers of this credential must be updated",
+      );
+      clientSecret = await client.regenerateClientSecret(projectId, appId);
+    }
   } else {
     console.log(`Creating OIDC app: ${appName}`);
     const creds = await client.createOIDCApp(projectId, {
@@ -910,11 +1002,14 @@ async function convergeConfidentialApp(
     }
   }
 
-  await Deno.writeTextFile(spec.outputPath, [
-    `CLIENT_ID=${clientId}`,
-    `CLIENT_SECRET=${clientSecret}`,
-    "",
-  ].join("\n"));
+  await writeCredentialFile(
+    spec.outputPath,
+    [
+      `CLIENT_ID=${clientId}`,
+      `CLIENT_SECRET=${clientSecret}`,
+      "",
+    ].join("\n"),
+  );
   console.log(`Wrote OIDC client credentials to ${spec.outputPath}`);
 }
 

@@ -305,6 +305,7 @@ let
           description = "OAuth2 redirect URIs";
         };
 
+
         postLogoutRedirectUris = lib.mkOption {
           type = lib.types.listOf lib.types.str;
           default = [ ];
@@ -328,17 +329,22 @@ let
           type = lib.types.str;
           default =
             if config.type == "confidential" then
-              "/run/zitadel/${name}-creds.env"
+              "/var/credentials/zitadel-${name}-creds.env"
             else
               "/run/zitadel/${name}-client-id";
           defaultText = ''
-            Confidential: /run/zitadel/<name>-creds.env
+            Confidential: /var/credentials/zitadel-<name>-creds.env
             Public: /run/zitadel/<name>-client-id
           '';
           description = ''
             Path where the configure script writes credentials.
             Confidential apps get an env file with CLIENT_ID and CLIENT_SECRET.
             Public apps get a file containing just the client ID.
+
+            Confidential apps default to a PERSISTENT path: Zitadel cannot
+            read a client secret back, so converge reuses the stored one to
+            stay idempotent. On a tmpfs path every reboot would lose it and
+            force a regeneration, invalidating every consumer's copy.
           '';
         };
       };
@@ -1000,7 +1006,7 @@ in
         Type = "oneshot";
         RemainAfterExit = true;
         TimeoutStartSec = "infinity";
-        ExecStart = "${lib.getExe pkgs.deno} run --allow-read --allow-net --allow-write=/run/zitadel ${configureScript} /run/zitadel/desired-state.json";
+        ExecStart = "${lib.getExe pkgs.deno} run --allow-read --allow-net --allow-write=/run/zitadel,/var/credentials ${configureScript} /run/zitadel/desired-state.json";
       };
     };
 
