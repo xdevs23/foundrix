@@ -1,0 +1,26 @@
+[package]
+name = "oidc-credential-validator"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.89"
+
+[[bin]]
+name = "oidc-credential-validator"
+path = "src/main.rs"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+# Pure-Rust TLS (rustls + ring): no openssl, nothing for the nix build to
+# link against, and no C toolchain surprises. platform-verifier is off —
+# webpki-roots pins the trust anchors into the binary so the validator
+# does not depend on the host's cert store being populated before the
+# network is up.
+ureq = { version = "3.1", default-features = false, features = [
+  "rustls",
+  "json",
+] }
+
+[profile.release]
+lto = true
+strip = true
