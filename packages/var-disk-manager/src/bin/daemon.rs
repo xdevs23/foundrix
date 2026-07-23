@@ -20,9 +20,9 @@ use tokio::process::Command;
 use tokio::sync::{mpsc, watch};
 
 use var_disk_manager::{
-    ClientMsg, DiskClass, DiskInfo, DiskProbe, Identity, Plan, Progress, Prompt, PromptKind,
-    SOCKET_PATH, STATE_FILE, Snapshot, VAR_TYPE_GUID, classify, parse_btrfs_used, plan,
-    split_prefix_glob,
+    ClientMsg, DiskClass, DiskInfo, DiskProbe, Identity, MapperFs, Plan, Progress, Prompt,
+    PromptKind, SOCKET_PATH, STATE_FILE, Snapshot, VAR_TYPE_GUID, classify, mapper_fs_from_blkid,
+    parse_btrfs_used, parse_confirm, plan, split_prefix_glob,
 };
 
 #[derive(Parser)]
@@ -58,8 +58,18 @@ struct Cfg {
     min_passphrase_len: usize,
 }
 const REQUIRED_TOOLS: &[&str] = &[
-    "blkid", "lsblk", "blockdev", "wipefs", "sgdisk", "cryptsetup", "btrfs", "mkfs.btrfs",
-    "udevadm", "mount", "umount", "sync",
+    "blkid",
+    "lsblk",
+    "blockdev",
+    "wipefs",
+    "sgdisk",
+    "cryptsetup",
+    "btrfs",
+    "mkfs.btrfs",
+    "udevadm",
+    "mount",
+    "umount",
+    "sync",
 ];
 /// LUKS header + btrfs metadata headroom the target must have beyond the
 /// source's used bytes.
@@ -83,7 +93,10 @@ impl Ui {
         // visible in dmesg/journal but below the console loglevel, so the
         // breadcrumbs don't garble our own console TUI.
         let _ = std::fs::write(STATE_FILE, format!("{}\n", snap.message));
-        let _ = std::fs::write("/dev/kmsg", format!("<7>var-disk-manager: {}\n", snap.message));
+        let _ = std::fs::write(
+            "/dev/kmsg",
+            format!("<7>var-disk-manager: {}\n", snap.message),
+        );
         let _ = self.tx.send(snap.clone());
     }
 
@@ -107,7 +120,13 @@ impl Ui {
             *n += 1;
             *n
         };
-        self.mutate(|s| s.prompt = Some(Prompt { id, kind, text: text.to_string() }));
+        self.mutate(|s| {
+            s.prompt = Some(Prompt {
+                id,
+                kind,
+                text: text.to_string(),
+            })
+        });
         let value = loop {
             let msg = {
                 let mut rx = self.submissions.lock().unwrap();
@@ -125,6 +144,21 @@ impl Ui {
         };
         self.mutate(|s| s.prompt = None);
         value
+    }
+
+    /// Post a yes/no Confirm prompt until a parseable answer arrives.
+    /// This is a SAFETY INTERLOCK for irreversible decisions (currently:
+    /// formatting an unlocked-but-empty mapper), not a convenience — there
+    /// is deliberately no default, no config flag and no heuristic that can
+    /// bypass the human answer.
+    async fn ask_confirm(&self, text: &str) -> bool {
+        loop {
+            let answer = self.ask(PromptKind::Confirm, text).await;
+            if let Some(yes) = parse_confirm(&answer) {
+                return yes;
+            }
+            self.state("prompt", "please answer y or n");
+        }
     }
 
     async fn block_forever(&self, reason: &str) -> std::convert::Infallible {
@@ -171,7 +205,11 @@ async fn probe_value(cmd: &str, args: &[&str]) -> Result<Option<String>> {
         .await
         .with_context(|| format!("spawning {cmd}"))?;
     let v = String::from_utf8_lossy(&out.stdout).trim().to_string();
-    Ok(if out.status.success() && !v.is_empty() { Some(v) } else { None })
+    Ok(if out.status.success() && !v.is_empty() {
+        Some(v)
+    } else {
+        None
+    })
 }
 
 /// Run a command feeding `secret` on stdin (cryptsetup --key-file=-).
@@ -206,7 +244,10 @@ async fn run_with_stdin(cmd: &str, args: &[&str], secret: &str) -> Result<()> {
 }
 
 async fn settle() {
-    let _ = Command::new("udevadm").args(["settle", "--timeout=30"]).status().await;
+    let _ = Command::new("udevadm")
+        .args(["settle", "--timeout=30"])
+        .status()
+        .await;
 }
 
 // --- disk enumeration & probing ---------------------------------------------
@@ -275,7 +316,10 @@ async fn ask_new_passphrase(ui: &Ui, cfg: &Cfg) -> String {
     let min = cfg.min_passphrase_len;
     loop {
         let a = ui
-            .ask(PromptKind::NewPassphrase, "New LUKS passphrase for this server's /var volume")
+            .ask(
+                PromptKind::NewPassphrase,
+                "New LUKS passphrase for this server's /var volume",
+            )
             .await;
         if a.chars().count() < min {
             ui.state(
@@ -284,7 +328,9 @@ async fn ask_new_passphrase(ui: &Ui, cfg: &Cfg) -> String {
             );
             continue;
         }
-        let b = ui.ask(PromptKind::RepeatPassphrase, "Repeat passphrase").await;
+        let b = ui
+            .ask(PromptKind::RepeatPassphrase, "Repeat passphrase")
+            .await;
         if a == b {
             return a;
         }
@@ -303,10 +349,14 @@ async fn format_encrypted(ui: &Ui, cfg: &Cfg, disk_id: &str, passphrase: &str) -
     run_ok(
         "sgdisk",
         &[
-            "-n", "1:0:0",
-            "-t", &format!("1:{VAR_TYPE_GUID}"),
-            "-u", &format!("1:{}", cfg.id.luks_partuuid),
-            "-c", "1:var",
+            "-n",
+            "1:0:0",
+            "-t",
+            &format!("1:{VAR_TYPE_GUID}"),
+            "-u",
+            &format!("1:{}", cfg.id.luks_partuuid),
+            "-c",
+            "1:var",
             &disk,
         ],
     )
@@ -323,26 +373,54 @@ async fn format_encrypted(ui: &Ui, cfg: &Cfg, disk_id: &str, passphrase: &str) -
         bail!("partition {part} did not appear");
     }
 
-    ui.state("format/luks", format!("creating LUKS2 container on {disk_id}-part1"));
+    ui.state(
+        "format/luks",
+        format!("creating LUKS2 container on {disk_id}-part1"),
+    );
     run_with_stdin(
         "cryptsetup",
         &[
-            "luksFormat", "--type", "luks2", "--label", "var-crypt", "--batch-mode",
-            "--key-file", "-", &part,
+            "luksFormat",
+            "--type",
+            "luks2",
+            "--label",
+            "var-crypt",
+            "--batch-mode",
+            "--key-file",
+            "-",
+            &part,
         ],
         passphrase,
     )
     .await?;
     run_with_stdin(
         "cryptsetup",
-        &["open", "--key-file", "-", "--allow-discards", "--persistent", &part, &cfg.id.mapper],
+        &[
+            "open",
+            "--key-file",
+            "-",
+            "--allow-discards",
+            "--persistent",
+            &part,
+            &cfg.id.mapper,
+        ],
         passphrase,
     )
     .await?;
 
-    ui.state("format/mkfs", format!("creating btrfs on /dev/mapper/{}", cfg.id.mapper));
-    run_ok("mkfs.btrfs", &["-L", &cfg.id.fs_label, &format!("/dev/mapper/{}", cfg.id.mapper)])
-        .await?;
+    ui.state(
+        "format/mkfs",
+        format!("creating btrfs on /dev/mapper/{}", cfg.id.mapper),
+    );
+    run_ok(
+        "mkfs.btrfs",
+        &[
+            "-L",
+            &cfg.id.fs_label,
+            &format!("/dev/mapper/{}", cfg.id.mapper),
+        ],
+    )
+    .await?;
     settle().await;
     Ok(())
 }
@@ -359,7 +437,14 @@ async fn unlock(ui: &Ui, cfg: &Cfg, luks_id: &str) -> Result<()> {
         ui.state("unlock", "unlocking...");
         match run_with_stdin(
             "cryptsetup",
-            &["open", "--key-file", "-", "--allow-discards", &part, &cfg.id.mapper],
+            &[
+                "open",
+                "--key-file",
+                "-",
+                "--allow-discards",
+                &part,
+                &cfg.id.mapper,
+            ],
             &pw,
         )
         .await
@@ -369,6 +454,113 @@ async fn unlock(ui: &Ui, cfg: &Cfg, luks_id: &str) -> Result<()> {
         }
     }
     settle().await;
+
+    // Post-open content check — a data-loss guard, not a UX nicety.
+    // A mapper that opens but holds no btrfs filesystem is ambiguous:
+    // usually a half-provisioned volume (earlier boots ran luksFormat but
+    // mkfs never ran, e.g. because a missing kernel module failed every
+    // `cryptsetup open` until now), but possibly a volume whose filesystem
+    // was wiped or corrupted by some OTHER bug. Formatting is only safe in
+    // the first case, and only a human can tell them apart — so the manager
+    // NEVER formats an empty mapper on its own. Auto-formatting would let a
+    // filesystem-destroying bug be silently "repaired" by reformatting on
+    // the next reboot, destroying recoverability and masking the bug.
+    // Likewise, a failed probe is not proof of emptiness: block, report,
+    // and never format.
+    let mapper_dev = format!("/dev/mapper/{}", cfg.id.mapper);
+    let probe = Command::new("blkid")
+        .args(["-o", "value", "-s", "TYPE", &mapper_dev])
+        .output()
+        .await;
+    let found = match &probe {
+        Ok(out) => mapper_fs_from_blkid(out.status.code(), &String::from_utf8_lossy(&out.stdout)),
+        Err(_) => mapper_fs_from_blkid(None, ""),
+    };
+    match found {
+        MapperFs::Btrfs => {
+            // The filesystem may still lack the `var` subvolume (mkfs done,
+            // subvolume step interrupted — e.g. by an earlier daemon bug or a
+            // crash between the two). Creating it is additive and destroys
+            // nothing, but a MISSING subvolume on a volume that should hold
+            // data signals that something went wrong — same interlock as the
+            // empty case: a human decides, the manager never self-heals
+            // silently.
+            std::fs::create_dir_all("/new-var-fs")?;
+            run_ok("mount", &["-o", "subvol=/", &mapper_dev, "/new-var-fs"]).await?;
+            let have_subvol = subvol_exists("/new-var-fs/var").await;
+            if !have_subvol {
+                let yes = ui
+                    .ask_confirm(&format!(
+                        "Volume {luks_id} has a btrfs filesystem but no 'var' subvolume \
+                         (the boot mounts subvol=var). Create it now? This is additive and \
+                         erases nothing. Only expected on a fresh/half-provisioned volume; \
+                         if this volume should already hold data, answer n and investigate. \
+                         [y/n]"
+                    ))
+                    .await;
+                if yes {
+                    run_ok("btrfs", &["subvolume", "create", "/new-var-fs/var"]).await?;
+                } else {
+                    run_ok("umount", &["/new-var-fs"]).await?;
+                    match ui
+                        .block_forever(&format!(
+                            "volume {luks_id} has btrfs but no 'var' subvolume and the \
+                             operator DECLINED to create it. Nothing was written. \
+                             Investigate (mapper open at {mapper_dev}), or power-cycle to \
+                             be asked again."
+                        ))
+                        .await {}
+                }
+            }
+            run_ok("umount", &["/new-var-fs"]).await?;
+        }
+        MapperFs::Empty => {
+            let yes = ui
+                .ask_confirm(&format!(
+                    "Volume {luks_id} is unlocked but contains no filesystem. Format it as \
+                     btrfs (label {})? This erases nothing — the volume is empty. This is \
+                     only safe if this is a fresh/half-provisioned volume; if you expected \
+                     data here, answer n and investigate (nothing will be written on n). [y/n]",
+                    cfg.id.fs_label
+                ))
+                .await;
+            if yes {
+                ui.state("format/mkfs", format!("creating btrfs on {mapper_dev}"));
+                run_ok("mkfs.btrfs", &["-L", &cfg.id.fs_label, &mapper_dev]).await?;
+                settle().await;
+                create_var_subvol(cfg).await?;
+            } else {
+                match ui
+                    .block_forever(&format!(
+                        "volume {luks_id} is unlocked but has no filesystem and the operator \
+                         DECLINED to format it. Nothing was written; the volume is untouched. \
+                         If this volume should hold data, investigate now — the mapper is \
+                         still open at {mapper_dev}. To format manually: mkfs.btrfs -L {} \
+                         {mapper_dev}, then reboot. Or simply power-cycle to be asked again.",
+                        cfg.id.fs_label
+                    ))
+                    .await {}
+            }
+        }
+        MapperFs::Other(fstype) => {
+            match ui
+                .block_forever(&format!(
+                    "volume {luks_id} is unlocked but contains an unexpected filesystem type \
+                     '{fstype}' (expected btrfs). NOT touching it; investigate manually and \
+                     power-cycle."
+                ))
+                .await {}
+        }
+        MapperFs::Unknown => {
+            match ui
+                .block_forever(&format!(
+                    "volume {luks_id} is unlocked but its contents could not be determined \
+                     (blkid probe on {mapper_dev} failed). Emptiness is NOT established, so \
+                     nothing will be written. Investigate manually and power-cycle."
+                ))
+                .await {}
+        }
+    }
     ui.state("unlock", "unlocked; boot continuing");
     Ok(())
 }
@@ -379,7 +571,10 @@ async fn ensure_label(ui: &Ui, cfg: &Cfg, legacy_id: &str) -> Result<()> {
     if label.as_deref() != Some(cfg.id.fs_label.as_str()) {
         ui.state("legacy", "labeling legacy filesystem");
         run_ok("btrfs", &["filesystem", "label", &part, &cfg.id.fs_label]).await?;
-        let _ = Command::new("udevadm").args(["trigger", "--settle", &part]).status().await;
+        let _ = Command::new("udevadm")
+            .args(["trigger", "--settle", &part])
+            .status()
+            .await;
     }
     ui.state("legacy", "booting unencrypted (pre-migration)");
     Ok(())
@@ -433,11 +628,16 @@ async fn copy_with_progress(ui: &Ui, total: u64) -> Result<()> {
         let mut copied: u64 = 0;
         let mut last_update = std::time::Instant::now();
         loop {
-            let n = from.read(&mut buf).await.context("reading from btrfs send")?;
+            let n = from
+                .read(&mut buf)
+                .await
+                .context("reading from btrfs send")?;
             if n == 0 {
                 break;
             }
-            to.write_all(&buf[..n]).await.context("writing to btrfs receive")?;
+            to.write_all(&buf[..n])
+                .await
+                .context("writing to btrfs receive")?;
             copied += n as u64;
             if last_update.elapsed() > Duration::from_millis(200) {
                 ui.progress(copied.min(total), total);
@@ -496,8 +696,7 @@ async fn migrate(
         let _ = run_ok("umount", &["/old"]).await;
         match ui
             .block_forever("MIGRATION ABORTED: could not determine used bytes on the source")
-            .await
-        {}
+            .await {}
     };
     let size_out = run_ok("blockdev", &["--getsize64", &dev(cfg, blank_id)]).await?;
     let target: u64 = size_out.trim().parse().context("parsing blockdev output")?;
@@ -509,22 +708,43 @@ async fn migrate(
                 "MIGRATION ABORTED: new volume ({target} bytes) smaller than used data + 1GiB \
                  headroom ({needed} bytes). Attach a bigger volume and power-cycle."
             ))
-            .await
-        {}
+            .await {}
     }
 
     let passphrase = ask_new_passphrase(ui, cfg).await;
     format_encrypted(ui, cfg, blank_id, &passphrase).await?;
 
     ui.state("migrate/copy", "copying /var (btrfs send/receive)");
-    run_ok("btrfs", &["subvolume", "snapshot", "-r", "/old/var", "/old/.migrate-src"]).await?;
+    run_ok(
+        "btrfs",
+        &[
+            "subvolume",
+            "snapshot",
+            "-r",
+            "/old/var",
+            "/old/.migrate-src",
+        ],
+    )
+    .await?;
     run_ok("sync", &[]).await?;
-    run_ok("mount", &["-o", "subvol=/", &format!("/dev/mapper/{}", cfg.id.mapper), "/new"])
-        .await?;
+    run_ok(
+        "mount",
+        &[
+            "-o",
+            "subvol=/",
+            &format!("/dev/mapper/{}", cfg.id.mapper),
+            "/new",
+        ],
+    )
+    .await?;
     copy_with_progress(ui, used).await?;
     // btrfs-progs 6.x refuses to flip a received subvolume rw; a rw
     // snapshot of it drops received_uuid, fine — no incremental sends.
-    run_ok("btrfs", &["subvolume", "snapshot", "/new/.migrate-src", "/new/var"]).await?;
+    run_ok(
+        "btrfs",
+        &["subvolume", "snapshot", "/new/.migrate-src", "/new/var"],
+    )
+    .await?;
     run_ok("btrfs", &["subvolume", "delete", "/new/.migrate-src"]).await?;
 
     ui.state("migrate/cleanup", "migration: cleaning up");
@@ -547,15 +767,28 @@ async fn provision(ui: &Ui, cfg: &Cfg, blank_id: &str) -> Result<()> {
     ui.state("provision", "fresh server: provisioning encrypted /var");
     let passphrase = ask_new_passphrase(ui, cfg).await;
     format_encrypted(ui, cfg, blank_id, &passphrase).await?;
+    create_var_subvol(cfg).await?;
+    ui.state("provision", "provisioned; boot continuing");
+    Ok(())
+}
+
+/// Create the `var` subvolume the main system mounts. mkfs.btrfs alone is not
+/// enough: fstab mounts by label with `subvol=var`, so a filesystem without
+/// this subvolume fails sysroot-var.mount and drops the boot to emergency.
+async fn create_var_subvol(cfg: &Cfg) -> Result<()> {
     std::fs::create_dir_all("/new-var-fs")?;
     run_ok(
         "mount",
-        &["-o", "subvol=/", &format!("/dev/mapper/{}", cfg.id.mapper), "/new-var-fs"],
+        &[
+            "-o",
+            "subvol=/",
+            &format!("/dev/mapper/{}", cfg.id.mapper),
+            "/new-var-fs",
+        ],
     )
     .await?;
     run_ok("btrfs", &["subvolume", "create", "/new-var-fs/var"]).await?;
     run_ok("umount", &["/new-var-fs"]).await?;
-    ui.state("provision", "provisioned; boot continuing");
     Ok(())
 }
 
@@ -616,7 +849,10 @@ async fn main() {
 async fn run() -> Result<()> {
     let cli = Cli::parse();
     let Some((by_id_dir, prefix)) = split_prefix_glob(&cli.volume_glob) else {
-        bail!("--volume-glob must have the form <dir>/<prefix>* (got: {})", cli.volume_glob);
+        bail!(
+            "--volume-glob must have the form <dir>/<prefix>* (got: {})",
+            cli.volume_glob
+        );
     };
     let cfg = Cfg {
         by_id_dir,
@@ -666,9 +902,7 @@ async fn run() -> Result<()> {
     // the initrd-ssh host-key oneshot — soft coupling, absent is fine).
     tokio::spawn(async move {
         for _ in 0..60 {
-            if let Ok(out) =
-                run_ok("ssh-keygen", &["-lf", "/etc/ssh/ssh_host_ed25519_key"]).await
-            {
+            if let Ok(out) = run_ok("ssh-keygen", &["-lf", "/etc/ssh/ssh_host_ed25519_key"]).await {
                 ui.mutate(|s| s.fingerprint = Some(out.trim().to_string()));
                 return;
             }
@@ -704,9 +938,16 @@ async fn run() -> Result<()> {
         let p = probe(&cfg, &id).await?;
         let class = classify(&p, &cfg.id.luks_partuuid);
         if class == DiskClass::Foreign {
-            ui.state("classify", format!("ignoring foreign volume {id} ({})", detail(&p)));
+            ui.state(
+                "classify",
+                format!("ignoring foreign volume {id} ({})", detail(&p)),
+            );
         }
-        infos.push(DiskInfo { id: id.clone(), class, detail: detail(&p) });
+        infos.push(DiskInfo {
+            id: id.clone(),
+            class,
+            detail: detail(&p),
+        });
         classes.push((id, class));
     }
     ui.mutate(|s| s.disks = infos);

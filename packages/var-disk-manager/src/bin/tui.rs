@@ -36,7 +36,9 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
     // Login-shell command passthrough: `shell -c <command>`.
     if args.get(1).map(String::as_str) == Some("-c") {
-        let err = std::process::Command::new("/bin/sh").args(&args[1..]).exec();
+        let err = std::process::Command::new("/bin/sh")
+            .args(&args[1..])
+            .exec();
         eprintln!("exec /bin/sh failed: {err}");
         std::process::exit(1);
     }
@@ -114,6 +116,18 @@ struct App {
     daemon_gone: bool,
 }
 
+/// Serialize and send a prompt answer; false means the daemon is gone.
+async fn submit_answer(
+    write_half: &mut tokio::net::unix::OwnedWriteHalf,
+    prompt_id: u64,
+    value: String,
+) -> Result<bool> {
+    let msg = ClientMsg::Submit { prompt_id, value };
+    let mut json = serde_json::to_string(&msg)?;
+    json.push('\n');
+    Ok(write_half.write_all(json.as_bytes()).await.is_ok())
+}
+
 /// Restores the terminal unconditionally — on clean exit, on any `?`
 /// error path, and on panic unwind. The escape-hatch shell must never
 /// inherit raw mode or the alternate screen.
@@ -150,7 +164,11 @@ async fn run_tui(console_mode: bool) -> Result<AfterTui> {
     let backend = CrosstermBackend::new(std::io::stdout());
     let mut terminal = Terminal::new(backend).context("creating terminal")?;
 
-    let mut app = App { snap: Snapshot::default(), input: String::new(), daemon_gone: false };
+    let mut app = App {
+        snap: Snapshot::default(),
+        input: String::new(),
+        daemon_gone: false,
+    };
     let mut events = EventStream::new();
     // Terminal state is restored by TermGuard's Drop on every exit path.
     loop {
@@ -193,13 +211,8 @@ async fn run_tui(console_mode: bool) -> Result<AfterTui> {
                     KeyCode::Esc => break Ok(AfterTui::Shell),
                     KeyCode::Enter => {
                         if let Some(prompt) = &app.snap.prompt {
-                            let msg = ClientMsg::Submit {
-                                prompt_id: prompt.id,
-                                value: std::mem::take(&mut app.input),
-                            };
-                            let mut json = serde_json::to_string(&msg)?;
-                            json.push('\n');
-                            if write_half.write_all(json.as_bytes()).await.is_err() {
+                            let id = prompt.id;
+                            if !submit_answer(&mut write_half, id, std::mem::take(&mut app.input)).await? {
                                 app.daemon_gone = true;
                             }
                         } else if app.daemon_gone {
@@ -213,7 +226,26 @@ async fn run_tui(console_mode: bool) -> Result<AfterTui> {
                         app.input.clear();
                     }
                     KeyCode::Char(c) => {
-                        app.input.push(c);
+                        // A Confirm prompt answers with a single keypress
+                        // (no Enter needed); everything else is collected
+                        // until Enter.
+                        let confirm_id = match &app.snap.prompt {
+                            Some(p)
+                                if p.kind == PromptKind::Confirm
+                                    && matches!(c, 'y' | 'Y' | 'n' | 'N') =>
+                            {
+                                Some(p.id)
+                            }
+                            _ => None,
+                        };
+                        if let Some(id) = confirm_id {
+                            app.input = c.to_string();
+                            if !submit_answer(&mut write_half, id, std::mem::take(&mut app.input)).await? {
+                                app.daemon_gone = true;
+                            }
+                        } else {
+                            app.input.push(c);
+                        }
                     }
                     _ => {}
                 }
@@ -235,17 +267,17 @@ fn class_style(class: DiskClass) -> (&'static str, Style) {
         DiskClass::Luks => ("LUKS", Style::default().fg(Color::Green)),
         DiskClass::Legacy => ("legacy", Style::default().fg(Color::Yellow)),
         DiskClass::Blank => ("blank", Style::default().fg(Color::Cyan)),
-        DiskClass::Foreign => ("foreign", Style::default().fg(Color::DarkGray)),
+        DiskClass::Foreign => ("foreign", Style::default().fg(Color::Gray)),
     }
 }
 
 fn ui(frame: &mut Frame, app: &App) {
     let area = frame.area();
     let chunks = Layout::vertical([
-        Constraint::Length(4),                                // header
-        Constraint::Length(app.snap.disks.len() as u16 + 3),  // disk table
-        Constraint::Length(4),                                // status / progress
-        Constraint::Min(5),                                   // prompt / hints
+        Constraint::Length(4),                               // header
+        Constraint::Length(app.snap.disks.len() as u16 + 3), // disk table
+        Constraint::Length(4),                               // status / progress
+        Constraint::Min(5),                                  // prompt / hints
     ])
     .split(area);
 
@@ -257,7 +289,7 @@ fn ui(frame: &mut Frame, app: &App) {
             Some(fp) => format!("  host key: {fp}"),
             None => "  host key: (not provisioned yet)".to_string(),
         })
-        .style(Style::default().fg(Color::DarkGray)),
+        .style(Style::default().fg(Color::Gray)),
     ]);
     frame.render_widget(header, chunks[0]);
 
@@ -271,21 +303,33 @@ fn ui(frame: &mut Frame, app: &App) {
             Row::new(vec![
                 Cell::from(d.id.clone()),
                 Cell::from(name).style(style.bold()),
-                Cell::from(d.detail.clone()).style(Style::default().fg(Color::DarkGray)),
+                Cell::from(d.detail.clone()).style(Style::default().fg(Color::Gray)),
             ])
         })
         .collect();
     let table = Table::new(
         rows,
-        [Constraint::Length(32), Constraint::Length(9), Constraint::Min(20)],
+        [
+            Constraint::Length(32),
+            Constraint::Length(9),
+            Constraint::Min(20),
+        ],
     )
     .header(Row::new(vec!["volume", "class", "detail"]).style(Style::default().bold()))
-    .block(Block::default().title(" data volumes ").borders(Borders::ALL));
+    .block(
+        Block::default()
+            .title(" data volumes ")
+            .borders(Borders::ALL),
+    );
     frame.render_widget(table, chunks[1]);
 
     // Status / progress.
     if let Some(p) = app.snap.progress {
-        let ratio = if p.total > 0 { (p.copied as f64 / p.total as f64).min(1.0) } else { 0.0 };
+        let ratio = if p.total > 0 {
+            (p.copied as f64 / p.total as f64).min(1.0)
+        } else {
+            0.0
+        };
         let gauge = Gauge::default()
             .block(Block::default().title(" copying ").borders(Borders::ALL))
             .gauge_style(Style::default().fg(Color::Green))
@@ -317,29 +361,42 @@ fn ui(frame: &mut Frame, app: &App) {
             Line::from("  daemon exited — boot is continuing (or failed; check the journal)")
                 .style(Style::default().fg(Color::Green)),
             Line::from("  Enter: close  |  Esc / Ctrl-C: shell")
-                .style(Style::default().fg(Color::DarkGray)),
+                .style(Style::default().fg(Color::Gray)),
         ])
     } else if let Some(prompt) = &app.snap.prompt {
-        let masked = "*".repeat(app.input.chars().count());
         let title = match prompt.kind {
             PromptKind::UnlockPassphrase => " passphrase ",
             PromptKind::NewPassphrase => " NEW passphrase ",
             PromptKind::RepeatPassphrase => " repeat passphrase ",
+            PromptKind::Confirm => " confirm ",
+        };
+        // A Confirm answer is not a secret: unmasked, one character.
+        let shown = match prompt.kind {
+            PromptKind::Confirm => app.input.clone(),
+            _ => "*".repeat(app.input.chars().count()),
+        };
+        let hint = match prompt.kind {
+            PromptKind::Confirm => "  y: format  |  n: keep & block  |  Esc / Ctrl-C: shell",
+            _ => "  Enter: submit  |  Ctrl-U: clear  |  Esc / Ctrl-C: shell",
         };
         Paragraph::new(vec![
             Line::from(format!("  {}", prompt.text)).style(Style::default().bold()),
-            Line::from(format!("  > {masked}")),
+            Line::from(format!("  > {shown}")),
             Line::from(""),
-            Line::from("  Enter: submit  |  Ctrl-U: clear  |  Esc / Ctrl-C: shell")
-                .style(Style::default().fg(Color::DarkGray)),
+            Line::from(hint).style(Style::default().fg(Color::Gray)),
         ])
-        .block(Block::default().title(title).borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Cyan)))
+        .wrap(Wrap { trim: false })
+        .block(
+            Block::default()
+                .title(title)
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::Cyan)),
+        )
     } else {
         Paragraph::new(vec![
             Line::from(""),
-            Line::from("  waiting...").style(Style::default().fg(Color::DarkGray)),
-            Line::from("  Esc / Ctrl-C: shell").style(Style::default().fg(Color::DarkGray)),
+            Line::from("  waiting...").style(Style::default().fg(Color::Gray)),
+            Line::from("  Esc / Ctrl-C: shell").style(Style::default().fg(Color::Gray)),
         ])
     };
     frame.render_widget(bottom, chunks[3]);

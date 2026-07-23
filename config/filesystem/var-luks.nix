@@ -158,12 +158,46 @@
         '';
       };
 
+      # dm-crypt is not hardware, so nothing (no udev modalias) ever loads it
+      # or its ciphers on demand. These must be BOTH present in the initrd and
+      # force-loaded — see kernelModules below.
+      #
+      # The full set, and why each is needed (Linux 7.x):
+      #   dm_mod, dm_crypt   the device-mapper target itself
+      #   aes, xts, ecb      the LUKS2 cipher spec aes-xts-plain64 (xts wraps ecb(aes))
+      #   cbc                dm-crypt links encrypted-keys, whose module init does
+      #                      crypto_alloc_skcipher("cbc(aes)") and FAILS the whole
+      #                      load with "encrypted_key: failed to alloc_cipher (-2)"
+      #                      if cbc(aes) can't be built. cbc is a SEPARATE module in
+      #                      7.x (CRYPTO_CBC=m, selected by DM_CRYPT=m), and a
+      #                      crypto-API request like "cbc(aes)" leaves NO modules.dep
+      #                      edge, so the initrd closure builder NEVER pulls cbc.ko
+      #                      in — it must be named explicitly. This was the root
+      #                      cause of "crypt: unknown target type" on 7.1.3.
+      #   sha256             LUKS2 key derivation
       boot.initrd.availableKernelModules = [
         "dm_mod"
         "dm_crypt"
         "aes"
         "xts"
         "ecb"
+        "cbc"
+        "sha256"
+      ];
+
+      # Force-load the same set. availableKernelModules only makes modules
+      # available for on-demand (modalias) loading, which never fires for
+      # dm-crypt. kernelModules lists them in the initrd's modules-load.d so
+      # systemd-modules-load.service loads them at boot — and listing here also
+      # adds them to the initrd closure, which is how cbc.ko gets included at
+      # all (see above).
+      boot.initrd.kernelModules = [
+        "dm_mod"
+        "dm_crypt"
+        "aes"
+        "xts"
+        "ecb"
+        "cbc"
         "sha256"
       ];
 
@@ -202,6 +236,28 @@
           Type = "oneshot";
           RemainAfterExit = true;
           TimeoutStartSec = "infinity";
+          # Load the dm-crypt stack in dependency order right before the
+          # daemon runs cryptsetup. kernelModules already registers these with
+          # systemd-modules-load.service, but this service has
+          # DefaultDependencies=false and is only ordered after udev, so it can
+          # race modules-load; loading here makes the unlock independent of
+          # initrd unit ordering. Order matters: dm-crypt links encrypted-keys,
+          # whose init does crypto_alloc_skcipher("cbc(aes)"), so aes+cbc must
+          # be registered before dm_crypt. (See the availableKernelModules note
+          # above for why cbc is the load-bearing one on 7.x.)
+          ExecStartPre =
+            let
+              modprobe = "/bin/modprobe";
+            in
+            map (m: "${modprobe} ${m}") [
+              "dm_mod"
+              "aes"
+              "ecb"
+              "cbc"
+              "xts"
+              "sha256"
+              "dm_crypt"
+            ];
           ExecStart = "${lib.getExe varDiskManager} ${daemonArgs}";
         };
       };

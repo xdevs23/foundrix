@@ -57,6 +57,60 @@ pub enum PromptKind {
     NewPassphrase,
     /// New volume: confirmation entry.
     RepeatPassphrase,
+    /// Yes/no operator decision. The submission is still a free-form
+    /// String over the same ClientMsg::Submit protocol ("y"/"yes"/"n"/"no",
+    /// case-insensitive); the TUI renders it unmasked and submits on a
+    /// single keypress.
+    Confirm,
+}
+
+/// Parse a [`PromptKind::Confirm`] answer. Returns None for anything that
+/// is not an unambiguous yes or no — the caller re-prompts.
+pub fn parse_confirm(answer: &str) -> Option<bool> {
+    match answer.trim().to_ascii_lowercase().as_str() {
+        "y" | "yes" => Some(true),
+        "n" | "no" => Some(false),
+        _ => None,
+    }
+}
+
+/// What a `blkid` TYPE probe found inside an OPENED LUKS mapper.
+///
+/// The distinctions here are a data-loss guard, not a UX nicety: an
+/// unlocked-but-empty mapper is ambiguous. It is usually a half-provisioned
+/// volume (luksFormat succeeded, mkfs never ran), but it could equally be a
+/// volume whose filesystem was wiped or corrupted by some OTHER bug — and
+/// auto-formatting that case on a random reboot would silently destroy
+/// recoverability and mask the original bug. The daemon must therefore only
+/// ever format [`MapperFs::Empty`], and only after explicit operator
+/// confirmation; [`MapperFs::Unknown`] means emptiness was NOT established
+/// and must block, never format.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum MapperFs {
+    /// Steady state: a btrfs filesystem is present.
+    Btrfs,
+    /// blkid ran cleanly and found no signatures (exit 2).
+    Empty,
+    /// A filesystem (or other signature) that is not btrfs — never ours
+    /// to touch.
+    Other(String),
+    /// The probe failed or was inconclusive; nothing is proven.
+    Unknown,
+}
+
+/// Interpret the result of `blkid -o value -s TYPE <mapper>`. `exit` is
+/// blkid's exit code (None if it could not even be spawned), `stdout` its
+/// standard output. Only exit 2 ("nothing found") counts as Empty; any
+/// other failure is [`MapperFs::Unknown`].
+pub fn mapper_fs_from_blkid(exit: Option<i32>, stdout: &str) -> MapperFs {
+    match (exit, stdout.trim()) {
+        (Some(0), "btrfs") => MapperFs::Btrfs,
+        // Success with no TYPE printed shouldn't happen; don't guess.
+        (Some(0), "") => MapperFs::Unknown,
+        (Some(0), other) => MapperFs::Other(other.to_string()),
+        (Some(2), _) => MapperFs::Empty,
+        _ => MapperFs::Unknown,
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -180,13 +234,19 @@ pub fn plan(disks: &[(String, DiskClass)]) -> Plan {
                  and power-cycle (encrypted volume {l} stays)"
             ),
         },
-        (Some(l), None, _) => Plan::Unlock { luks: l.to_string() },
+        (Some(l), None, _) => Plan::Unlock {
+            luks: l.to_string(),
+        },
         (None, Some(old), Some(new)) => Plan::Migrate {
             legacy: old.to_string(),
             blank: new.to_string(),
         },
-        (None, Some(old), None) => Plan::BootLegacy { legacy: old.to_string() },
-        (None, None, Some(new)) => Plan::Provision { blank: new.to_string() },
+        (None, Some(old), None) => Plan::BootLegacy {
+            legacy: old.to_string(),
+        },
+        (None, None, Some(new)) => Plan::Provision {
+            blank: new.to_string(),
+        },
         (None, None, None) => Plan::NoDisks,
     }
 }
@@ -246,18 +306,33 @@ mod tests {
     }
 
     fn blank_disk(id: &str) -> DiskProbe {
-        DiskProbe { id: id.into(), ..Default::default() }
+        DiskProbe {
+            id: id.into(),
+            ..Default::default()
+        }
     }
 
     fn classified(probes: &[DiskProbe]) -> Vec<(String, DiskClass)> {
-        probes.iter().map(|p| (p.id.clone(), classify(p, TEST_LUKS_PARTUUID))).collect()
+        probes
+            .iter()
+            .map(|p| (p.id.clone(), classify(p, TEST_LUKS_PARTUUID)))
+            .collect()
     }
 
     #[test]
     fn classify_the_three_kinds() {
-        assert_eq!(classify(&luks_disk("a"), TEST_LUKS_PARTUUID), DiskClass::Luks);
-        assert_eq!(classify(&legacy_disk("a"), TEST_LUKS_PARTUUID), DiskClass::Legacy);
-        assert_eq!(classify(&blank_disk("a"), TEST_LUKS_PARTUUID), DiskClass::Blank);
+        assert_eq!(
+            classify(&luks_disk("a"), TEST_LUKS_PARTUUID),
+            DiskClass::Luks
+        );
+        assert_eq!(
+            classify(&legacy_disk("a"), TEST_LUKS_PARTUUID),
+            DiskClass::Legacy
+        );
+        assert_eq!(
+            classify(&blank_disk("a"), TEST_LUKS_PARTUUID),
+            DiskClass::Blank
+        );
     }
 
     #[test]
@@ -301,7 +376,11 @@ mod tests {
     fn missing_probe_values_never_mean_blank_when_partitioned() {
         // has_part1 with no fstype (e.g. an unformatted partition):
         // foreign, not blank, not legacy.
-        let p = DiskProbe { id: "a".into(), has_part1: true, ..Default::default() };
+        let p = DiskProbe {
+            id: "a".into(),
+            has_part1: true,
+            ..Default::default()
+        };
         assert_eq!(classify(&p, TEST_LUKS_PARTUUID), DiskClass::Foreign);
     }
 
@@ -314,13 +393,24 @@ mod tests {
     #[test]
     fn plan_pre_migration() {
         let d = classified(&[legacy_disk("old")]);
-        assert_eq!(plan(&d), Plan::BootLegacy { legacy: "old".into() });
+        assert_eq!(
+            plan(&d),
+            Plan::BootLegacy {
+                legacy: "old".into()
+            }
+        );
     }
 
     #[test]
     fn plan_migration() {
         let d = classified(&[legacy_disk("old"), blank_disk("new")]);
-        assert_eq!(plan(&d), Plan::Migrate { legacy: "old".into(), blank: "new".into() });
+        assert_eq!(
+            plan(&d),
+            Plan::Migrate {
+                legacy: "old".into(),
+                blank: "new".into()
+            }
+        );
     }
 
     #[test]
@@ -335,7 +425,12 @@ mod tests {
     #[test]
     fn plan_provision_fresh_server() {
         let d = classified(&[blank_disk("new")]);
-        assert_eq!(plan(&d), Plan::Provision { blank: "new".into() });
+        assert_eq!(
+            plan(&d),
+            Plan::Provision {
+                blank: "new".into()
+            }
+        );
     }
 
     #[test]
@@ -346,9 +441,24 @@ mod tests {
             classified(&[blank_disk("a"), blank_disk("b")]),
             // Mixed duplicates: multiple kinds over-represented at once
             // still block, whichever guard fires first.
-            classified(&[luks_disk("a"), luks_disk("b"), legacy_disk("c"), legacy_disk("d")]),
-            classified(&[luks_disk("a"), luks_disk("b"), blank_disk("c"), blank_disk("d")]),
-            classified(&[legacy_disk("a"), legacy_disk("b"), blank_disk("c"), blank_disk("d")]),
+            classified(&[
+                luks_disk("a"),
+                luks_disk("b"),
+                legacy_disk("c"),
+                legacy_disk("d"),
+            ]),
+            classified(&[
+                luks_disk("a"),
+                luks_disk("b"),
+                blank_disk("c"),
+                blank_disk("d"),
+            ]),
+            classified(&[
+                legacy_disk("a"),
+                legacy_disk("b"),
+                blank_disk("c"),
+                blank_disk("d"),
+            ]),
         ] {
             assert!(matches!(plan(&dup), Plan::Block { .. }), "{dup:?}");
         }
@@ -413,6 +523,42 @@ mod tests {
     }
 
     #[test]
+    fn confirm_parses_yes_and_no() {
+        for yes in ["y", "Y", "yes", "YES", " Yes ", "yEs"] {
+            assert_eq!(parse_confirm(yes), Some(true), "{yes}");
+        }
+        for no in ["n", "N", "no", "NO", " No ", "nO"] {
+            assert_eq!(parse_confirm(no), Some(false), "{no}");
+        }
+    }
+
+    #[test]
+    fn confirm_rejects_ambiguous_answers() {
+        for bad in ["", "maybe", "yn", "1", "0", "yesno", "on", "off", "  "] {
+            assert_eq!(parse_confirm(bad), None, "{bad}");
+        }
+    }
+
+    #[test]
+    fn mapper_fs_empty_only_on_clean_nothing_found() {
+        // blkid exit 2: probe ran, found no signatures -> Empty.
+        assert_eq!(mapper_fs_from_blkid(Some(2), ""), MapperFs::Empty);
+        assert_eq!(mapper_fs_from_blkid(Some(0), "btrfs\n"), MapperFs::Btrfs);
+        assert_eq!(
+            mapper_fs_from_blkid(Some(0), "ext4"),
+            MapperFs::Other("ext4".into())
+        );
+        // Every failure shape is Unknown, never Empty: a failed probe is
+        // not proof the mapper is empty.
+        for unknown in [(Some(1), ""), (Some(0), ""), (Some(32), ""), (None, "")] {
+            assert_eq!(
+                mapper_fs_from_blkid(unknown.0, unknown.1),
+                MapperFs::Unknown
+            );
+        }
+    }
+
+    #[test]
     fn snapshot_roundtrip() {
         let s = Snapshot {
             phase: "migrate/copy".into(),
@@ -423,7 +569,10 @@ mod tests {
                 class: DiskClass::Legacy,
                 detail: "btrfs".into(),
             }],
-            progress: Some(Progress { copied: 1, total: 2 }),
+            progress: Some(Progress {
+                copied: 1,
+                total: 2,
+            }),
             prompt: Some(Prompt {
                 id: 7,
                 kind: PromptKind::NewPassphrase,
