@@ -7,3 +7,8 @@
 
 /local
 
+# Scratch space for agent/exploration artifacts
+/.cache
+
+# Machine-local Claude Code state
+/.claude
