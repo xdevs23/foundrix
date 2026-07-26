@@ -338,6 +338,10 @@ in
         ];
         StandardOutput = "journal";
         StandardError = "journal";
+        # Boot-completion marker for the console UI's condition below. /run
+        # is tmpfs, so this exists exactly from first successful collection
+        # until the next boot — never deleted at switch time.
+        ExecStartPost = "${pkgs.coreutils}/bin/touch /run/operator-secrets-boot-complete";
       };
     };
 
@@ -351,6 +355,16 @@ in
       wantedBy = [ "multi-user.target" ];
       before = [ "multi-user.target" ];
       after = [ "sshd.service" ];
+      # BOOT-time aid only. Being wanted by multi-user.target means every
+      # nixos-rebuild switch would start it again — post-boot, when a getty
+      # owns /dev/console, where the TTY takeover gets the unit killed with
+      # SIGHUP and would disrupt whoever is logged in. During boot the
+      # marker does not exist yet (gettys are gated behind the daemon via
+      # getty-pre.target); after the first successful collection it does,
+      # and activation-time starts become skipped conditions, not failures.
+      # Post-boot collection (e.g. a switch that adds a new secret) is done
+      # over SSH with operator-secrets-tui.
+      unitConfig.ConditionPathExists = "!/run/operator-secrets-boot-complete";
       # sulogin and this TUI cannot share the tty, and the emergency path is
       # where a plain shell matters most.
       conflicts = [
