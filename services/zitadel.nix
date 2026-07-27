@@ -380,41 +380,6 @@ let
 
   dbPasswordSecret = config.foundrix.services.secrets."postgres-${cfg.database.name}-user-password";
 
-  privacyPolicyConfigJson = pkgs.writeText "privacy-policy-config.json" (builtins.toJSON {
-    organization = {
-      name = cfg.privacyPolicy.organizationName;
-      address = cfg.privacyPolicy.address;
-    };
-    contact = {
-      email = cfg.privacyPolicy.contactEmail;
-    };
-    data = {
-      location = cfg.privacyPolicy.dataLocation;
-    };
-    hosting_provider = {
-      name = cfg.privacyPolicy.hostingProvider.name;
-      location = cfg.privacyPolicy.hostingProvider.location;
-      purpose = cfg.privacyPolicy.hostingProvider.purpose;
-    };
-    supervisory_authority = {
-      name = cfg.privacyPolicy.supervisoryAuthority.name;
-      address = cfg.privacyPolicy.supervisoryAuthority.address;
-      website = cfg.privacyPolicy.supervisoryAuthority.website;
-    };
-    document = {
-      last_updated = cfg.privacyPolicy.lastUpdated;
-    };
-  });
-
-  privacyPolicyRendered = pkgs.runCommand "privacy-policy.html" {
-    nativeBuildInputs = [ pkgs.gomplate pkgs.pandoc ];
-  } ''
-    gomplate -d config=${privacyPolicyConfigJson} -f ${./zitadel-privacy-policy.md} -o rendered.md
-    pandoc rendered.md -f markdown -t html --standalone \
-      --metadata title="Privacy Policy - ${cfg.privacyPolicy.organizationName}" \
-      -o $out
-  '';
-
   desiredState = builtins.toJSON {
     apiUrl = "http://${cfg.webDomain}:${toString cfg.port}";
     inherit patPath;
@@ -740,80 +705,17 @@ in
     privacyPolicy = {
       enable = lib.mkEnableOption "serving a privacy policy page and setting its link in Zitadel";
 
-      organizationName = lib.mkOption {
-        type = lib.types.str;
-        default = cfg.instanceName;
-        defaultText = "Same as instanceName";
-        description = "Data controller organization name";
-      };
-
-      contactEmail = lib.mkOption {
-        type = lib.types.str;
-        default = "privacy@${cfg.adminOrg}";
-        defaultText = "privacy@<adminOrg>";
-        description = "Privacy-related contact email address";
-      };
-
-      address = lib.mkOption {
-        type = lib.types.str;
-        default = "";
-        description = "Postal address of the data controller";
-      };
-
-      dataLocation = lib.mkOption {
-        type = lib.types.str;
-        default = "the European Union";
-        description = "Geographic region where data is stored";
-      };
-
-      hostingProvider = {
-        name = lib.mkOption {
-          type = lib.types.str;
-          default = "";
-          description = "Hosting provider name (leave empty to omit from policy)";
-        };
-        location = lib.mkOption {
-          type = lib.types.str;
-          default = "";
-          description = "Hosting provider server location";
-        };
-        purpose = lib.mkOption {
-          type = lib.types.str;
-          default = "Server hosting";
-          description = "Purpose of the hosting provider relationship";
-        };
-      };
-
-      supervisoryAuthority = {
-        name = lib.mkOption {
-          type = lib.types.str;
-          default = "";
-          description = "Data protection supervisory authority name (leave empty to omit)";
-        };
-        address = lib.mkOption {
-          type = lib.types.str;
-          default = "";
-          description = "Supervisory authority address";
-        };
-        website = lib.mkOption {
-          type = lib.types.str;
-          default = "";
-          description = "Supervisory authority website";
-        };
-      };
-
-      lastUpdated = lib.mkOption {
-        type = lib.types.str;
-        description = "Date string shown on the privacy policy (e.g. '2 April 2026')";
-      };
-
       content = lib.mkOption {
-        type = lib.types.nullOr lib.types.package;
-        default = null;
+        type = lib.types.package;
         description = ''
-          Override the rendered privacy policy HTML.
-          When set, the gomplate template is bypassed entirely.
-          Must be a derivation producing a single HTML file.
+          The privacy policy to serve: a derivation producing a single HTML
+          file, supplied by the consumer.
+
+          Deliberately not templated here. foundrix is infrastructure, and who
+          the controller is, where they can be written to, and which authority
+          is competent are facts about an operator, not about a service — a
+          module that renders them ends up owning legal text it cannot keep
+          correct for anyone. Consumers write their own document and pass it in.
         '';
       };
 
@@ -1059,10 +961,7 @@ in
         ${lib.optionalString cfg.privacyPolicy.enable ''
         handle /privacy-policy {
           header Content-Type "text/html; charset=utf-8"
-          respond `${builtins.readFile (
-            if cfg.privacyPolicy.content != null then cfg.privacyPolicy.content
-            else privacyPolicyRendered
-          )}`
+          respond `${builtins.readFile cfg.privacyPolicy.content}`
         }
         ''}
 
