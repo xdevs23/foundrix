@@ -380,6 +380,21 @@ let
 
   dbPasswordSecret = config.foundrix.services.secrets."postgres-${cfg.database.name}-user-password";
 
+  # Served from disk rather than inlined into the Caddyfile with `respond`.
+  # Any brace in the document — a CSS rule in a <style> block is enough — is
+  # read by the Caddyfile parser as the start of a block and aborts the config
+  # with "Unexpected next token after '{' on same line", taking the whole web
+  # server down with it. Backticks do not protect against this. Serving the
+  # file also drops an import-from-derivation: the old form had to build the
+  # document during evaluation just to read it back as a string.
+  #
+  # `root` needs a directory, and `content` is a single file whose parent is
+  # the store root, so it gets a directory of its own here.
+  privacyPolicyDir = pkgs.runCommand "zitadel-privacy-policy" { } ''
+    mkdir -p $out
+    cp ${cfg.privacyPolicy.content} $out/privacy-policy.html
+  '';
+
   desiredState = builtins.toJSON {
     apiUrl = "http://${cfg.webDomain}:${toString cfg.port}";
     inherit patPath;
@@ -960,8 +975,9 @@ in
 
         ${lib.optionalString cfg.privacyPolicy.enable ''
         handle /privacy-policy {
-          header Content-Type "text/html; charset=utf-8"
-          respond `${builtins.readFile cfg.privacyPolicy.content}`
+          root * ${privacyPolicyDir}
+          rewrite * /privacy-policy.html
+          file_server
         }
         ''}
 
