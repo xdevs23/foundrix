@@ -61,9 +61,13 @@ in
 
     mailDomain = lib.mkOption {
       type = lib.types.str;
-      default = stalwartCfg.domain;
-      defaultText = "foundrix.services.stalwart.domain";
-      description = "Mail server domain (JMAP backend)";
+      default = builtins.head stalwartCfg.domains;
+      defaultText = "the first foundrix.services.stalwart.domains entry";
+      description = ''
+        Mail server hostname to reach JMAP on. Defaults to Stalwart's
+        canonical hostname, which is the one that answers for the admin UI
+        and the API; the others only redirect there.
+      '';
     };
 
     ssoDomain = lib.mkOption {

@@ -1,7 +1,10 @@
 interface DesiredState {
   stalwartUrl: string;
   adminPasswordPath: string;
-  domain: string;
+  // Address domains — the part after the @ in a mailbox. NOT the mail
+  // hostnames: those carry TLS and the web UI and never appear in an address.
+  // The first is the reporting domain (DMARC/TLS reports, ARC seal).
+  domains: string[];
   publicUrl: string;
 }
 
@@ -196,7 +199,13 @@ async function convergeDkim(
 ): Promise<void> {
   await convergeDkimSignature(client, "Rsa", domain, "rsa");
   await convergeDkimSignature(client, "Ed25519", domain, "ed");
+}
 
+// One global setting, not a per-domain one: it names the two signatures of the
+// reporting domain and Stalwart resolves `report.domain` at send time. Hence it
+// converges once, after every domain's signatures exist — putting it inside the
+// per-domain loop would rewrite the same value N times.
+async function convergeArcSeal(client: StalwartClient): Promise<void> {
   const desiredArcSeal = `['rsa-' + config_get('report.domain'), 'ed25519-' + config_get('report.domain')]`;
   const arcSeal = await client.getSettings("auth.arc.seal");
   if (arcSeal["auth.arc.seal"] !== desiredArcSeal) {
@@ -208,14 +217,14 @@ async function convergeDkim(
 
 async function convergeAdminAccount(
   client: StalwartClient,
-  domain: string,
+  domains: string[],
 ): Promise<void> {
-  const desiredEmails = [
+  const desiredEmails = domains.flatMap((domain) => [
     `admin@${domain}`,
     `postmaster@${domain}`,
     `webmaster@${domain}`,
     `@${domain}`,
-  ];
+  ]);
 
   const admin = await client.getPrincipal("admin");
 
@@ -276,10 +285,15 @@ async function main(): Promise<void> {
   const client = new StalwartClient(spec.stalwartUrl, adminPassword);
 
   await waitForApi(client);
-  await convergeDomain(client, spec.domain);
-  await convergeAdminAccount(client, spec.domain);
-  await convergeDkim(client, spec.domain);
-  await convergeSettings(client, spec.domain, spec.publicUrl);
+
+  for (const domain of spec.domains) {
+    await convergeDomain(client, domain);
+    await convergeDkim(client, domain);
+  }
+
+  await convergeArcSeal(client);
+  await convergeAdminAccount(client, spec.domains);
+  await convergeSettings(client, spec.domains[0], spec.publicUrl);
 
   console.log("Reloading configuration...");
   await client.reload();

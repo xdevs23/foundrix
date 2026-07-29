@@ -22,11 +22,21 @@ let
 
   selfServiceDir = ./stalwart-self-service;
 
+  # One host answers for every mail hostname, so the first is the canonical
+  # one: it carries the web UI, the OIDC redirect URIs and the CORS origin,
+  # and the rest redirect to it. Every hostname still gets a certificate,
+  # because each is a valid MX target.
+  primaryDomain = builtins.head cfg.domains;
+  secondaryDomains = builtins.tail cfg.domains;
+
+  # Reporting and ARC seal live on the first address domain.
+  primaryOrgDomain = builtins.head cfg.orgDomains;
+
   desiredState = builtins.toJSON {
     stalwartUrl = "http://127.0.0.1:${toString cfg.httpPort}";
     inherit adminPasswordPath;
-    domain = builtins.head (builtins.attrNames zitadelCfg.orgDomains);
-    publicUrl = "'https://${cfg.domain}'";
+    domains = cfg.orgDomains;
+    publicUrl = "'https://${primaryDomain}'";
   };
 
   configureScript = ./stalwart-configure.ts;
@@ -40,17 +50,52 @@ in
   options = namespaced __curPos {
     enable = lib.mkEnableOption "Stalwart mail server with automated first-time setup";
 
-    domain = lib.mkOption {
-      type = lib.types.str;
-      description = "Mail server domain (e.g. mail.example.com)";
-      example = "mail.example.com";
+    domains = lib.mkOption {
+      type = lib.types.nonEmptyListOf lib.types.str;
+      description = ''
+        Mail server hostnames, canonical one first. These carry TLS
+        certificates, the admin UI, JMAP and autoconfig, and are the
+        hostnames an MX record points at. They are NOT the domains mail is
+        addressed to — see {option}`orgDomains` for those.
+
+        Every hostname after the first serves the ACME challenge and the
+        protocol endpoints, then redirects to the canonical one.
+      '';
+      example = [
+        "mail.example.com"
+        "mail.example.org"
+      ];
     };
 
-    orgDomain = lib.mkOption {
-      type = lib.types.str;
-      default = zitadelCfg.adminOrg;
-      defaultText = "foundrix.services.zitadel.adminOrg";
-      description = "Organization domain for email addresses (e.g. example.com)";
+    orgDomains = lib.mkOption {
+      type = lib.types.nonEmptyListOf lib.types.str;
+      # The admin org leads, because the FIRST entry is the reporting domain
+      # and that should follow the deployment's primary identity. Taking
+      # `attrNames` alone would order them alphabetically, so which domain
+      # signs the ARC seal and receives DMARC reports would be decided by
+      # spelling — and would silently change when an unrelated org is added.
+      default = [
+        zitadelCfg.adminOrg
+      ]
+      ++ lib.subtractLists [ zitadelCfg.adminOrg ] (builtins.attrNames zitadelCfg.orgDomains);
+      defaultText = "foundrix.services.zitadel.adminOrg first, then the remaining orgDomains";
+      description = ''
+        Domains mail is addressed to — the part after the @ in a mailbox.
+        Each becomes a Stalwart principal domain with its own DKIM keypairs
+        and admin/postmaster/webmaster/catch-all aliases, and each gets
+        `mta-sts.`, `autoconfig.` and `autodiscover.` virtual hosts.
+
+        Defaults to the Zitadel organization domains, because Stalwart
+        authenticates against Zitadel's userinfo `email` claim: an address
+        domain with no Zitadel org has no users, and a Zitadel org with no
+        address domain has users whose mail cannot be delivered.
+
+        The first is the reporting domain (DMARC/TLS reports, ARC seal).
+      '';
+      example = [
+        "example.com"
+        "example.org"
+      ];
     };
 
     ssoDomain = lib.mkOption {
@@ -89,8 +134,8 @@ in
 
       contactEmail = lib.mkOption {
         type = lib.types.str;
-        default = "admin@${cfg.orgDomain}";
-        defaultText = "admin@<orgDomain>";
+        default = "admin@${primaryOrgDomain}";
+        defaultText = "admin@<first orgDomains entry>";
         description = "Contact email for ACME certificate requests";
       };
 
@@ -168,18 +213,18 @@ in
     foundrix.services.zitadel.projects.${cfg.zitadel.projectName} = {
       apps.${cfg.zitadel.adminAppName} = {
         type = "confidential";
-        redirectUris = [ "https://${cfg.domain}/oauth2/callback" ];
+        redirectUris = [ "https://${primaryDomain}/oauth2/callback" ];
       };
 
       apps.${cfg.zitadel.selfServiceAppName} = lib.mkIf cfg.selfService.enable {
         type = "public";
         redirectUris = [
-          "https://${cfg.domain}/"
-          "https://${cfg.domain}/self-service"
+          "https://${primaryDomain}/"
+          "https://${primaryDomain}/self-service"
         ];
         postLogoutRedirectUris = [
-          "https://${cfg.domain}/"
-          "https://${cfg.domain}/self-service"
+          "https://${primaryDomain}/"
+          "https://${primaryDomain}/self-service"
         ];
       };
 
@@ -213,60 +258,86 @@ in
         admin-password = adminPasswordPath;
       };
 
-      settings = lib.recursiveUpdate {
-        server.hostname = cfg.domain;
+      settings =
+        lib.recursiveUpdate
+          {
+            server.hostname = primaryDomain;
 
-        server.listener.smtp = {
-          bind = [ "[::]:25" ];
-          protocol = "smtp";
-        };
-        server.listener.http = {
-          bind = [ "127.0.0.1:${toString cfg.httpPort}" ];
-          protocol = "http";
-        };
+            server.listener.smtp = {
+              bind = [ "[::]:25" ];
+              protocol = "smtp";
+            };
+            server.listener.http = {
+              bind = [ "127.0.0.1:${toString cfg.httpPort}" ];
+              protocol = "http";
+            };
 
-        directory.zitadel = {
-          type = "oidc";
-          store = "db";
-          endpoint.url = "https://${cfg.ssoDomain}/oidc/v1/userinfo";
-          endpoint.method = "userinfo";
-          fields.email = "email";
-          fields.username = "preferred_username";
-          fields.full-name = "name";
-        };
-        storage.directory = "zitadel";
+            directory.zitadel = {
+              type = "oidc";
+              store = "db";
+              endpoint.url = "https://${cfg.ssoDomain}/oidc/v1/userinfo";
+              endpoint.method = "userinfo";
+              fields.email = "email";
+              fields.username = "preferred_username";
+              fields.full-name = "name";
+            };
+            storage.directory = "zitadel";
 
-        authentication.fallback-admin = {
-          user = "admin";
-          secret = "%{file:/run/credentials/stalwart.service/admin-password}%";
-        };
+            authentication.fallback-admin = {
+              user = "admin";
+              secret = "%{file:/run/credentials/stalwart.service/admin-password}%";
+            };
 
-        session.rcpt.catch-all = true;
-        session.rcpt.sub-addressing = true;
-        server.listener.submissions = {
-          bind = [ "[::]:465" ];
-          protocol = "smtp";
-          tls.implicit = true;
-        };
-        server.listener.imaptls = {
-          bind = [ "[::]:993" ];
-          protocol = "imap";
-          tls.implicit = true;
-        };
-      } (
-        lib.optionalAttrs cfg.acme.enable {
-          acme.default-acme = {
-            directory = cfg.acme.directory;
-            contact = [ "mailto:${cfg.acme.contactEmail}" ];
-            domains = [ cfg.domain ];
-            challenge = "http-01";
-            "eab.kid" = "%{env:EAB_KID}%";
-            "eab.hmac-key" = "%{env:EAB_HMAC_KEY}%";
-            default = true;
-          };
-        }
-      );
+            session.rcpt.catch-all = true;
+            session.rcpt.sub-addressing = true;
+            server.listener.submissions = {
+              bind = [ "[::]:465" ];
+              protocol = "smtp";
+              tls.implicit = true;
+            };
+            server.listener.imaptls = {
+              bind = [ "[::]:993" ];
+              protocol = "imap";
+              tls.implicit = true;
+            };
+          }
+          (
+            lib.optionalAttrs cfg.acme.enable {
+              acme.default-acme = {
+                directory = cfg.acme.directory;
+                contact = [ "mailto:${cfg.acme.contactEmail}" ];
+                # Every mail hostname, not just the canonical one: a secondary
+                # hostname used as an MX target still has to present a valid
+                # certificate on 25/465/993.
+                domains = cfg.domains;
+                challenge = "http-01";
+                "eab.kid" = "%{env:EAB_KID}%";
+                "eab.hmac-key" = "%{env:EAB_HMAC_KEY}%";
+                default = true;
+              };
+            }
+          );
     };
+
+    # The tmpfiles rule below, and the fallback-admin credential path above,
+    # name the post-26.05 identifier. On an older `stateVersion` nixpkgs keeps
+    # calling the user, group and state directory `stalwart-mail`, and both
+    # would then point at something that does not exist — a chown of the wrong
+    # directory and an admin password Stalwart cannot read. Fail eval instead:
+    # a host that predates the rename needs a state migration, not a silently
+    # different config.
+    assertions = [
+      {
+        assertion = !lib.versionOlder config.services.stalwart.stateVersion "26.05";
+        message = ''
+          foundrix.services.stalwart requires services.stalwart.stateVersion
+          to be "26.05" or newer (it is "${config.services.stalwart.stateVersion}").
+          Set it to "26.05" on a host with no existing mail state. A host that
+          already stores mail under /var/lib/stalwart-mail must move that
+          state before raising it.
+        '';
+      }
+    ];
 
     systemd.tmpfiles.settings."stalwart-state" = {
       "/var/lib/stalwart".Z = {
@@ -337,7 +408,7 @@ in
     services.oauth2-proxy = {
       enable = true;
       provider = "oidc";
-      redirectURL = "https://${cfg.domain}/oauth2/callback";
+      redirectURL = "https://${primaryDomain}/oauth2/callback";
       httpAddress = "127.0.0.1:4180";
       email.domains = [ "*" ];
       keyFile = authEnvFile;
@@ -441,23 +512,35 @@ in
       };
     };
 
-    systemd.services.caddy.serviceConfig.EnvironmentFile =
-      lib.mkIf (cfg.caddy.enable && cfg.selfService.enable)
-        (lib.mkAfter [ "/run/stalwart-caddy.env" ]);
+    systemd.services.caddy.serviceConfig.EnvironmentFile = lib.mkIf (
+      cfg.caddy.enable && cfg.selfService.enable
+    ) (lib.mkAfter [ "/run/stalwart-caddy.env" ]);
 
     # ── Caddy virtual hosts ──────────────────────────────────────────────
 
     services.caddy.virtualHosts = lib.mkIf cfg.caddy.enable (
       let
-        corsOrigins =
-          [ "https://${cfg.domain}" ]
-          ++ lib.optional (cfg.webmailDomain != null) "https://${cfg.webmailDomain}";
+        corsOrigins = [
+          "https://${primaryDomain}"
+        ]
+        ++ lib.optional (cfg.webmailDomain != null) "https://${cfg.webmailDomain}";
         corsOriginList = builtins.concatStringsSep ", " (map (o: ''"${o}"'') corsOrigins);
         adminRolePattern = ''\b${cfg.zitadel.adminRoleKey}\b'';
+
+        # The protocol surface a mail client reaches. Every mail hostname
+        # serves it, because a client that found the host through an MX record
+        # or an autoconfig lookup may address any of them.
+        apiPaths = "/.well-known/* /auth/* /authorize/* /jmap/* /jmap /mail/* /autodiscover/*";
+
+        acmeChallenge = ''
+          handle /.well-known/acme-challenge/* {
+            reverse_proxy localhost:${toString cfg.httpPort}
+          }
+        '';
       in
       {
-        # Main mail domain — admin UI, JMAP, oauth2-proxy, self-service
-        ${cfg.domain} = {
+        # Canonical mail hostname — admin UI, JMAP, oauth2-proxy, self-service
+        ${primaryDomain} = {
           logFormat = lib.mkForce ''
             level INFO
             output stdout
@@ -481,22 +564,22 @@ in
             }
 
             ${lib.optionalString (cfg.webmailDomain != null) ''
-            handle /.well-known/webfinger {
-              route {
-                header Access-Control-Allow-Origin "https://${cfg.webmailDomain}"
-                header Vary Origin
-                header Access-Control-Allow-Methods "GET, OPTIONS"
-                header Access-Control-Allow-Headers "Accept, Content-Type"
-                header Access-Control-Max-Age 86400
-                header Content-Type "application/jrd+json"
-                @options method OPTIONS
-                respond @options 204
-                respond `{"subject":"https://${cfg.domain}","links":[{"rel":"http://openid.net/specs/connect/1.0/issuer","href":"https://${cfg.ssoDomain}"}]}`
+              handle /.well-known/webfinger {
+                route {
+                  header Access-Control-Allow-Origin "https://${cfg.webmailDomain}"
+                  header Vary Origin
+                  header Access-Control-Allow-Methods "GET, OPTIONS"
+                  header Access-Control-Allow-Headers "Accept, Content-Type"
+                  header Access-Control-Max-Age 86400
+                  header Content-Type "application/jrd+json"
+                  @options method OPTIONS
+                  respond @options 204
+                  respond `{"subject":"https://${primaryDomain}","links":[{"rel":"http://openid.net/specs/connect/1.0/issuer","href":"https://${cfg.ssoDomain}"}]}`
+                }
               }
-            }
             ''}
 
-            @api path /.well-known/* /auth/* /authorize/* /jmap/* /jmap /mail/* /autodiscover/*
+            @api path ${apiPaths}
             handle @api {
               @allowed_origin expression {http.request.header.Origin} in [${corsOriginList}]
               header @allowed_origin Access-Control-Allow-Origin {http.request.header.Origin}
@@ -520,10 +603,10 @@ in
               }
 
               ${lib.optionalString cfg.selfService.enable ''
-              handle /self-service-config.json {
-                header Content-Type "application/json"
-                respond `{"clientId":"{$MAIL_SELF_SERVICE_CLIENT_ID}","issuer":"https://${cfg.ssoDomain}"}`
-              }
+                handle /self-service-config.json {
+                  header Content-Type "application/json"
+                  respond `{"clientId":"{$MAIL_SELF_SERVICE_CLIENT_ID}","issuer":"https://${cfg.ssoDomain}"}`
+                }
               ''}
 
               handle /api/* {
@@ -531,12 +614,12 @@ in
               }
 
               ${lib.optionalString cfg.selfService.enable ''
-              handle_path /self-service* {
-                header Content-Security-Policy "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self' https:; form-action 'none'; frame-ancestors 'none'; base-uri 'none'"
-                root * ${selfServiceDir}
-                try_files {path} /index.html
-                file_server
-              }
+                handle_path /self-service* {
+                  header Content-Security-Policy "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self' https:; form-action 'none'; frame-ancestors 'none'; base-uri 'none'"
+                  root * ${selfServiceDir}
+                  try_files {path} /index.html
+                  file_server
+                }
               ''}
 
               @admin header_regexp X-Auth-Request-Groups ${adminRolePattern}
@@ -545,36 +628,57 @@ in
               }
 
               ${lib.optionalString cfg.selfService.enable ''
-              handle {
-                header Content-Security-Policy "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self' https:; form-action 'none'; frame-ancestors 'none'; base-uri 'none'"
-                root * ${selfServiceDir}
-                try_files {path} /index.html
-                file_server
-              }
+                handle {
+                  header Content-Security-Policy "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self' https:; form-action 'none'; frame-ancestors 'none'; base-uri 'none'"
+                  root * ${selfServiceDir}
+                  try_files {path} /index.html
+                  file_server
+                }
               ''}
             }
           '';
         };
 
-        # ACME http-01 challenge handler + HTTPS redirect
-        "http://${cfg.domain}" = lib.mkIf cfg.acme.enable {
+      }
+      # Secondary mail hostnames — serve the protocol surface a client may
+      # have been pointed at, redirect everything human-facing to the
+      # canonical hostname so the admin UI and its OIDC session live at one
+      # origin only.
+      // lib.genAttrs secondaryDomains (_: {
+        extraConfig = ''
+          ${cfg.caddy.extraTlsConfig}
+          ${lib.optionalString cfg.acme.enable acmeChallenge}
+          @api path ${apiPaths}
+          handle @api {
+            reverse_proxy 127.0.0.1:${toString cfg.httpPort}
+          }
+          handle {
+            redir https://${primaryDomain}{uri} permanent
+          }
+        '';
+      })
+      # ACME http-01 challenge handler + HTTPS redirect, per mail hostname.
+      // lib.optionalAttrs cfg.acme.enable (
+        lib.genAttrs (map (domain: "http://${domain}") cfg.domains) (_: {
           extraConfig = ''
-            handle /.well-known/acme-challenge/* {
-              reverse_proxy localhost:${toString cfg.httpPort}
-            }
+            ${acmeChallenge}
             handle {
               redir https://{host}{uri} permanent
             }
           '';
-        };
-
-        # MTA-STS policy
-        "mta-sts.${cfg.orgDomain}".extraConfig = ''
+        })
+      )
+      # MTA-STS policy, per address domain. Every mail hostname is listed:
+      # each is a valid MX target with a certificate of its own, so an
+      # address domain may point its MX at whichever one it likes without
+      # this policy having to know which.
+      // lib.genAttrs (map (org: "mta-sts.${org}") cfg.orgDomains) (_: {
+        extraConfig = ''
           handle /.well-known/mta-sts.txt {
             header Content-Type "text/plain"
             respond "version: STSv1
           mode: enforce
-          mx: ${cfg.domain}
+          ${lib.concatMapStringsSep "\n" (domain: "mx: ${domain}") cfg.domains}
           max_age: 604800
           "
           }
@@ -582,19 +686,19 @@ in
             respond "Not Found" 404
           }
         '';
-
-        # Thunderbird autoconfig
-        "autoconfig.${cfg.orgDomain}".extraConfig = ''
-          ${cfg.caddy.extraTlsConfig}
-          reverse_proxy 127.0.0.1:${toString cfg.httpPort}
-        '';
-
-        # Outlook autodiscover
-        "autodiscover.${cfg.orgDomain}".extraConfig = ''
-          ${cfg.caddy.extraTlsConfig}
-          reverse_proxy 127.0.0.1:${toString cfg.httpPort}
-        '';
-      }
+      })
+      # Thunderbird autoconfig and Outlook autodiscover, per address domain:
+      # a client discovers settings under the domain it was given an address
+      # at, never under the mail hostname.
+      //
+        lib.genAttrs
+          (map (org: "autoconfig.${org}") cfg.orgDomains ++ map (org: "autodiscover.${org}") cfg.orgDomains)
+          (_: {
+            extraConfig = ''
+              ${cfg.caddy.extraTlsConfig}
+              reverse_proxy 127.0.0.1:${toString cfg.httpPort}
+            '';
+          })
     );
 
     # ── Firewall ─────────────────────────────────────────────────────────
