@@ -1,9 +1,19 @@
-{ pkgs, mkPerUserHomeManagerModule, ... }:
+{
+  pkgs,
+  lib,
+  mkPerUserHomeManagerModule,
+  namespaced,
+  namespacedCfg,
+  ...
+}:
+let
+  font = (namespacedCfg __curPos).font;
+in
 {
   imports = [
     (mkPerUserHomeManagerModule __curPos {
       home.packages = [
-        pkgs.nerd-fonts.hasklug
+        font.package
       ];
       fonts.fontconfig.enable = true;
       programs.alacritty = {
@@ -51,9 +61,9 @@
           };
           font = {
             normal = {
-              family = "Hasklug Nerd Font Mono";
+              family = font.family;
             };
-            size = 10.5;
+            size = font.size;
           };
           mouse = {
             bindings = [
@@ -78,4 +88,24 @@
       };
     })
   ];
+
+  options = namespaced __curPos {
+    font = {
+      package = lib.mkOption {
+        description = "Package providing the terminal font family";
+        type = lib.types.package;
+        default = pkgs.nerd-fonts.hasklug;
+      };
+      family = lib.mkOption {
+        description = "Terminal font family, spelled the way fontconfig knows it";
+        type = lib.types.str;
+        default = "Hasklug Nerd Font Mono";
+      };
+      size = lib.mkOption {
+        description = "Terminal font size in points";
+        type = lib.types.numbers.positive;
+        default = 10.5;
+      };
+    };
+  };
 }
