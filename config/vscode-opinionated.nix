@@ -18,17 +18,17 @@ let
       enableExtensionUpdateCheck = false;
 
       userSettings = {
-        "editor.fontFamily" = "'Iosevka Comfy', monospace";
+        "editor.fontFamily" = "'Aporetic Sans Mono', monospace";
         "editor.lineHeight" = 22;
         "files.autoSave" = "onFocusChange";
         "files.trimTrailingWhitespace" = true;
-        "terminal.integrated.fontFamily" = "Hasklug Nerd Font Mono";
+        "terminal.integrated.fontFamily" = "Iosevka Nerd Font Mono";
         "workbench.startupEditor" = "none";
         "git.terminalAuthentication" = false;
         "github.gitAuthentication" = false;
         "files.enableTrash" = false;
         "git.autoRepositoryDetection" = "openEditors";
-        "debug.console.fontFamily" = "Hasklug Nerd Font Mono";
+        "debug.console.fontFamily" = "Iosevka Nerd Font Mono";
         "editor.inlayHints.enabled" = "off";
         "terminal.integrated.shellIntegration.history" = 100000;
         "terminal.integrated.enablePersistentSessions" = false;
@@ -62,6 +62,15 @@ let
 in
 {
   home-manager = applyHomeManagerShared {
+    # The fonts referenced above are not generic families, so ship them rather
+    # than hoping the host happens to have them and silently falling back to
+    # a proportional font.
+    home.packages = [
+      pkgs.aporetic
+      pkgs.nerd-fonts.iosevka
+    ];
+    fonts.fontconfig.enable = true;
+
     programs.vscodium = lib.mkIf useVscodiumModule settings;
     programs.vscode = lib.mkIf (!useVscodiumModule) (settings // { package = pkgs.vscodium; });
   };
