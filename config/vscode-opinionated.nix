@@ -22,13 +22,13 @@ let
         "editor.lineHeight" = 22;
         "files.autoSave" = "onFocusChange";
         "files.trimTrailingWhitespace" = true;
-        "terminal.integrated.fontFamily" = "Iosevka Nerd Font Mono";
+        "terminal.integrated.fontFamily" = "IosevkaTerm Nerd Font Mono";
         "workbench.startupEditor" = "none";
         "git.terminalAuthentication" = false;
         "github.gitAuthentication" = false;
         "files.enableTrash" = false;
         "git.autoRepositoryDetection" = "openEditors";
-        "debug.console.fontFamily" = "Iosevka Nerd Font Mono";
+        "debug.console.fontFamily" = "IosevkaTerm Nerd Font Mono";
         "editor.inlayHints.enabled" = "off";
         "terminal.integrated.shellIntegration.history" = 100000;
         "terminal.integrated.enablePersistentSessions" = false;
@@ -67,7 +67,7 @@ in
     # a proportional font.
     home.packages = [
       pkgs.aporetic
-      pkgs.nerd-fonts.iosevka
+      pkgs.nerd-fonts.iosevka-term
     ];
     fonts.fontconfig.enable = true;
 
