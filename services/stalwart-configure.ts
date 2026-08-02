@@ -5,6 +5,10 @@ interface DesiredState {
   // hostnames: those carry TLS and the web UI and never appear in an address.
   // The first is the reporting domain (DMARC/TLS reports, ARC seal).
   domains: string[];
+  // Domains accepted for delivery that hold no accounts of their own. They
+  // get a domain entry and DKIM keys; nothing is aliased to them here,
+  // because routing them at a mailbox is runtime configuration.
+  extraDomains?: string[];
   publicUrl: string;
 }
 
@@ -287,6 +291,11 @@ async function main(): Promise<void> {
   await waitForApi(client);
 
   for (const domain of spec.domains) {
+    await convergeDomain(client, domain);
+    await convergeDkim(client, domain);
+  }
+
+  for (const domain of spec.extraDomains ?? []) {
     await convergeDomain(client, domain);
     await convergeDkim(client, domain);
   }

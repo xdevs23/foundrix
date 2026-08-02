@@ -32,10 +32,19 @@ let
   # Reporting and ARC seal live on the first address domain.
   primaryOrgDomain = builtins.head cfg.orgDomains;
 
+  # Every domain mail is addressed to, whether or not it has accounts behind
+  # it. The published surface is identical — a domain that receives mail
+  # advertises its policy and discovery records like any other — so only the
+  # account-provisioning side distinguishes them.
+  allAddressDomains = cfg.orgDomains ++ cfg.extraDomains;
+
   desiredState = builtins.toJSON {
     stalwartUrl = "http://127.0.0.1:${toString cfg.httpPort}";
     inherit adminPasswordPath;
     domains = cfg.orgDomains;
+    # Registered and DKIM-signed like the others, but deliberately kept out of
+    # the admin account's alias list: where their mail lands is runtime data.
+    extraDomains = cfg.extraDomains;
     publicUrl = "'https://${primaryDomain}'";
   };
 
@@ -96,6 +105,31 @@ in
         "example.com"
         "example.org"
       ];
+    };
+
+    extraDomains = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ ];
+      description = ''
+        Further domains this server accepts mail for, beyond
+        {option}`orgDomains`. Each is registered as a Stalwart domain and gets
+        its own DKIM keypairs, so mail addressed to it is accepted and mail
+        claiming to come from it can be signed.
+
+        Where that mail then goes is NOT configured here: routing an address
+        or a whole domain at a mailbox is runtime data, edited in the Stalwart
+        admin interface like the mailboxes themselves. This option only makes
+        the deployment ready to receive — the domain registered, DKIM keys
+        generated, and the published surface complete.
+
+        That surface is identical to {option}`orgDomains`: the same
+        `mta-sts.`, `autoconfig.` and `autodiscover.` virtual hosts, and the
+        same DNS records. A domain that receives mail should look like one,
+        whether or not accounts happen to live behind it. The only difference
+        is that no Zitadel organization backs these, so the admin account gets
+        no automatic aliases at them.
+      '';
+      example = [ "accounts.example.com" ];
     };
 
     ssoDomain = lib.mkOption {
@@ -196,6 +230,19 @@ in
         default = true;
         description = "Enable the app-password self-service page";
       };
+
+      adminProvisioning = lib.mkEnableOption ''
+        provisioning other people's mailboxes from the self-service page.
+
+        Holders of the admin role get a user picker and can mint app passwords
+        for an account without it signing in — which matters because Stalwart
+        only learns an account exists once it authenticates, so the
+        impersonated call is simultaneously the provisioning step.
+
+        This turns on instance-wide impersonation and grants the admin user an
+        impersonator role, so it is off by default: it lets that account act
+        as any end user
+      '';
     };
 
     configureService = lib.mkOption {
@@ -218,15 +265,13 @@ in
 
       apps.${cfg.zitadel.selfServiceAppName} = lib.mkIf cfg.selfService.enable {
         type = "public";
-        # Token exchange lets an operator holding the admin role mint app
-        # passwords for another account without that account logging in:
-        # impersonating it is also its first authentication, which is what
-        # provisions the Stalwart principal. Without the grant listed here
-        # Zitadel answers the exchange with `unauthorized_client`.
+        # Without the grant listed here Zitadel answers the exchange with
+        # `unauthorized_client`. It is one of three things impersonation
+        # needs — see selfService.adminProvisioning for the other two.
         grantTypes = [
           "authorization-code"
-          "token-exchange"
-        ];
+        ]
+        ++ lib.optional cfg.selfService.adminProvisioning "token-exchange";
         redirectUris = [
           "https://${primaryDomain}/"
           "https://${primaryDomain}/self-service"
@@ -241,6 +286,17 @@ in
 
       userGrants.${zitadelCfg.admin.username} = [ cfg.zitadel.adminRoleKey ];
     };
+
+    # The remaining two prerequisites for impersonation. All three have to
+    # hold: the grant on the app (above), the instance permitting
+    # impersonation, and an impersonator role on the acting account. Missing
+    # any one of them fails at a different layer with a different error, so
+    # they are set together rather than left to be rediscovered.
+    foundrix.services.zitadel.policies.enableImpersonation =
+      lib.mkIf cfg.selfService.adminProvisioning true;
+    foundrix.services.zitadel.admin.iamRoles = lib.mkIf cfg.selfService.adminProvisioning [
+      "IAM_END_USER_IMPERSONATOR"
+    ];
 
     # ── Secrets ──────────────────────────────────────────────────────────
 
@@ -614,7 +670,7 @@ in
               ${lib.optionalString cfg.selfService.enable ''
                 handle /self-service-config.json {
                   header Content-Type "application/json"
-                  respond `{"clientId":"{$MAIL_SELF_SERVICE_CLIENT_ID}","issuer":"https://${cfg.ssoDomain}"}`
+                  respond `{"clientId":"{$MAIL_SELF_SERVICE_CLIENT_ID}","issuer":"https://${cfg.ssoDomain}","adminRole":"${cfg.zitadel.adminRoleKey}","orgDomains":${builtins.toJSON cfg.orgDomains},"adminProvisioning":${lib.boolToString cfg.selfService.adminProvisioning}}`
                 }
               ''}
 
@@ -681,7 +737,7 @@ in
       # each is a valid MX target with a certificate of its own, so an
       # address domain may point its MX at whichever one it likes without
       # this policy having to know which.
-      // lib.genAttrs (map (org: "mta-sts.${org}") cfg.orgDomains) (_: {
+      // lib.genAttrs (map (org: "mta-sts.${org}") allAddressDomains) (_: {
         extraConfig = ''
           handle /.well-known/mta-sts.txt {
             header Content-Type "text/plain"
@@ -701,7 +757,10 @@ in
       # at, never under the mail hostname.
       //
         lib.genAttrs
-          (map (org: "autoconfig.${org}") cfg.orgDomains ++ map (org: "autodiscover.${org}") cfg.orgDomains)
+          (
+            map (org: "autoconfig.${org}") allAddressDomains
+            ++ map (org: "autodiscover.${org}") allAddressDomains
+          )
           (_: {
             extraConfig = ''
               ${cfg.caddy.extraTlsConfig}

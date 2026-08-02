@@ -212,6 +212,26 @@
 
   .create-form.first { border-top: none; margin-top: 0; padding-top: 0; }
 
+  /* Admin: account picker in the card header */
+  #account-select {
+    margin-left: auto;
+    margin-right: 0.5rem;
+    max-width: 15rem;
+    padding: 0.3rem 0.5rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    color: var(--text);
+    font-family: inherit;
+    font-size: 0.78rem;
+    outline: none;
+  }
+
+  #account-select:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-subtle);
+  }
+
   input[type="text"] {
     flex: 1;
     padding: 0.55rem 0.75rem;
@@ -380,6 +400,7 @@
   <div class="card">
     <div class="card-header">
       <span class="card-title">App Passwords</span>
+      <select id="account-select" style="display:none"></select>
       <span class="badge" id="count"></span>
     </div>
     <div class="card-body">
@@ -395,7 +416,12 @@
   const app = document.getElementById("app");
   const header = document.getElementById("header");
   const countBadge = document.getElementById("count");
-  const SESSION_KEY = "mail_account_oidc";
+  // Bump when the requested scopes change. A stored token from an older
+  // version lacks the new scopes, and the roles claim being absent is
+  // indistinguishable from "this user has no roles" — so the admin section
+  // would silently never appear. Changing the key discards those sessions
+  // and re-runs the OIDC flow once.
+  const SESSION_KEY = "mail_account_oidc_v2";
 
   const KEY_ICON = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.75" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 5.25a3 3 0 0 1 3 3m3 0a6 6 0 0 1-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1 1 21.75 8.25Z"/></svg>`;
   const SHIELD_ICON = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.75" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z"/></svg>`;
@@ -498,7 +524,18 @@
     authUrl.searchParams.set("client_id", config.clientId);
     authUrl.searchParams.set("redirect_uri", `${location.origin}${location.pathname}`);
     authUrl.searchParams.set("response_type", "code");
-    authUrl.searchParams.set("scope", "openid email profile");
+    // The two urn: scopes are what make the admin section possible. Neither
+    // grants anything on its own — Zitadel still enforces the signed-in
+    // user's own permissions — so an ordinary user's token gains no power
+    // from holding them:
+    //   ...project:roles   surfaces the mail-admin role, gating the section
+    //   ...zitadel:aud     makes the token usable against Zitadel's own API,
+    //                      which is how the user search and the token
+    //                      exchange are performed
+    authUrl.searchParams.set(
+      "scope",
+      "openid email profile urn:zitadel:iam:org:project:roles urn:zitadel:iam:org:project:id:zitadel:aud",
+    );
     authUrl.searchParams.set("code_challenge", codeChallenge);
     authUrl.searchParams.set("code_challenge_method", "S256");
     authUrl.searchParams.set("state", state);
@@ -520,22 +557,47 @@
     if (resp.ok) userInfo = await resp.json();
   } catch {}
 
-  if (userInfo) {
-    const displayName = userInfo.name || userInfo.preferred_username || userInfo.email || "User";
-    const email = userInfo.email || "";
+  // Rendered from claims so it can show either the signed-in user or, for an
+  // admin who has picked another account, whichever account the view is
+  // currently scoped to.
+  function showHeader(claims) {
+    if (!claims) return;
+    const displayName = claims.name || claims.preferred_username || claims.email || "User";
+    // The login name, not the address: this is what a mail client must use.
+    const subtitle = claims.preferred_username || claims.email || "";
     header.innerHTML = `
       <div class="avatar">${initials(displayName)}</div>
       <div class="header-text">
         <div class="header-name">${escapeHtml(displayName)}</div>
-        ${email ? `<div class="header-email">${escapeHtml(email)}</div>` : ""}
+        ${subtitle ? `<div class="header-email">${escapeHtml(subtitle)}</div>` : ""}
       </div>
     `;
     header.style.display = "";
   }
+
+  showHeader(userInfo);
+
+  // The token every Stalwart call below is made with. Swapped for an
+  // impersonated one when an admin scopes the view to another account.
+  let activeToken = token;
+  let activeUser = null;
+
+  // --- Admin detection ---
+  // Zitadel returns project roles as a map keyed by role, each value mapping
+  // org id → domain. Presence of the key is the grant; the value only says
+  // which orgs it was granted in.
+  const roleClaim = userInfo?.["urn:zitadel:iam:org:project:roles"] || {};
+  // Both must hold: the role, and the deployment having opted in. Showing the
+  // section without the opt-in would offer a button whose token exchange the
+  // instance is configured to refuse.
+  const isAdmin = Boolean(
+    config.adminProvisioning && config.adminRole && roleClaim[config.adminRole],
+  );
+
   // --- Stalwart API ---
   async function apiGet() {
     const resp = await fetch("/api/account/auth", {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: { Authorization: `Bearer ${activeToken}` },
     });
     if (resp.status === 401) {
       sessionStorage.removeItem(SESSION_KEY);
@@ -551,7 +613,7 @@
     const resp = await fetch("/api/account/auth", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${token}`,
+        Authorization: `Bearer ${activeToken}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify(requests),
@@ -668,6 +730,131 @@
         }
       });
     });
+  }
+
+  // --- Admin: acting on another account ---
+  //
+  // Not a separate UI: an admin picks an account and the same view below is
+  // re-scoped to it. Everything already works in terms of `activeToken`, so
+  // switching account is just switching that token — an impersonated one
+  // stands in for the signed-in user's own.
+  //
+  // Impersonating is also the account's first authentication, which is what
+  // brings its Stalwart principal into existence; a mailbox that has never
+  // signed in does not exist until this happens.
+
+  async function zitadelPost(path, body, orgId) {
+    const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+    // The management API acts on the token's own org unless told otherwise,
+    // so without this header only half the users are ever visible.
+    if (orgId) headers["x-zitadel-orgid"] = orgId;
+    const resp = await fetch(`${config.issuer}${path}`, {
+      method: "POST", headers, body: JSON.stringify(body || {}),
+    });
+    if (!resp.ok) {
+      throw new Error(`${path} → ${resp.status} ${await resp.text().catch(() => "")}`);
+    }
+    return resp.json();
+  }
+
+  async function loadUsers() {
+    const orgsResp = await zitadelPost("/admin/v1/orgs/_search", { query: { limit: 100 } });
+    const wanted = config.orgDomains || [];
+    const orgs = (orgsResp.result || [])
+      .map(o => ({ id: o.id, domain: o.primaryDomain || o.name }))
+      .filter(o => wanted.length === 0 || wanted.includes(o.domain));
+
+    const perOrg = await Promise.all(orgs.map(async (org) => {
+      const resp = await zitadelPost("/management/v1/users/_search", { query: { limit: 100 } }, org.id);
+      return (resp.result || [])
+        // Machine users carry no email claim, and Stalwart builds the mailbox
+        // address from it — they can never hold a mailbox, so they are not
+        // offered here at all.
+        .filter(u => !u.machine)
+        .map(u => ({
+          id: u.id,
+          loginName: u.preferredLoginName || u.userName || "",
+          displayName: u.human?.profile?.displayName || u.userName || "",
+        }));
+    }));
+
+    return perOrg.flat().sort((a, b) => a.loginName.localeCompare(b.loginName));
+  }
+
+  async function impersonate(userId) {
+    const resp = await fetch(discovery.token_endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "urn:ietf:params:oauth:grant-type:token-exchange",
+        client_id: config.clientId,
+        subject_token: userId,
+        subject_token_type: "urn:zitadel:params:oauth:token-type:user_id",
+        actor_token: token,
+        actor_token_type: "urn:ietf:params:oauth:token-type:access_token",
+        scope: "openid email profile",
+      }),
+    });
+    const json = await resp.json().catch(() => ({}));
+    if (!resp.ok || !json.access_token) {
+      throw new Error(json.error_description || json.error || `Token exchange failed (${resp.status})`);
+    }
+    return json.access_token;
+  }
+
+  // Whose account the view is showing. Null means the signed-in user, and the
+  // header reverts to their own details.
+  async function selectAccount(user) {
+    generatedPassword = null;
+
+    if (!user) {
+      activeToken = token;
+      activeUser = null;
+      showHeader(userInfo);
+      await render();
+      return;
+    }
+
+    activeToken = await impersonate(user.id);
+    activeUser = user;
+
+    // Show the account being acted on, and specifically the name a mail
+    // client must log in with — assuming the address costs a failed login.
+    let claims = null;
+    try {
+      const resp = await fetch(discovery.userinfo_endpoint, {
+        headers: { Authorization: `Bearer ${activeToken}` },
+      });
+      if (resp.ok) claims = await resp.json();
+    } catch {}
+    showHeader(claims || { name: user.displayName, preferred_username: user.loginName });
+
+    await render();
+  }
+
+  if (isAdmin) {
+    const select = document.getElementById("account-select");
+    select.style.display = "";
+    select.innerHTML = `<option value="">Loading accounts…</option>`;
+
+    try {
+      const users = await loadUsers();
+      select.innerHTML = `<option value="">${escapeHtml(userInfo?.preferred_username || "My account")}</option>`
+        + users.map(u => `<option value="${escapeHtml(u.id)}">${escapeHtml(u.loginName)}</option>`).join("");
+
+      select.addEventListener("change", async () => {
+        const user = users.find(u => u.id === select.value) || null;
+        app.innerHTML = `<div class="loading"><div class="spinner"></div>Loading…</div>`;
+        try {
+          await selectAccount(user);
+        } catch (e) {
+          app.innerHTML = `<p class="error">${escapeHtml(e.message)}</p>`;
+        }
+      });
+    } catch (e) {
+      select.innerHTML = `<option value="">Accounts unavailable</option>`;
+      console.error("Could not load accounts:", e);
+    }
   }
 
   await render();
