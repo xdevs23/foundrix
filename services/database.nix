@@ -90,12 +90,11 @@ let
         in
         rec {
           description = "Rotate PostgreSQL password for the user ${username}";
-          requires =
-            [
-              "postgresql.service"
-              generatedPassword.service
-            ]
-            ++ lib.mapAttrsToList (name: _: "${name}.service") dbPwPermissionServices;
+          requires = [
+            "postgresql.service"
+            generatedPassword.service
+          ]
+          ++ lib.mapAttrsToList (name: _: "${name}.service") dbPwPermissionServices;
           after = requires ++ [ "postgresql-setup.service" ];
 
           unitConfig.StartLimitIntervalSec = 0;
@@ -153,8 +152,8 @@ let
                 "GRANT CONNECT ON DATABASE \"${dbName}\" TO \"${user}\";"
 
               ${lib.optionalString databases.${dbName}.adminPrivileges ''
-              ${lib.getExe' config.services.postgresql.package "psql"} -d postgres -v ON_ERROR_STOP=1 -c \
-                "ALTER ROLE \"${user}\" CREATEROLE CREATEDB;"
+                ${lib.getExe' config.services.postgresql.package "psql"} -d postgres -v ON_ERROR_STOP=1 -c \
+                  "ALTER ROLE \"${user}\" CREATEROLE CREATEDB;"
               ''}
 
               ${lib.getExe' config.services.postgresql.package "psql"} -d "${dbName}" -v ON_ERROR_STOP=1 <<SQL
@@ -257,7 +256,7 @@ in
       }) dbUsers;
 
       authentication = lib.mkOverride 10 ''
-${lib.concatMapStrings (
+        ${lib.concatMapStrings (
           db:
           let
             user = databases.${db}.user;
@@ -267,11 +266,11 @@ ${lib.concatMapStrings (
             local  ${db}  all  peer map=superuser_map
           ''
         ) dbNames}
-        ${lib.concatMapStrings (user: ''
-            local  postgres  ${user}  scram-sha-256
-        '') dbUsers}
-        local  sameuser  all  peer map=superuser_map
-        local  all  postgres  peer map=superuser_map
+                ${lib.concatMapStrings (user: ''
+                  local  postgres  ${user}  scram-sha-256
+                '') dbUsers}
+                local  sameuser  all  peer map=superuser_map
+                local  all  postgres  peer map=superuser_map
       '';
 
       identMap = ''
@@ -289,14 +288,13 @@ ${lib.concatMapStrings (
         in
         {
           name = secretName username;
-          value =
-            {
-              owner = "postgres";
-              persistent = false;
-            }
-            // lib.optionalAttrs useCompliantPgPassFormat {
-              prefix = "*:*:${dbName}:${username}:";
-            };
+          value = {
+            owner = "postgres";
+            persistent = false;
+          }
+          // lib.optionalAttrs useCompliantPgPassFormat {
+            prefix = "*:*:${dbName}:${username}:";
+          };
         }
       ) dbNames
     );

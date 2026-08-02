@@ -50,8 +50,9 @@
       cfg = namespacedCfg __curPos;
       # Locate the ESP the way the esp filesystem module does, degrading to
       # the ESP type GUID (which foundrix images also use as the PARTUUID).
-      espDevice = (config.foundrix.config.filesystem.esp or { }).device or
-        "PARTUUID=c12a7328-f81f-11d2-ba4b-00a0c93ec93b";
+      espDevice =
+        (config.foundrix.config.filesystem.esp or { }).device
+          or "PARTUUID=c12a7328-f81f-11d2-ba4b-00a0c93ec93b";
       # fstab spec-style device strings resolve to their udev symlink; an
       # unrecognized shape must fail the eval rather than silently landing
       # in the volatile-host-key fallback on every boot.
@@ -61,9 +62,7 @@
         "LABEL=" = "/dev/disk/by-label/";
         "PARTLABEL=" = "/dev/disk/by-partlabel/";
       };
-      matchedPrefix = lib.findFirst (p: lib.hasPrefix p espDevice) null (
-        builtins.attrNames specPrefixes
-      );
+      matchedPrefix = lib.findFirst (p: lib.hasPrefix p espDevice) null (builtins.attrNames specPrefixes);
       espBlockDev =
         if matchedPrefix != null then
           specPrefixes.${matchedPrefix} + lib.toLower (lib.removePrefix matchedPrefix espDevice)

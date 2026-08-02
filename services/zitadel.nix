@@ -139,11 +139,14 @@ let
     };
   };
 
-  themeModeToInt = mode: {
-    auto = 1;
-    light = 3;
-    dark = 2;
-  }.${mode};
+  themeModeToInt =
+    mode:
+    {
+      auto = 1;
+      light = 3;
+      dark = 2;
+    }
+    .${mode};
 
   secretGeneratorType = lib.types.submodule {
     options = {
@@ -190,7 +193,13 @@ let
   };
 
   serializePasswordComplexity = pc: {
-    inherit (pc) minLength hasUppercase hasLowercase hasNumber hasSymbol;
+    inherit (pc)
+      minLength
+      hasUppercase
+      hasLowercase
+      hasNumber
+      hasSymbol
+      ;
   };
 
   serializeBranding = b: {
@@ -243,30 +252,32 @@ let
       };
 
       triggers = lib.mkOption {
-        type = lib.types.listOf (lib.types.submodule {
-          options = {
-            flowType = lib.mkOption {
-              type = lib.types.enum [
-                "complementToken"
-                "externalAuthentication"
-                "internalAuthentication"
-                "complementSAMLResponse"
-              ];
-              description = "The flow type this action is triggered on";
+        type = lib.types.listOf (
+          lib.types.submodule {
+            options = {
+              flowType = lib.mkOption {
+                type = lib.types.enum [
+                  "complementToken"
+                  "externalAuthentication"
+                  "internalAuthentication"
+                  "complementSAMLResponse"
+                ];
+                description = "The flow type this action is triggered on";
+              };
+              triggerType = lib.mkOption {
+                type = lib.types.enum [
+                  "postAuthentication"
+                  "preCreation"
+                  "postCreation"
+                  "preUserinfoCreation"
+                  "preAccessTokenCreation"
+                  "preSAMLResponseCreation"
+                ];
+                description = "The specific trigger within the flow";
+              };
             };
-            triggerType = lib.mkOption {
-              type = lib.types.enum [
-                "postAuthentication"
-                "preCreation"
-                "postCreation"
-                "preUserinfoCreation"
-                "preAccessTokenCreation"
-                "preSAMLResponseCreation"
-              ];
-              description = "The specific trigger within the flow";
-            };
-          };
-        });
+          }
+        );
         description = "Flow/trigger combinations this action should be wired to";
       };
 
@@ -304,7 +315,6 @@ let
           type = lib.types.listOf lib.types.str;
           description = "OAuth2 redirect URIs";
         };
-
 
         postLogoutRedirectUris = lib.mkOption {
           type = lib.types.listOf lib.types.str;
@@ -428,20 +438,14 @@ let
     adminOrg = cfg.adminOrg;
     adminUsername = cfg.admin.username;
     orgDomains = builtins.attrNames cfg.orgDomains;
-    privacyPolicyLink =
-      if cfg.privacyPolicy.enable then cfg.privacyPolicy.link
-      else null;
+    privacyPolicyLink = if cfg.privacyPolicy.enable then cfg.privacyPolicy.link else null;
     instance = {
       passwordComplexity =
         if cfg.instance.passwordComplexity != null then
           serializePasswordComplexity cfg.instance.passwordComplexity
         else
           null;
-      branding =
-        if cfg.instance.branding != null then
-          serializeBranding cfg.instance.branding
-        else
-          null;
+      branding = if cfg.instance.branding != null then serializeBranding cfg.instance.branding else null;
       languages =
         let
           l = cfg.instance.languages;
@@ -473,13 +477,11 @@ let
     };
     orgs =
       let
-        mapped = lib.mapAttrs (
-          _: org: {
-            passwordComplexity =
-              if org.passwordComplexity != null then serializePasswordComplexity org.passwordComplexity else null;
-            branding = if org.branding != null then serializeBranding org.branding else null;
-          }
-        ) cfg.orgDomains;
+        mapped = lib.mapAttrs (_: org: {
+          passwordComplexity =
+            if org.passwordComplexity != null then serializePasswordComplexity org.passwordComplexity else null;
+          branding = if org.branding != null then serializeBranding org.branding else null;
+        }) cfg.orgDomains;
       in
       if mapped == { } then null else mapped;
     policies = {
@@ -492,22 +494,30 @@ let
       inherit (cfg.policies) disallowPublicOrgRegistration enableImpersonation;
     };
     adminIamRoles = cfg.admin.iamRoles;
-    projects = lib.mapAttrs (
-      _: project: {
-        apps = lib.mapAttrs (_: app: {
-          inherit (app) type redirectUris postLogoutRedirectUris outputPath accessTokenType grantTypes;
-        }) project.apps;
-        roles = lib.mapAttrs (_: role: {
-          inherit (role) displayName;
-        }) project.roles;
-        inherit (project) userGrants;
-      }
-    ) cfg.projects;
-    actions = lib.mapAttrs (
-      _: action: {
-        inherit (action) script triggers timeout allowedToFail;
-      }
-    ) cfg.actions;
+    projects = lib.mapAttrs (_: project: {
+      apps = lib.mapAttrs (_: app: {
+        inherit (app)
+          type
+          redirectUris
+          postLogoutRedirectUris
+          outputPath
+          accessTokenType
+          grantTypes
+          ;
+      }) project.apps;
+      roles = lib.mapAttrs (_: role: {
+        inherit (role) displayName;
+      }) project.roles;
+      inherit (project) userGrants;
+    }) cfg.projects;
+    actions = lib.mapAttrs (_: action: {
+      inherit (action)
+        script
+        triggers
+        timeout
+        allowedToFail
+        ;
+    }) cfg.actions;
   };
 
   configureScript = ./zitadel-configure.ts;
@@ -712,41 +722,35 @@ in
         };
       };
 
-      oidcSettings =
-        nullableOption
-          (lib.types.submodule {
-            options = {
-              accessTokenLifetimeHours = lib.mkOption {
-                type = lib.types.int;
-                default = 12;
-                description = "Access token maximum lifetime in hours";
-              };
-              idTokenLifetimeHours = lib.mkOption {
-                type = lib.types.int;
-                default = 12;
-                description = "ID token maximum lifetime in hours";
-              };
-              refreshTokenLifetimeDays = lib.mkOption {
-                type = lib.types.int;
-                default = 90;
-                description = "Refresh token maximum lifetime in days";
-              };
-              refreshTokenIdleLifetimeDays = lib.mkOption {
-                type = lib.types.int;
-                default = 30;
-                description = "Idle refresh token maximum lifetime in days";
-              };
-            };
-          })
-          null
-          "Instance-wide OIDC token lifetime settings. Null leaves the Zitadel defaults.";
+      oidcSettings = nullableOption (lib.types.submodule {
+        options = {
+          accessTokenLifetimeHours = lib.mkOption {
+            type = lib.types.int;
+            default = 12;
+            description = "Access token maximum lifetime in hours";
+          };
+          idTokenLifetimeHours = lib.mkOption {
+            type = lib.types.int;
+            default = 12;
+            description = "ID token maximum lifetime in hours";
+          };
+          refreshTokenLifetimeDays = lib.mkOption {
+            type = lib.types.int;
+            default = 90;
+            description = "Refresh token maximum lifetime in days";
+          };
+          refreshTokenIdleLifetimeDays = lib.mkOption {
+            type = lib.types.int;
+            default = 30;
+            description = "Idle refresh token maximum lifetime in days";
+          };
+        };
+      }) null "Instance-wide OIDC token lifetime settings. Null leaves the Zitadel defaults.";
 
       secretGenerators =
         nullableOption (lib.types.attrsOf secretGeneratorType) null
           "Per-type secret/code generator settings (e.g. verification codes). Null leaves the Zitadel defaults.";
     };
-
-
 
     projects = lib.mkOption {
       type = lib.types.attrsOf projectType;
@@ -865,7 +869,8 @@ in
         Machine.Identification.Webhook.Enabled = false;
         ServicePing.Enabled = false;
         DefaultInstance.DomainPolicy.ValidateOrgDomains = cfg.policies.domainPolicy.validateOrgDomains;
-        DefaultInstance.DomainPolicy.UserLoginMustBeDomain = cfg.policies.domainPolicy.userLoginMustBeDomain;
+        DefaultInstance.DomainPolicy.UserLoginMustBeDomain =
+          cfg.policies.domainPolicy.userLoginMustBeDomain;
         DefaultInstance.LoginPolicy.AllowRegister = cfg.policies.loginPolicy.allowRegister;
         DefaultInstance.LoginPolicy.AllowExternalIdp = cfg.policies.loginPolicy.allowExternalIdp;
         Database.postgres = {
@@ -909,12 +914,12 @@ in
 
     systemd.services.zitadel-db-config = {
       description = "Generate Zitadel runtime config from ephemeral secrets";
-      requires =
-        config.foundrix.services.database.prerequisiteUnits
-        ++ [ config.foundrix.services.secrets.zitadel-admin-password.service ];
-      after =
-        config.foundrix.services.database.prerequisiteUnits
-        ++ [ config.foundrix.services.secrets.zitadel-admin-password.service ];
+      requires = config.foundrix.services.database.prerequisiteUnits ++ [
+        config.foundrix.services.secrets.zitadel-admin-password.service
+      ];
+      after = config.foundrix.services.database.prerequisiteUnits ++ [
+        config.foundrix.services.secrets.zitadel-admin-password.service
+      ];
       before = [ "zitadel.service" ];
       requiredBy = [ "zitadel.service" ];
 
@@ -997,18 +1002,14 @@ in
     };
 
     systemd.services.zitadel = {
-      requires =
-        config.foundrix.services.database.prerequisiteUnits
-        ++ [
-          "zitadel-db-config.service"
-          config.foundrix.services.secrets.zitadel-master-key.service
-        ];
-      after =
-        config.foundrix.services.database.prerequisiteUnits
-        ++ [
-          "zitadel-db-config.service"
-          config.foundrix.services.secrets.zitadel-master-key.service
-        ];
+      requires = config.foundrix.services.database.prerequisiteUnits ++ [
+        "zitadel-db-config.service"
+        config.foundrix.services.secrets.zitadel-master-key.service
+      ];
+      after = config.foundrix.services.database.prerequisiteUnits ++ [
+        "zitadel-db-config.service"
+        config.foundrix.services.secrets.zitadel-master-key.service
+      ];
       serviceConfig = {
         BindReadOnlyPaths = [ "/run/postgresql" ];
         StateDirectory = "zitadel";
@@ -1043,11 +1044,11 @@ in
         }
 
         ${lib.optionalString cfg.privacyPolicy.enable ''
-        handle /privacy-policy {
-          root * ${privacyPolicyDir}
-          rewrite * /privacy-policy.html
-          file_server
-        }
+          handle /privacy-policy {
+            root * ${privacyPolicyDir}
+            rewrite * /privacy-policy.html
+            file_server
+          }
         ''}
 
         reverse_proxy localhost:${toString cfg.port}

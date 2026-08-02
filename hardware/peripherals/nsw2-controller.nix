@@ -25,16 +25,17 @@
         virtual gamepad the service exposes. Defaults to all normal users.
       '';
     };
-    dolphin.enable = lib.mkEnableOption ''
-      Drop a pre-bound Dolphin GCPad profile into each configured user's
-      `~/.config/dolphin-emu/Profiles/GCPad/nsw2-gamecube.ini` (via
-      home-manager) so the controller works in Dolphin without manual
-      rebinding. Open Controllers -> Configure on a GameCube port and pick
-      "nsw2-gamecube" from the Profile dropdown -> Load
-    ''
-    // {
-      default = true;
-    };
+    dolphin.enable =
+      lib.mkEnableOption ''
+        Drop a pre-bound Dolphin GCPad profile into each configured user's
+        `~/.config/dolphin-emu/Profiles/GCPad/nsw2-gamecube.ini` (via
+        home-manager) so the controller works in Dolphin without manual
+        rebinding. Open Controllers -> Configure on a GameCube port and pick
+        "nsw2-gamecube" from the Profile dropdown -> Load
+      ''
+      // {
+        default = true;
+      };
   };
 
   config =
@@ -127,8 +128,7 @@
       # -> namespacedCfg. mkIf is lazy and defers to module merge time.
       home-manager = lib.mkIf cfg.dolphin.enable (
         applyHomeManagerUsers cfg.users {
-          xdg.configFile."dolphin-emu/Profiles/GCPad/nsw2-gamecube.ini".source =
-            dolphinProfile;
+          xdg.configFile."dolphin-emu/Profiles/GCPad/nsw2-gamecube.ini".source = dolphinProfile;
         }
       );
     };

@@ -257,7 +257,10 @@
                         # the `traitTypes` module arg, not a NixOS module; the trait
                         # options themselves are documented via common/.
                         {
-                          path = [ "framework" "traits" ];
+                          path = [
+                            "framework"
+                            "traits"
+                          ];
                           update = old: removeAttrs old [ "types" ];
                         }
                       ] foundrixNixosModules

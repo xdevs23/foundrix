@@ -41,9 +41,7 @@
     };
 
     varProvisioner = lib.mkOption {
-      type = lib.types.nullOr (
-        lib.types.enum (builtins.attrValues traitTypes.filesystem.varProvisioner)
-      );
+      type = lib.types.nullOr (lib.types.enum (builtins.attrValues traitTypes.filesystem.varProvisioner));
       default = null;
       description = ''
         How the /var data volume is provisioned at runtime. Being an enum,
