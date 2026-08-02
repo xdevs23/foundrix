@@ -218,6 +218,15 @@ in
 
       apps.${cfg.zitadel.selfServiceAppName} = lib.mkIf cfg.selfService.enable {
         type = "public";
+        # Token exchange lets an operator holding the admin role mint app
+        # passwords for another account without that account logging in:
+        # impersonating it is also its first authentication, which is what
+        # provisions the Stalwart principal. Without the grant listed here
+        # Zitadel answers the exchange with `unauthorized_client`.
+        grantTypes = [
+          "authorization-code"
+          "token-exchange"
+        ];
         redirectUris = [
           "https://${primaryDomain}/"
           "https://${primaryDomain}/self-service"

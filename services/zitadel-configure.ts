@@ -103,6 +103,7 @@ interface ConfidentialAppSpec {
   redirectUris: string[];
   outputPath: string;
   accessTokenType: "bearer" | "jwt";
+  grantTypes: string[];
 }
 
 interface PublicAppSpec {
@@ -111,6 +112,7 @@ interface PublicAppSpec {
   postLogoutRedirectUris: string[];
   outputPath: string;
   accessTokenType: "bearer" | "jwt";
+  grantTypes: string[];
 }
 
 interface OrgDomain {
@@ -665,6 +667,22 @@ function zitadelAccessTokenType(t: "bearer" | "jwt"): string {
   return t === "jwt" ? "OIDC_TOKEN_TYPE_JWT" : "OIDC_TOKEN_TYPE_BEARER";
 }
 
+const GRANT_TYPES: Record<string, string> = {
+  "authorization-code": "OIDC_GRANT_TYPE_AUTHORIZATION_CODE",
+  "implicit": "OIDC_GRANT_TYPE_IMPLICIT",
+  "refresh-token": "OIDC_GRANT_TYPE_REFRESH_TOKEN",
+  "device-code": "OIDC_GRANT_TYPE_DEVICE_CODE",
+  "token-exchange": "OIDC_GRANT_TYPE_TOKEN_EXCHANGE",
+};
+
+function zitadelGrantTypes(names: string[]): string[] {
+  return names.map((name) => {
+    const value = GRANT_TYPES[name];
+    if (!value) throw new Error(`Unknown grant type: ${name}`);
+    return value;
+  });
+}
+
 async function waitForApi(client: ZitadelClient): Promise<void> {
   for (;;) {
     try {
@@ -967,7 +985,7 @@ async function convergeConfidentialApp(
       name: appName,
       redirectUris: spec.redirectUris,
       responseTypes: ["OIDC_RESPONSE_TYPE_CODE"],
-      grantTypes: ["OIDC_GRANT_TYPE_AUTHORIZATION_CODE"],
+      grantTypes: zitadelGrantTypes(spec.grantTypes),
       appType: "OIDC_APP_TYPE_WEB",
       authMethodType: "OIDC_AUTH_METHOD_TYPE_BASIC",
       accessTokenType: zitadelAccessTokenType(spec.accessTokenType),
@@ -985,7 +1003,7 @@ async function convergeConfidentialApp(
       await client.updateOIDCAppConfig(projectId, appId, {
         redirectUris: spec.redirectUris,
         responseTypes: ["OIDC_RESPONSE_TYPE_CODE"],
-        grantTypes: ["OIDC_GRANT_TYPE_AUTHORIZATION_CODE"],
+        grantTypes: zitadelGrantTypes(spec.grantTypes),
         appType: "OIDC_APP_TYPE_WEB",
         authMethodType: "OIDC_AUTH_METHOD_TYPE_BASIC",
         accessTokenRoleAssertion: true,
@@ -1033,7 +1051,7 @@ async function convergePublicApp(
         redirectUris: spec.redirectUris,
         postLogoutRedirectUris: spec.postLogoutRedirectUris,
         responseTypes: ["OIDC_RESPONSE_TYPE_CODE"],
-        grantTypes: ["OIDC_GRANT_TYPE_AUTHORIZATION_CODE"],
+        grantTypes: zitadelGrantTypes(spec.grantTypes),
         appType: "OIDC_APP_TYPE_USER_AGENT",
         authMethodType: "OIDC_AUTH_METHOD_TYPE_NONE",
         accessTokenRoleAssertion: true,
@@ -1055,7 +1073,7 @@ async function convergePublicApp(
       redirectUris: spec.redirectUris,
       postLogoutRedirectUris: spec.postLogoutRedirectUris,
       responseTypes: ["OIDC_RESPONSE_TYPE_CODE"],
-      grantTypes: ["OIDC_GRANT_TYPE_AUTHORIZATION_CODE"],
+      grantTypes: zitadelGrantTypes(spec.grantTypes),
       appType: "OIDC_APP_TYPE_USER_AGENT",
       authMethodType: "OIDC_AUTH_METHOD_TYPE_NONE",
       accessTokenRoleAssertion: true,

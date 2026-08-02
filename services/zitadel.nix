@@ -325,6 +325,33 @@ let
           '';
         };
 
+        grantTypes = lib.mkOption {
+          type = lib.types.nonEmptyListOf (
+            lib.types.enum [
+              "authorization-code"
+              "implicit"
+              "refresh-token"
+              "device-code"
+              "token-exchange"
+            ]
+          );
+          default = [ "authorization-code" ];
+          description = ''
+            OAuth2 grant types this app may use. Zitadel rejects any grant the
+            app does not list with `unauthorized_client`, and the configure
+            script rewrites this on every run — so a grant enabled by hand in
+            the console is reverted on the next deploy and belongs here
+            instead.
+
+            `token-exchange` additionally requires the instance to permit
+            impersonation; the grant alone is not enough.
+          '';
+          example = [
+            "authorization-code"
+            "token-exchange"
+          ];
+        };
+
         outputPath = lib.mkOption {
           type = lib.types.str;
           default =
@@ -466,7 +493,7 @@ let
     projects = lib.mapAttrs (
       _: project: {
         apps = lib.mapAttrs (_: app: {
-          inherit (app) type redirectUris postLogoutRedirectUris outputPath accessTokenType;
+          inherit (app) type redirectUris postLogoutRedirectUris outputPath accessTokenType grantTypes;
         }) project.apps;
         roles = lib.mapAttrs (_: role: {
           inherit (role) displayName;
