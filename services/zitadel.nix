@@ -432,12 +432,21 @@ let
     cp ${cfg.privacyPolicy.content} $out/privacy-policy.html
   '';
 
+  userPasswordServices = lib.mapAttrsToList (
+    username: _: config.foundrix.services.secrets."zitadel-user-${username}-password".service
+  ) cfg.users;
+
   desiredState = builtins.toJSON {
     apiUrl = "http://${cfg.webDomain}:${toString cfg.port}";
     inherit patPath;
     adminOrg = cfg.adminOrg;
     adminUsername = cfg.admin.username;
     orgDomains = builtins.attrNames cfg.orgDomains;
+    users = lib.mapAttrsToList (username: user: {
+      inherit username;
+      inherit (user) displayName;
+      passwordPath = config.foundrix.services.secrets."zitadel-user-${username}-password".path;
+    }) cfg.users;
     privacyPolicyLink = if cfg.privacyPolicy.enable then cfg.privacyPolicy.link else null;
     instance = {
       passwordComplexity =
@@ -631,6 +640,40 @@ in
           operator out of the console.
         '';
         example = [ "IAM_END_USER_IMPERSONATOR" ];
+      };
+    };
+
+    users = lib.mkOption {
+      type = lib.types.attrsOf (
+        lib.types.submodule (
+          { name, ... }:
+          {
+            options.displayName = lib.mkOption {
+              type = lib.types.str;
+              default = name;
+              defaultText = "the attribute name";
+              description = "Display name shown for this user";
+            };
+          }
+        )
+      );
+      default = { };
+      description = ''
+        Human users to create in the admin organization, keyed by login name.
+
+        For accounts a deployment needs to exist in its own right rather than
+        because a person asked for one — a catch-all sink, for instance.
+        People get created by an operator, not declared here.
+
+        Each gets a generated password under /var/credentials, since an
+        account nobody can sign into is not much of an account. Created only
+        if absent: an existing user of the same name is left alone, password
+        included.
+      '';
+      example = {
+        void = {
+          displayName = "Catch-all";
+        };
       };
     };
 
@@ -854,7 +897,15 @@ in
         length = 24;
         symbols = true;
       };
-    };
+    }
+    // lib.mapAttrs' (
+      username: _:
+      lib.nameValuePair "zitadel-user-${username}-password" {
+        persistent = true;
+        length = 24;
+        symbols = true;
+      }
+    ) cfg.users;
 
     services.zitadel = {
       enable = true;
@@ -990,8 +1041,10 @@ in
 
     systemd.services.zitadel-configure = {
       description = "Apply declarative Zitadel configuration";
-      requires = [ "zitadel-ready.service" ];
-      after = [ "zitadel-ready.service" ];
+      # Each declared user's password is generated before it can be set on the
+      # account being created.
+      requires = [ "zitadel-ready.service" ] ++ userPasswordServices;
+      after = [ "zitadel-ready.service" ] ++ userPasswordServices;
 
       serviceConfig = {
         Type = "oneshot";

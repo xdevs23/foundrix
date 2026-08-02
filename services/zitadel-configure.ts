@@ -61,6 +61,7 @@ interface DesiredState {
   adminOrg: string;
   adminUsername: string;
   orgDomains: string[];
+  users: { username: string; displayName: string; passwordPath: string }[];
   policies: {
     domainPolicy: {
       userLoginMustBeDomain: boolean;
@@ -193,6 +194,28 @@ class ZitadelClient {
       {},
       orgId,
     );
+  }
+
+  async createHumanUser(
+    username: string,
+    displayName: string,
+    email: string,
+    password: string,
+  ): Promise<void> {
+    await this.request("POST", "/management/v1/users/human", {
+      userName: username,
+      profile: { firstName: displayName, lastName: displayName, displayName },
+      // Both of these are what keep the account out of "Initial" state: an
+      // account is sent an initialization email if its address is unverified
+      // OR no password is set. Nothing is going to click a confirmation link
+      // for an account the deployment created for itself — and worse, that
+      // mail is addressed to a mailbox that does not exist yet.
+      //
+      // The field is `initialPassword`; a plain `password` is ignored, which
+      // leaves the account passwordless and therefore Initial.
+      email: { email, isEmailVerified: true },
+      initialPassword: password,
+    });
   }
 
   async createOrg(name: string): Promise<string> {
@@ -1191,6 +1214,34 @@ async function convergeProjectRole(
   await client.addProjectRole(projectId, roleKey, displayName);
 }
 
+// Created once and then left alone: a password reset or a renamed display
+// name is the operator's to make, and re-imposing either on every deploy
+// would undo it.
+async function convergeUsers(
+  client: ZitadelClient,
+  users: DesiredState["users"],
+  adminOrg: string,
+): Promise<void> {
+  if (!users || users.length === 0) return;
+
+  const existing = await client.searchUsers();
+
+  for (const user of users) {
+    // The login name carries the org domain, and it is also the mailbox
+    // address, so the account is addressed the same way everywhere.
+    const loginName = `${user.username}@${adminOrg}`;
+
+    if (existing.some((u) => u.userName === user.username || u.userName === loginName)) {
+      console.log(`User already exists: ${user.username}`);
+      continue;
+    }
+
+    const password = (await Deno.readTextFile(user.passwordPath)).trim();
+    console.log(`Creating user: ${loginName}`);
+    await client.createHumanUser(user.username, user.displayName, loginName, password);
+  }
+}
+
 async function convergeUserGrant(
   client: ZitadelClient,
   projectId: string,
@@ -1467,6 +1518,7 @@ async function main(): Promise<void> {
   await convergeLoginPolicy(client, spec.policies.loginPolicy);
   await convergeSecurityPolicy(client, spec.policies.enableImpersonation);
   await convergeAdminIamRoles(client, spec.adminUsername, spec.adminIamRoles);
+  await convergeUsers(client, spec.users, spec.adminOrg);
 
   await convergeOrgDomain(client, spec.adminOrg);
   await convergeUserEmails(client, spec.adminOrg);
