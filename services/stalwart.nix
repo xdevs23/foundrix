@@ -342,7 +342,20 @@ in
               store = "db";
               endpoint.url = "https://${cfg.ssoDomain}/oidc/v1/userinfo";
               endpoint.method = "userinfo";
-              fields.email = "email";
+              # The mailbox address is the login name, not Zitadel's email
+              # field: that field is contact information an operator types by
+              # hand and may be anything at all, including an address at a
+              # domain this server does not own. A login name always carries
+              # the org domain where Zitadel is set to suffix it, so it IS the
+              # address — and machine users have one while carrying no email
+              # claim at all, which is why mapping the email field excluded
+              # them entirely.
+              #
+              # `fields.email` is required, not optional: omitting it fails the
+              # directory's parse ("Missing property"), so `zitadel` ceases to
+              # exist, `storage.directory` resolves to nothing, and every
+              # authentication is rejected.
+              fields.email = "preferred_username";
               fields.username = "preferred_username";
               fields.full-name = "name";
             };

@@ -595,16 +595,49 @@
   );
 
   // --- Stalwart API ---
+  //
+  // A 401 does not always mean a stale session: it also means the mail server
+  // refused this identity, which signing in again cannot fix. Re-authenticating
+  // on every 401 turns that into an endless reload which also destroys the
+  // error before it can be read — so it is attempted at most once per browser
+  // session, and a second failure is reported instead.
+  const REAUTH_KEY = "mail_account_reauth_attempted";
+
+  async function handleUnauthorized() {
+    // A failure while acting as someone else says nothing about the operator's
+    // own session; clearing it would sign them out over another account's
+    // problem.
+    if (activeUser) {
+      throw new Error(
+        `The mail server rejected ${activeUser.loginName}. Its address comes from the login name, ` +
+          `so check that the account has one at a domain this server accepts.`,
+      );
+    }
+
+    if (sessionStorage.getItem(REAUTH_KEY)) {
+      sessionStorage.removeItem(REAUTH_KEY);
+      throw new Error(
+        "The mail server rejected this account after a fresh sign-in, so the session is not the problem.",
+      );
+    }
+
+    sessionStorage.setItem(REAUTH_KEY, "1");
+    sessionStorage.removeItem(SESSION_KEY);
+    await startOIDCFlow();
+  }
+
   async function apiGet() {
     const resp = await fetch("/api/account/auth", {
       headers: { Authorization: `Bearer ${activeToken}` },
     });
     if (resp.status === 401) {
-      sessionStorage.removeItem(SESSION_KEY);
-      await startOIDCFlow();
+      await handleUnauthorized();
       return null;
     }
     if (!resp.ok) throw new Error(`API error: ${resp.status}`);
+    // Reaching the API proves the session is sound, so a later 401 gets its
+    // own single re-auth attempt rather than inheriting a spent one.
+    sessionStorage.removeItem(REAUTH_KEY);
     const json = await resp.json();
     return json.data;
   }
@@ -619,8 +652,7 @@
       body: JSON.stringify(requests),
     });
     if (resp.status === 401) {
-      sessionStorage.removeItem(SESSION_KEY);
-      await startOIDCFlow();
+      await handleUnauthorized();
       return;
     }
     if (!resp.ok) {
@@ -766,15 +798,15 @@
 
     const perOrg = await Promise.all(orgs.map(async (org) => {
       const resp = await zitadelPost("/management/v1/users/_search", { query: { limit: 100 } }, org.id);
+      // Machine users are offered too: the mailbox address comes from the
+      // login name, not from the email claim they lack.
       return (resp.result || [])
-        // Machine users carry no email claim, and Stalwart builds the mailbox
-        // address from it — they can never hold a mailbox, so they are not
-        // offered here at all.
-        .filter(u => !u.machine)
         .map(u => ({
           id: u.id,
           loginName: u.preferredLoginName || u.userName || "",
-          displayName: u.human?.profile?.displayName || u.userName || "",
+          displayName: u.human?.profile?.displayName
+            || u.machine?.name
+            || u.userName || "",
         }));
     }));
 
