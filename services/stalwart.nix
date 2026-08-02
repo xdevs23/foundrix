@@ -45,6 +45,8 @@ let
     # Registered and DKIM-signed like the others, but deliberately kept out of
     # the admin account's alias list: where their mail lands is runtime data.
     extraDomains = cfg.extraDomains;
+    catchAllUser = cfg.catchAllUser;
+    adminUsername = zitadelCfg.admin.username;
     publicUrl = "'https://${primaryDomain}'";
   };
 
@@ -210,6 +212,29 @@ in
       };
     };
 
+    catchAllUser = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = "void";
+      description = ''
+        Local part of the account that receives mail addressed to a name that
+        does not exist, for each domain in {option}`orgDomains`.
+
+        A domain needs a sink by construction, so which account that is counts
+        as structure rather than routing. It is created as an ordinary
+        individual with no password: it never signs in, it only receives.
+
+        Kept apart from the admin account deliberately. Unaddressed mail is
+        mostly junk, and mixing it into the mailbox that receives
+        `postmaster@` and `abuse@` — the addresses providers and reporting
+        systems use to tell you something is wrong — is how those go unread.
+
+        Set to null to leave the catch-all on the admin account instead.
+
+        {option}`extraDomains` are untouched: they hold no accounts, and
+        where their mail lands is configured in the admin interface.
+      '';
+    };
+
     caddy = {
       enable = lib.mkOption {
         type = lib.types.bool;
@@ -292,6 +317,14 @@ in
     # impersonation, and an impersonator role on the acting account. Missing
     # any one of them fails at a different layer with a different error, so
     # they are set together rather than left to be rediscovered.
+    # A real account, not a Stalwart-local principal: it is a mailbox like any
+    # other, so it can be signed into, hold app passwords and be read in a
+    # client. Creating it only inside Stalwart would put mail somewhere nobody
+    # can open.
+    foundrix.services.zitadel.users = lib.mkIf (cfg.catchAllUser != null) {
+      ${cfg.catchAllUser}.displayName = "Catch-all";
+    };
+
     foundrix.services.zitadel.policies.enableImpersonation =
       lib.mkIf cfg.selfService.adminProvisioning true;
     foundrix.services.zitadel.admin.iamRoles = lib.mkIf cfg.selfService.adminProvisioning [
