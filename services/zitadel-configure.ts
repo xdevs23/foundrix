@@ -59,6 +59,7 @@ interface DesiredState {
   apiUrl: string;
   patPath: string;
   adminOrg: string;
+  adminUsername: string;
   orgDomains: string[];
   policies: {
     domainPolicy: {
@@ -70,12 +71,14 @@ interface DesiredState {
       allowExternalIdp: boolean;
     };
     disallowPublicOrgRegistration: boolean;
+    enableImpersonation: boolean;
   };
   privacyPolicyLink: string | null;
   instance: InstanceSettings | null;
   orgs: Record<string, OrgSettings> | null;
   projects: Record<string, ProjectSpec>;
   actions: Record<string, ActionSpec>;
+  adminIamRoles: string[];
 }
 
 interface ProjectSpec {
@@ -235,6 +238,32 @@ class ZitadelClient {
 
   async updateDomainPolicy(policy: Record<string, unknown>): Promise<void> {
     await this.request("PUT", "/admin/v1/policies/domain", policy);
+  }
+
+  async getSecurityPolicy(): Promise<Record<string, unknown>> {
+    const resp = (await this.request("GET", "/admin/v1/policies/security")) as {
+      policy?: Record<string, unknown>;
+    };
+    return resp.policy ?? {};
+  }
+
+  async updateSecurityPolicy(policy: Record<string, unknown>): Promise<void> {
+    await this.request("PUT", "/admin/v1/policies/security", policy);
+  }
+
+  async searchIamMembers(): Promise<{ userId: string; roles: string[] }[]> {
+    const resp = (await this.request("POST", "/admin/v1/members/_search", {
+      query: { limit: 100 },
+    })) as { result?: { userId: string; roles?: string[] }[] };
+    return (resp.result ?? []).map((m) => ({ userId: m.userId, roles: m.roles ?? [] }));
+  }
+
+  async addIamMember(userId: string, roles: string[]): Promise<void> {
+    await this.request("POST", "/admin/v1/members", { userId, roles });
+  }
+
+  async updateIamMember(userId: string, roles: string[]): Promise<void> {
+    await this.request("PUT", `/admin/v1/members/${userId}`, { roles });
   }
 
   async getLoginPolicy(): Promise<Record<string, unknown>> {
@@ -797,6 +826,64 @@ async function convergeDomainPolicy(
     userLoginMustBeDomain: desired.userLoginMustBeDomain,
     validateOrgDomains: desired.validateOrgDomains,
   });
+}
+
+async function convergeSecurityPolicy(
+  client: ZitadelClient,
+  enableImpersonation: boolean,
+): Promise<void> {
+  const current = await client.getSecurityPolicy();
+
+  if ((current.enableImpersonation ?? false) === enableImpersonation) {
+    console.log("Security policy already converged");
+    return;
+  }
+
+  console.log(`Setting enableImpersonation=${enableImpersonation}`);
+  await client.updateSecurityPolicy({
+    // Sent alongside because the update replaces the policy wholesale;
+    // omitting them would silently clear whatever is configured.
+    enableIframeEmbedding: current.enableIframeEmbedding ?? false,
+    allowedOrigins: current.allowedOrigins ?? [],
+    enableImpersonation,
+  });
+}
+
+// Additive by construction. Zitadel's member update REPLACES the role list,
+// so the desired roles are unioned with what the account already holds —
+// writing them alone would strip IAM_OWNER from the operator's own account.
+async function convergeAdminIamRoles(
+  client: ZitadelClient,
+  adminUsername: string,
+  desiredRoles: string[],
+): Promise<void> {
+  if (desiredRoles.length === 0) return;
+
+  const users = await client.searchUsers();
+  const admin = users.find((u) => u.userName === adminUsername);
+  if (!admin) {
+    console.log(`Admin user "${adminUsername}" not found, skipping IAM roles`);
+    return;
+  }
+
+  const members = await client.searchIamMembers();
+  const existing = members.find((m) => m.userId === admin.id);
+
+  if (!existing) {
+    console.log(`Adding ${adminUsername} as IAM member: ${desiredRoles.join(", ")}`);
+    await client.addIamMember(admin.id, desiredRoles);
+    return;
+  }
+
+  const missing = desiredRoles.filter((r) => !existing.roles.includes(r));
+  if (missing.length === 0) {
+    console.log("Admin IAM roles already converged");
+    return;
+  }
+
+  const merged = [...existing.roles, ...missing];
+  console.log(`Adding IAM roles to ${adminUsername}: ${missing.join(", ")}`);
+  await client.updateIamMember(admin.id, merged);
 }
 
 async function convergeLoginPolicy(
@@ -1378,6 +1465,8 @@ async function main(): Promise<void> {
   await waitForApi(client);
   await convergeDomainPolicy(client, spec.policies.domainPolicy);
   await convergeLoginPolicy(client, spec.policies.loginPolicy);
+  await convergeSecurityPolicy(client, spec.policies.enableImpersonation);
+  await convergeAdminIamRoles(client, spec.adminUsername, spec.adminIamRoles);
 
   await convergeOrgDomain(client, spec.adminOrg);
   await convergeUserEmails(client, spec.adminOrg);

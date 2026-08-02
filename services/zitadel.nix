@@ -426,6 +426,7 @@ let
     apiUrl = "http://${cfg.webDomain}:${toString cfg.port}";
     inherit patPath;
     adminOrg = cfg.adminOrg;
+    adminUsername = cfg.admin.username;
     orgDomains = builtins.attrNames cfg.orgDomains;
     privacyPolicyLink =
       if cfg.privacyPolicy.enable then cfg.privacyPolicy.link
@@ -488,8 +489,9 @@ let
       loginPolicy = {
         inherit (cfg.policies.loginPolicy) allowRegister allowExternalIdp;
       };
-      inherit (cfg.policies) disallowPublicOrgRegistration;
+      inherit (cfg.policies) disallowPublicOrgRegistration enableImpersonation;
     };
+    adminIamRoles = cfg.admin.iamRoles;
     projects = lib.mapAttrs (
       _: project: {
         apps = lib.mapAttrs (_: app: {
@@ -563,9 +565,20 @@ in
 
     orgName = lib.mkOption {
       type = lib.types.str;
-      default = cfg.instanceName;
-      defaultText = "Same as instanceName";
-      description = "Default organization name";
+      default = cfg.adminOrg;
+      defaultText = "Same as adminOrg";
+      description = ''
+        Name of the bootstrap organization.
+
+        Named after its domain, like every other org: the configure script
+        creates additional orgs as `createOrg(domain)`, so defaulting this to
+        the instance name would leave the first org labelled on a different
+        principle from its siblings.
+
+        Only read when the instance is first created — Zitadel's FirstInstance
+        step runs against an empty database — so changing it renames nothing
+        on an existing deployment.
+      '';
     };
 
     admin = {
@@ -593,6 +606,21 @@ in
         default = "${cfg.admin.username}@${cfg.adminOrg}";
         defaultText = "<username>@<adminOrg>";
         description = "Admin user email address";
+      };
+
+      iamRoles = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [ ];
+        description = ''
+          Instance-level manager roles to ensure on the admin user, beyond the
+          IAM_OWNER it receives at first-instance setup.
+
+          Additive only: the configure script unions these with whatever roles
+          the account already holds. Zitadel's update call replaces the entire
+          role list, so writing these alone would strip IAM_OWNER and lock the
+          operator out of the console.
+        '';
+        example = [ "IAM_END_USER_IMPERSONATOR" ];
       };
     };
 
@@ -640,6 +668,20 @@ in
         type = lib.types.bool;
         default = true;
         description = "Disallow public organization registration";
+      };
+
+      enableImpersonation = lib.mkOption {
+        type = lib.types.bool;
+        default = false;
+        description = ''
+          Permit token exchange to issue a token for another user. Off by
+          default: it lets a suitably privileged account act as any end user,
+          so it should be turned on only where something concrete needs it.
+
+          Necessary but not sufficient — the acting user also needs an
+          `*_IMPERSONATOR` role (see {option}`admin.iamRoles`) and the client
+          needs the `token-exchange` grant.
+        '';
       };
     };
 
