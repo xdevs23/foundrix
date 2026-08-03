@@ -50,7 +50,24 @@ let
     publicUrl = "'https://${primaryDomain}'";
   };
 
-  configureScript = ./stalwart-configure.ts;
+  # One directory rather than two file references: the self-service API
+  # imports StalwartClient from the configure script, and a relative import
+  # only resolves when both files share a store path.
+  tsScripts = pkgs.runCommand "stalwart-scripts" { } ''
+    install -D -m 444 ${./stalwart-configure.ts} $out/stalwart-configure.ts
+    install -D -m 444 ${./stalwart-self-service-api.ts} $out/stalwart-self-service-api.ts
+  '';
+  configureScript = "${tsScripts}/stalwart-configure.ts";
+
+  selfServiceApiSpec = pkgs.writeText "stalwart-self-service-api.json" (
+    builtins.toJSON {
+      stalwartUrl = "http://127.0.0.1:${toString cfg.httpPort}";
+      issuer = "https://${cfg.ssoDomain}";
+      adminRole = cfg.zitadel.adminRoleKey;
+      addressDomains = allAddressDomains;
+      port = cfg.selfService.apiPort;
+    }
+  );
 in
 {
   imports = [
@@ -268,6 +285,17 @@ in
         impersonator role, so it is off by default: it lets that account act
         as any end user
       '';
+
+      apiPort = lib.mkOption {
+        type = lib.types.port;
+        default = 8981;
+        description = ''
+          Internal port for the privileged self-service API. It manages
+          account addresses on behalf of admins — the admin web UI cannot be
+          used for that, because saving a principal there deletes the
+          account's app passwords (fixed upstream only in Stalwart 0.16).
+        '';
+      };
     };
 
     configureService = lib.mkOption {
@@ -514,6 +542,30 @@ in
       };
     };
 
+    # Address management for the self-service page. Deliberately not part of
+    # stalwart-configure: that converges once at deploy, while this answers
+    # interactive requests — and it is the only holder of the fallback-admin
+    # credential that is reachable (indirectly, through Caddy) from a browser.
+    systemd.services.stalwart-self-service-api =
+      lib.mkIf (cfg.selfService.enable && cfg.selfService.adminProvisioning)
+        {
+          description = "Privileged address management for the mail self-service page";
+          wants = [ "stalwart.service" ];
+          after = [ "stalwart.service" ];
+          wantedBy = [ "multi-user.target" ];
+
+          serviceConfig = {
+            ExecStart = "${lib.getExe pkgs.deno} run --allow-read --allow-net --allow-env=CREDENTIALS_DIRECTORY ${tsScripts}/stalwart-self-service-api.ts ${selfServiceApiSpec}";
+            DynamicUser = true;
+            LoadCredential = [ "admin-password:${adminPasswordPath}" ];
+            # Deno insists on a writable cache directory for its transpiled
+            # modules; with DynamicUser there is no home to put it in.
+            Environment = [ "DENO_DIR=%T/deno-cache" ];
+            Restart = "on-failure";
+            RestartSec = "5s";
+          };
+        };
+
     # ── oauth2-proxy (OIDC authentication gate for admin) ────────────────
 
     services.oauth2-proxy = {
@@ -641,7 +693,9 @@ in
         # The protocol surface a mail client reaches. Every mail hostname
         # serves it, because a client that found the host through an MX record
         # or an autoconfig lookup may address any of them.
-        apiPaths = "/.well-known/* /auth/* /authorize/* /jmap/* /jmap /mail/* /autodiscover/*";
+        # /dav carries CalDAV/CardDAV: the .well-known discovery endpoints
+        # redirect clients there, so it has to be part of the same surface.
+        apiPaths = "/.well-known/* /auth/* /authorize/* /jmap/* /jmap /mail/* /dav/* /autodiscover/*";
 
         acmeChallenge = ''
           handle /.well-known/acme-challenge/* {
@@ -717,6 +771,14 @@ in
                 handle /self-service-config.json {
                   header Content-Type "application/json"
                   respond `{"clientId":"{$MAIL_SELF_SERVICE_CLIENT_ID}","issuer":"https://${cfg.ssoDomain}","adminRole":"${cfg.zitadel.adminRoleKey}","orgDomains":${builtins.toJSON cfg.orgDomains},"adminProvisioning":${lib.boolToString cfg.selfService.adminProvisioning}}`
+                }
+              ''}
+
+              ${lib.optionalString (cfg.selfService.enable && cfg.selfService.adminProvisioning) ''
+                # Before the static /self-service* handler, which would
+                # otherwise swallow the path into index.html.
+                handle /self-service/api/* {
+                  reverse_proxy 127.0.0.1:${toString cfg.selfService.apiPort}
                 }
               ''}
 

@@ -18,7 +18,7 @@ interface DesiredState {
   publicUrl: string;
 }
 
-interface Principal {
+export interface Principal {
   id: number;
   name: string;
   type: string;
@@ -26,7 +26,7 @@ interface Principal {
   description?: string;
 }
 
-class StalwartClient {
+export class StalwartClient {
   private auth: string;
 
   constructor(
@@ -399,4 +399,8 @@ async function main(): Promise<void> {
   console.log("Stalwart configuration complete");
 }
 
-main();
+// Guarded so the self-service API server can import StalwartClient without
+// this file trying to converge anything.
+if (import.meta.main) {
+  main();
+}
