@@ -695,7 +695,9 @@ in
         # or an autoconfig lookup may address any of them.
         # /dav carries CalDAV/CardDAV: the .well-known discovery endpoints
         # redirect clients there, so it has to be part of the same surface.
-        apiPaths = "/.well-known/* /auth/* /authorize/* /jmap/* /jmap /mail/* /dav/* /autodiscover/*";
+        # Bare and wildcard both, like /jmap: a path matcher on /dav/* lets
+        # PROPFIND /dav fall through to the sign-in redirect.
+        apiPaths = "/.well-known/* /auth/* /authorize/* /jmap/* /jmap /mail/* /dav/* /dav /autodiscover/*";
 
         acmeChallenge = ''
           handle /.well-known/acme-challenge/* {
@@ -752,8 +754,16 @@ in
               header @allowed_origin Access-Control-Allow-Methods "GET, POST, OPTIONS"
               header @allowed_origin Access-Control-Allow-Headers "Authorization, Content-Type"
               header @allowed_origin Access-Control-Max-Age 86400
-              @options method OPTIONS
-              respond @options 204
+              # Only genuine CORS preflights, which always carry this header.
+              # A bare `method OPTIONS` matcher also swallowed the OPTIONS
+              # probe DAV clients use for capability discovery, answering it
+              # without the DAV: header Stalwart would have sent — and DAVx5
+              # read that as "no CalDAV/CardDAV service here".
+              @preflight {
+                method OPTIONS
+                header Access-Control-Request-Method *
+              }
+              respond @preflight 204
               reverse_proxy 127.0.0.1:${toString cfg.httpPort}
             }
 
