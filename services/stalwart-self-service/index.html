@@ -474,12 +474,14 @@
 
   function generatePassword() {
     const charset = "abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ123456789";
+    // The two trailing timestamp digits are part of the length.
+    const randomLength = 30;
     const limit = 256 - (256 % charset.length);
     const chars = [];
-    while (chars.length < 24) {
+    while (chars.length < randomLength) {
       for (const b of randomBytes(32)) {
         if (b < limit) chars.push(charset[b % charset.length]);
-        if (chars.length === 24) break;
+        if (chars.length === randomLength) break;
       }
     }
     const ts = String(Date.now()).slice(-2);

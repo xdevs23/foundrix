@@ -218,6 +218,12 @@ class ZitadelClient {
     });
   }
 
+  // Renaming invalidates the account's active tokens and sessions, which is
+  // why this is only ever done to accounts the deployment declares itself.
+  async updateUserName(userId: string, userName: string): Promise<void> {
+    await this.request("PUT", `/v2/users/human/${userId}`, { username: userName });
+  }
+
   async createOrg(name: string): Promise<string> {
     // AddOrg lives in the management API; POST /admin/v1/orgs does not
     // exist (admin v1 only offers the deprecated _setup combo).
@@ -272,6 +278,19 @@ class ZitadelClient {
 
   async updateSecurityPolicy(policy: Record<string, unknown>): Promise<void> {
     await this.request("PUT", "/admin/v1/policies/security", policy);
+  }
+
+  async getInstanceFeatures(): Promise<Record<string, { enabled?: boolean }>> {
+    return (await this.request("GET", "/v2/features/instance")) as Record<
+      string,
+      { enabled?: boolean }
+    >;
+  }
+
+  // Only the fields present are touched, so this never disturbs features it
+  // does not name.
+  async setInstanceFeatures(features: Record<string, boolean>): Promise<void> {
+    await this.request("PUT", "/v2/features/instance", features);
   }
 
   async searchIamMembers(): Promise<{ userId: string; roles: string[] }[]> {
@@ -872,6 +891,27 @@ async function convergeSecurityPolicy(
   });
 }
 
+// Token exchange is still a beta feature, off by default, and gated
+// separately from the security policy above: with the policy set, the
+// impersonator role granted and the grant type on the app, the exchange
+// still fails with Errors.TokenExchange.FeatureDisabled until this flag is
+// on. Three places already had to agree; this is the fourth.
+async function convergeTokenExchangeFeature(
+  client: ZitadelClient,
+  enabled: boolean,
+): Promise<void> {
+  if (!enabled) return;
+
+  const current = await client.getInstanceFeatures();
+  if (current.oidcTokenExchange?.enabled === true) {
+    console.log("Token exchange feature already enabled");
+    return;
+  }
+
+  console.log("Enabling the token exchange instance feature");
+  await client.setInstanceFeatures({ oidcTokenExchange: true });
+}
+
 // Additive by construction. Zitadel's member update REPLACES the role list,
 // so the desired roles are unioned with what the account already holds —
 // writing them alone would strip IAM_OWNER from the operator's own account.
@@ -1228,17 +1268,33 @@ async function convergeUsers(
 
   for (const user of users) {
     // The login name carries the org domain, and it is also the mailbox
-    // address, so the account is addressed the same way everywhere.
+    // address, so the account is addressed the same way everywhere. It is
+    // the username itself, not just the email: Stalwart's OIDC directory
+    // keys principals by `preferred_username`, so a bare one would name the
+    // principal `void` while everything else addresses `void@domain` — two
+    // principals, and the catch-all mail in the one nobody opens.
     const loginName = `${user.username}@${adminOrg}`;
 
-    if (existing.some((u) => u.userName === user.username || u.userName === loginName)) {
-      console.log(`User already exists: ${user.username}`);
+    const current = existing.find(
+      (u) => u.userName === user.username || u.userName === loginName,
+    );
+
+    if (current) {
+      // Heals accounts created before the above was true. Only ever applied
+      // to accounts this deployment declares — a person's login name is
+      // theirs, but this sink account only works when it matches.
+      if (current.userName !== loginName) {
+        console.log(`Renaming ${current.userName} to ${loginName}`);
+        await client.updateUserName(current.id, loginName);
+      } else {
+        console.log(`User already exists: ${loginName}`);
+      }
       continue;
     }
 
     const password = (await Deno.readTextFile(user.passwordPath)).trim();
     console.log(`Creating user: ${loginName}`);
-    await client.createHumanUser(user.username, user.displayName, loginName, password);
+    await client.createHumanUser(loginName, user.displayName, loginName, password);
   }
 }
 
@@ -1249,9 +1305,19 @@ async function convergeUserGrant(
   roleKeys: string[],
 ): Promise<void> {
   const users = await client.searchUsers();
-  const user = users.find((u) => u.userName === userName);
+  // Both spellings: an account's username may or may not carry the org
+  // domain depending on when and how it was created, and matching only the
+  // bare form silently granted nothing — leaving the admin without the role
+  // the self-service page gates its admin section on.
+  const user = users.find(
+    (u) => u.userName === userName || u.userName.split("@")[0] === userName,
+  );
   if (!user) {
-    console.log(`User "${userName}" not found, skipping grant`);
+    // Loud, because everything downstream of the grant then fails in ways
+    // that look like something else entirely.
+    console.error(
+      `WARNING: no user matching "${userName}" — roles ${roleKeys.join(", ")} were NOT granted`,
+    );
     return;
   }
 
@@ -1517,6 +1583,7 @@ async function main(): Promise<void> {
   await convergeDomainPolicy(client, spec.policies.domainPolicy);
   await convergeLoginPolicy(client, spec.policies.loginPolicy);
   await convergeSecurityPolicy(client, spec.policies.enableImpersonation);
+  await convergeTokenExchangeFeature(client, spec.policies.enableImpersonation);
   await convergeAdminIamRoles(client, spec.adminUsername, spec.adminIamRoles);
   await convergeUsers(client, spec.users, spec.adminOrg);
 

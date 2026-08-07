@@ -24,7 +24,17 @@ export interface Principal {
   type: string;
   emails?: string[];
   description?: string;
+  roles?: string[];
 }
+
+// Stalwart attaches its default `user` role only to principals it creates
+// itself when an account first authenticates. One deployed through the
+// management API is created with exactly the roles it was given — so
+// without this it holds none at all, and none means no permissions: no
+// authenticating, no receiving mail, and a 403 from every self-service
+// call. An account that signs in later binds to the principal as it stands,
+// so the gap does not heal on its own.
+const DEFAULT_ROLE = "user";
 
 export class StalwartClient {
   private auth: string;
@@ -251,21 +261,29 @@ async function convergeAccount(
       name,
       emails: desiredEmails,
       description,
+      roles: [DEFAULT_ROLE],
     });
     return;
   }
 
-  const missing = desiredEmails.filter((e) => !(account.emails ?? []).includes(e));
-  if (missing.length === 0) {
+  const updates = desiredEmails
+    .filter((e) => !(account.emails ?? []).includes(e))
+    .map((e) => ({ action: "addItem", field: "emails", value: e }));
+
+  // Heals accounts deployed before the role was set above.
+  if (!(account.roles ?? []).includes(DEFAULT_ROLE)) {
+    updates.push({ action: "addItem", field: "roles", value: DEFAULT_ROLE });
+  }
+
+  if (updates.length === 0) {
     console.log(`Account already converged: ${name}`);
     return;
   }
 
-  console.log(`Adding to ${name}: ${missing.join(", ")}`);
-  await client.updatePrincipal(
-    name,
-    missing.map((e) => ({ action: "addItem", field: "emails", value: e })),
+  console.log(
+    `Updating ${name}: ${updates.map((u) => `${u.field}+=${u.value}`).join(", ")}`,
   );
+  await client.updatePrincipal(name, updates);
 }
 
 async function removeAddresses(
