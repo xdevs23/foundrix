@@ -19,9 +19,19 @@ in
   imports = [
     "${modulesPath}/profiles/qemu-guest.nix"
     foundrixModules.config.image.boot.systemd-boot-bios
+    foundrixModules.config.runtime.repart.main
   ];
 
   services.cloud-init.enable = false;
+
+  # The OS disk is /dev/sda on Hetzner Cloud. Growing the main partition to
+  # the disk's size is boot-time work (see runtime/repart/main.nix) — the
+  # online-resize service below only reacts to disks that change size while
+  # the system runs, which the OS disk never does. Read-only store layouts
+  # have no main partition to grow, so they opt out by trait.
+  foundrix.config.runtime.repart.main.disk = lib.mkDefault (
+    if (config.foundrix.traits.filesystem.readOnlyStore or null) == true then null else "/dev/sda"
+  );
 
   # Online disk resize: detect capacity changes and grow filesystem
   services.udev.extraRules = lib.mkIf repartResize ''
