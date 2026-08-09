@@ -20,6 +20,19 @@ use serde::{Deserialize, Serialize};
 
 pub const SOCKET_PATH: &str = "/run/operator-secrets/sock";
 
+/// Control socket of an edit session — the daemon run on demand on a
+/// running host to re-enter a secret that is already stored.
+///
+/// Deliberately not the boot socket, and deliberately in a directory of
+/// its own: a boot that is still parked owns that socket and that
+/// breadcrumb file, and an edit must not be able to take either from it.
+pub const EDIT_SOCKET_PATH: &str = "/run/operator-secrets-edit/sock";
+
+/// Unit an edit session runs as, started by the TUI when the operator asks
+/// to edit. Neither side can discover this from the other, so the NixOS
+/// module names its unit to match this constant.
+pub const EDIT_UNIT: &str = "operator-secrets-edit.service";
+
 /// Breadcrumb file carrying the current message line, for
 /// `ssh host 'cat …'` scripting and for a client that connects after the
 /// daemon is gone. It sits beside the socket so that pointing either
@@ -229,6 +242,11 @@ pub struct Snapshot {
     pub prompt: Option<Prompt>,
     /// Set once every secret is satisfied and the daemon is exiting 0.
     pub done: bool,
+    /// An edit session is waiting for the operator to choose which secret
+    /// to re-enter. Never set during a boot, where the daemon decides what
+    /// needs answering and the operator only answers it.
+    #[serde(default)]
+    pub choosing: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -239,6 +257,10 @@ pub enum ClientMsg {
         prompt_id: u64,
         values: Vec<(String, String)>,
     },
+    /// Re-enter `secret`, which is already stored and would otherwise be
+    /// left alone. Honoured only by an edit session, and only while it is
+    /// waiting for a choice — a boot decides for itself what to ask.
+    Edit { secret: String },
 }
 
 /// Debug is written by hand, not derived, for every type that holds an
@@ -251,13 +273,18 @@ pub enum ClientMsg {
 /// useful, and they are already public in the nix store.
 impl std::fmt::Debug for ClientMsg {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let Self::Submit { prompt_id, values } = self;
-        let names: Vec<&str> = values.iter().map(|(k, _)| k.as_str()).collect();
-        f.debug_struct("Submit")
-            .field("prompt_id", prompt_id)
-            .field("fields", &names)
-            .field("values", &"<redacted>")
-            .finish()
+        match self {
+            Self::Submit { prompt_id, values } => {
+                let names: Vec<&str> = values.iter().map(|(k, _)| k.as_str()).collect();
+                f.debug_struct("Submit")
+                    .field("prompt_id", prompt_id)
+                    .field("fields", &names)
+                    .field("values", &"<redacted>")
+                    .finish()
+            }
+            // A secret NAME, which is already public in the nix store.
+            Self::Edit { secret } => f.debug_struct("Edit").field("secret", secret).finish(),
+        }
     }
 }
 
@@ -965,8 +992,32 @@ mod tests {
             }],
             prompt: None,
             done: false,
+            choosing: false,
         };
         let back: Snapshot = serde_json::from_str(&serde_json::to_string(&s).unwrap()).unwrap();
         assert_eq!(back.secrets[0].state, SecretState::NeedsInput);
+    }
+
+    /// A client and a daemon can be different builds across an upgrade —
+    /// the TUI is a system package, the daemon a running process. A
+    /// snapshot from before `choosing` existed must still parse, as "not
+    /// an edit session", which is what a boot always is.
+    #[test]
+    fn snapshot_without_choosing_parses_as_not_choosing() {
+        let old = r#"{"phase":"check","message":"m","blocked":false,"secrets":[],"prompt":null,"done":false}"#;
+        let snap: Snapshot = serde_json::from_str(old).unwrap();
+        assert!(!snap.choosing);
+    }
+
+    /// The picker names a secret, never a value, so its Debug may print
+    /// the name — but the redaction rule is worth pinning against a future
+    /// variant that carries more than that.
+    #[test]
+    fn edit_debug_shows_only_the_name() {
+        let msg = ClientMsg::Edit {
+            secret: "backup-smb".into(),
+        };
+        let rendered = format!("{msg:?}");
+        assert!(rendered.contains("backup-smb"), "{rendered}");
     }
 }

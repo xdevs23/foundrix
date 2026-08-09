@@ -54,6 +54,13 @@ struct Cli {
     /// stays parked meanwhile; nothing is written or discarded.
     #[arg(long, default_value_t = 30)]
     retry_interval_secs: u64,
+
+    /// Edit session: instead of bringing every secret to the satisfied
+    /// state, publish what is stored and wait for the operator to pick one
+    /// to re-enter. Nothing is blocking on this run, so a secret that is
+    /// already stored is left exactly as it is unless it is chosen.
+    #[arg(long)]
+    edit: bool,
 }
 
 // --- UI hub -----------------------------------------------------------------
@@ -156,7 +163,24 @@ impl Ui {
             match msg {
                 Some(ClientMsg::Submit { prompt_id, values }) if prompt_id == id => return values,
                 // Stale answer to an older prompt (a client that had not
-                // yet seen the new one): ignore.
+                // yet seen the new one), or a choice arriving while a form
+                // is already up: ignore.
+                Some(_) => continue,
+                None => tokio::time::sleep(Duration::from_millis(100)).await,
+            }
+        }
+    }
+
+    /// Wait for an edit session's operator to choose a secret.
+    async fn wait_for_choice(&self) -> String {
+        loop {
+            let msg = {
+                let mut rx = self.submissions.lock().unwrap();
+                rx.try_recv().ok()
+            };
+            match msg {
+                Some(ClientMsg::Edit { secret }) => return secret,
+                // A form answer with no form up: nothing to apply it to.
                 Some(_) => continue,
                 None => tokio::time::sleep(Duration::from_millis(100)).await,
             }
@@ -482,7 +506,7 @@ async fn satisfy(
 
     let mut known: BTreeMap<String, String> = BTreeMap::new();
     // Assigned by every branch below that does not return.
-    let mut reason;
+    let reason;
 
     match classify_stored(spec, stored.as_ref()) {
         StoredState::Absent => {
@@ -547,7 +571,24 @@ async fn satisfy(
         }
     }
 
-    // --- prompt loop ---
+    prompt_until_accepted(ui, spec, ids, known, reason, timeout, retry).await
+}
+
+/// Ask until an answer is accepted, then write it. Shared by the boot flow
+/// above and by an edit session, so a credential entered on a running host
+/// goes through exactly the same validation, ordering, ownership and
+/// atomic write as one entered at first boot.
+///
+/// `known` pre-fills the non-sensitive fields; `reason` says why we ask.
+async fn prompt_until_accepted(
+    ui: &Ui,
+    spec: &SecretSpec,
+    ids: &Ids,
+    mut known: BTreeMap<String, String>,
+    mut reason: String,
+    timeout: Duration,
+    retry: Duration,
+) -> Result<()> {
     loop {
         ui.set_secret(&spec.name, SecretState::NeedsInput, reason.clone());
         let values = ui.ask(spec, &reason, &known).await;
@@ -580,6 +621,92 @@ async fn satisfy(
             ValidatorStatus::Error => unreachable!("validate_until_decided never returns error"),
         }
     }
+}
+
+/// One edit session on a running host: publish what is stored, wait for
+/// the operator to choose a secret, re-enter it, exit.
+///
+/// The stored secrets are classified but deliberately NOT validated on the
+/// way in. A validator that cannot decide parks a boot on purpose, and
+/// repeating that here would hang an interactive command on a third party
+/// being reachable — for secrets the operator has not even asked to touch.
+/// The one that IS chosen is validated exactly as at first boot, on the
+/// answer that is entered.
+///
+/// One secret per session: the daemon exits once an edit is accepted, so
+/// the socket does not sit open on a running host waiting for whatever
+/// comes next.
+async fn edit_session(
+    ui: &Ui,
+    spec: &Spec,
+    ids: &[Ids],
+    timeout: Duration,
+    retry: Duration,
+) -> Result<()> {
+    for s in &spec.secrets {
+        let stored = std::fs::read_to_string(&s.path)
+            .ok()
+            .map(|text| parse_env_file(&text));
+        // Satisfied here means "stored", not "proven" — see above. The
+        // detail says so, since nothing was re-checked.
+        let (state, detail) = match classify_stored(s, stored.as_ref()) {
+            StoredState::Absent => (SecretState::NeedsInput, "not stored yet".to_string()),
+            StoredState::Incomplete { reason, .. } => (SecretState::NeedsInput, reason),
+            StoredState::Complete(_) => (SecretState::Satisfied, format!("stored in {}", s.path)),
+        };
+        ui.set_secret(&s.name, state, detail);
+    }
+
+    ui.mutate(|s| s.choosing = true);
+    ui.state("choose", "select the secret to re-enter");
+
+    let chosen = ui.wait_for_choice().await;
+    ui.mutate(|s| s.choosing = false);
+
+    let Some((secret, secret_ids)) = spec
+        .secrets
+        .iter()
+        .zip(ids)
+        .find(|(s, _)| s.name == chosen)
+    else {
+        // A client naming something this host does not declare. Nothing
+        // was touched, and saying so beats guessing at what was meant.
+        bail!("no secret named {chosen} on this host");
+    };
+
+    // Pre-fill what the operator would otherwise retype. Sensitive fields
+    // are never pre-filled — a snapshot reaches every connected client,
+    // and a value that leaves this process has left it for good.
+    let stored = std::fs::read_to_string(&secret.path)
+        .ok()
+        .map(|text| parse_env_file(&text))
+        .unwrap_or_default();
+    let known: BTreeMap<String, String> = secret
+        .fields
+        .iter()
+        .filter(|f| !f.sensitive)
+        .filter_map(|f| stored.get(&f.name).map(|v| (f.name.clone(), v.clone())))
+        .collect();
+
+    ui.state("prompt", format!("{}: re-entering", secret.name));
+    prompt_until_accepted(
+        ui,
+        secret,
+        secret_ids,
+        known,
+        "re-entering at the operator's request".into(),
+        timeout,
+        retry,
+    )
+    .await?;
+
+    ui.mutate(|s| {
+        s.done = true;
+        s.blocked = false;
+        s.prompt = None;
+    });
+    ui.state("done", format!("{} updated", secret.name));
+    Ok(())
 }
 
 // --- socket directory -------------------------------------------------------
@@ -751,6 +878,14 @@ async fn run(cli: Cli) -> Result<()> {
 
     let timeout = Duration::from_secs(cli.validator_timeout_secs);
     let retry = Duration::from_secs(cli.retry_interval_secs);
+
+    if cli.edit {
+        // Nothing is waiting on this run, so it ends when the edit does.
+        let result = edit_session(ui, &spec, &ids, timeout, retry).await;
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        let _ = std::fs::remove_file(&cli.socket);
+        return result;
+    }
 
     // ONE operator session for everything outstanding: the operator sees
     // the whole list and answers it in one sitting, rather than meeting a

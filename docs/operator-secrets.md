@@ -162,6 +162,40 @@ A validator that cannot reach its dependency (SSO down, no network yet) is
 **not** treated as invalid: rewriting a good secret because the network was
 late would be worse than waiting. It blocks and says so.
 
+## Editing a stored secret
+
+The daemon only ever asks for what is missing, and its socket goes away with
+the boot that collected on it. To rotate a password or move a service to a
+different host afterwards:
+
+```
+operator-secrets-tui --edit              # pick from what this host declares
+operator-secrets-tui --edit backup-smb   # go straight to one
+```
+
+That starts `operator-secrets-edit.service` — the same daemon with `--edit`,
+on a socket of its own so it can never take the boot collector's — and
+attaches to it. The answer goes through the same validation, ownership and
+atomic write as one entered at first boot, and the stored file is untouched
+until a new answer has been accepted. One secret per session; the session
+exits when the edit does, and expires by itself if it is abandoned.
+
+Root only, like everything else here: anyone who can reach the socket decides
+which credential the host trusts.
+
+Two deliberate asymmetries with the boot flow:
+
+- The secrets listed in the picker are classified but **not** validated. An
+  unreachable validator parks a boot on purpose; hanging an interactive
+  command on a third party being reachable — for secrets the operator has not
+  even asked to touch — has nothing to park for. The one that is chosen is
+  validated normally, on the answer that is entered.
+- Nothing is restarted afterwards. A consumer that must react to a changed
+  credential watches its own file (`services/backup/smb.nix` is the worked
+  example, with a `.path` unit that re-applies the destination). Reusing
+  `requiredBy` as a restart list would overload it: it means "must not start
+  before this exists", not "restart when this changes".
+
 ## Boot ordering
 
 The daemon is `Before=multi-user.target` **and

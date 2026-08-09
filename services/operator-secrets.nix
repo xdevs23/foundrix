@@ -227,6 +227,20 @@ in
       '';
     };
 
+    editSocket = lib.mkOption {
+      type = lib.types.str;
+      default = "/run/operator-secrets-edit/sock";
+      description = ''
+        Control socket of an edit session — the on-demand run that lets an
+        operator re-enter a secret the host already stores. Deliberately
+        not `socket`: a boot that is still parked owns that one, and an
+        edit must not be able to take it, or its breadcrumb file, away.
+
+        Must match `operator_secrets::EDIT_SOCKET_PATH`, which is what
+        `operator-secrets-tui --edit` connects to.
+      '';
+    };
+
     validatorTimeout = lib.mkOption {
       type = lib.types.ints.positive;
       default = 60;
@@ -397,6 +411,45 @@ in
         TTYPath = "/dev/console";
         TTYReset = true;
         TTYVHangup = true;
+      };
+    };
+
+    # Re-entering a secret on a running host. The daemon above only ever
+    # asks for what is missing, so a stored secret is otherwise unreachable
+    # once the boot it collected on is over: the socket is gone with it.
+    #
+    # Started by `operator-secrets-tui --edit`, which then attaches — the
+    # unit exists so the session's log lines land in the journal, where a
+    # credential change stays on the record, instead of being interleaved
+    # into the screen the operator is typing on. It is not wanted by
+    # anything: nothing starts it but an operator asking.
+    systemd.services.operator-secrets-edit = {
+      # Named to match operator_secrets::EDIT_UNIT, which is what the TUI
+      # starts. Neither side can derive the other's name.
+      description = "Re-enter an operator-provided secret";
+      # A boot that is still parked owns the collector and is the right
+      # screen to be on; this waits rather than competing with it.
+      after = [ cfg.service ];
+      serviceConfig = {
+        Type = "simple";
+        # An operator who walks away must not leave a session holding the
+        # socket. Nothing is written until an answer is accepted, so an
+        # abandoned edit expires having changed nothing.
+        RuntimeMaxSec = "15min";
+        ExecStart = lib.escapeShellArgs [
+          (lib.getExe operatorSecrets)
+          "--spec"
+          "${specFile}"
+          "--socket"
+          cfg.editSocket
+          "--validator-timeout-secs"
+          (toString cfg.validatorTimeout)
+          "--retry-interval-secs"
+          (toString cfg.retryInterval)
+          "--edit"
+        ];
+        StandardOutput = "journal";
+        StandardError = "journal";
       };
     };
   };

@@ -92,8 +92,8 @@ starts `backup-smb-apply`, which reloads systemd — re-running the generator,
 which now writes the share mount unit — and on success starts
 `backup-smb-mounts.target`, which activates both automounts.
 
-**A changed answer.** `backup-smb-configure.path` sees the secret change and
-starts the same chain. `backup-smb-apply` declares `Conflicts=` on the four
+**A changed answer** (`operator-secrets-tui --edit backup-smb`).
+`backup-smb-configure.path` sees the secret change and starts the same chain. `backup-smb-apply` declares `Conflicts=` on the four
 mount units, so starting it is what tears the old mounts down.
 
 **A run.** The timer starts `btrbk-backup`, which pulls in the destination
