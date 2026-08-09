@@ -17,6 +17,10 @@ and destination modules that register themselves with it.
   `foundrix.services.backup.btrfs`.
 - **`services/backup/smb.nix`** — an SMB/CIFS share as a destination. Options
   live under `foundrix.services.backup.smb`.
+- **`services/backup/postgres.nix`** — optional. Dumps databases into the
+  subvolume before each run, so the backup carries a restorable logical copy
+  and not only a crash-consistent data directory. Options live under
+  `foundrix.services.backup.postgres`.
 
 Enabling a destination is enough; the source side switches itself on as soon as
 one is registered.
@@ -118,6 +122,19 @@ restore overwrites it wholesale. Restoring means booting something that does
 not mount `/var`, attaching the pool at its top level, and receiving the chosen
 snapshot back into it.
 
+Database dumps ride inside the snapshot, at
+`foundrix.services.backup.postgres.directory`. They are in PostgreSQL's custom
+format and keep their ownership and ACL information, so the restore decides
+what to do with it:
+
+```
+pg_restore --no-owner --no-acl -d <database> <database>.dump
+```
+
+`--no-owner --no-acl` is what a restore into a fresh cluster needs, since the
+roles the dump refers to do not exist there yet. Drop those flags when
+restoring into a cluster that already has them.
+
 ## Decisions, and what was rejected
 
 **A systemd generator writes the one unit that cannot be static.** Which server
@@ -151,6 +168,15 @@ a unit file, a process listing or the journal.
 - *Rejected: the generator reading the secret itself.* It would have to parse
   env-file syntax in shell, in a context that runs on every daemon reload, and
   the password would pass through a shell for no reason.
+
+**The answer is not proven against the server by default**
+(`validateCredentials`). The collector re-validates a stored secret on every
+boot, and a validator that cannot decide — an unreachable server, for
+instance — parks the boot and keeps retrying. Proving the credential would
+therefore make the host's availability depend on the backup server's, for a
+credential nothing on the host needs in order to run. Turned on, a mistyped
+password is caught while the operator is still there; left off, it surfaces at
+the first run.
 
 **Both mounts are automounts with an idle timeout.** An unreachable server
 costs nothing between backups, boot is never held up, and nothing can fill or

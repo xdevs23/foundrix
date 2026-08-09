@@ -223,10 +223,10 @@ let
     '';
   };
 
-  # Proving the credentials at collection time is worth the round trip:
-  # accepting them on presence alone takes a mistyped password happily, and the
-  # operator finds out at the first unattended run, days later, with nothing
-  # backed up in between.
+  # Off by default, and `validateCredentials` explains why. When it is on, this
+  # is what proves the answer: accepting it on presence alone takes a mistyped
+  # password happily, and the operator finds out at the first unattended run,
+  # days later, with nothing backed up in between.
   credentialsValidator = pkgs.writeShellApplication {
     name = "backup-smb-validate";
     runtimeInputs = with pkgs; [
@@ -294,6 +294,27 @@ in
       };
     };
 
+    validateCredentials = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Whether the collected answer must be proven against the server before
+        it is accepted, by listing the share with it.
+
+        Off by default, because the proof is repeated on every later boot and
+        not only at collection time. A server that cannot be reached leaves the
+        collector unable to decide, and an undecided secret parks the boot and
+        keeps retrying — so turning this on makes the host's availability
+        depend on the backup server's, for a credential nothing on the host
+        needs in order to run.
+
+        Turn it on where the backup server is as dependable as the host, and
+        catching a mistyped password at collection time is worth more than
+        booting without it. Left off, a wrong password surfaces at the first
+        run instead.
+      '';
+    };
+
     idleTimeout = lib.mkOption {
       type = lib.types.str;
       default = "5min";
@@ -347,7 +368,9 @@ in
           sensitive = true;
         };
       };
-      validateCommand = [ (lib.getExe credentialsValidator) ];
+      # Absent unless asked for: the argv is what decides whether the collector
+      # proves this answer, and proving it has a cost at every boot.
+      validateCommand = if cfg.validateCredentials then [ (lib.getExe credentialsValidator) ] else null;
       # Gives the configure service Requires= and After= on the collector, so
       # it cannot run before the answer exists.
       requiredBy = [ "backup-smb-configure.service" ];
