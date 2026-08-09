@@ -128,8 +128,14 @@ let
           return 0
         fi
 
-        mkdir -p "$mount_point/${targetSubdir}"
-        chown ${btrbkUser}:${btrbkUser} "$mount_point/${targetSubdir}"
+        # One destination failing here is that destination's problem. Letting
+        # it abort the whole step would take every other destination down with
+        # it, which is the opposite of what an absent one does two lines up.
+        local dir="$mount_point/${targetSubdir}"
+        if ! { mkdir -p "$dir" && chown ${btrbkUser}:${btrbkUser} "$dir"; }; then
+          echo "$mount_point is attached but $dir could not be prepared, leaving it out of this run"
+          return 0
+        fi
       }
 
       # Where snapshots are taken, beside the subvolume they capture. Created

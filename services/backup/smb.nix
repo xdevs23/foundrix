@@ -468,8 +468,18 @@ in
     # attached, and after the share it lives on.
     systemd.services.backup-smb-image = {
       description = "Create or resize the SMB backup filesystem image";
-      requires = [ shareAutomountUnit ];
-      after = [ shareAutomountUnit ];
+      # The MOUNT, not the automount. Starting an automount only installs the
+      # trigger; it says nothing about whether a filesystem is there. Waiting
+      # on it and then reaching for the path leaves this racing the first CIFS
+      # session — which on a share that has never been mounted takes long
+      # enough to lose. The access then fails with ENODEV, or the writability
+      # probe below reports a share that is merely not mounted yet as one whose
+      # credentials are wrong, and sends whoever reads it to check a server
+      # that was fine. Requiring the mount makes systemd do the waiting, and
+      # turns a race into an ordering: by the time this runs the share is
+      # mounted, or it failed and this never runs at all.
+      requires = [ shareMountUnit ];
+      after = [ shareMountUnit ];
       unitConfig.ConditionPathExists = targetFile;
       serviceConfig = {
         Type = "oneshot";
