@@ -17,10 +17,14 @@ and destination modules that register themselves with it.
   `foundrix.services.backup.btrfs`.
 - **`services/backup/smb.nix`** — an SMB/CIFS share as a destination. Options
   live under `foundrix.services.backup.smb`.
-- **`services/backup/postgres.nix`** — optional. Dumps databases into the
-  subvolume before each run, so the backup carries a restorable logical copy
-  and not only a crash-consistent data directory. Options live under
-  `foundrix.services.backup.postgres`.
+- **`services/backup/postgres.nix`** — optional, and usable on its own. Dumps
+  databases onto the state subvolume so what is kept is a restorable logical
+  copy and not only a crash-consistent data directory. With a destination
+  configured the dumps are taken as part of each run, immediately before the
+  snapshot; with none, they run on a daily timer of their own, because a
+  current dump beside the cluster is worth having whether or not anything
+  carries it off the machine. `onCalendar` decides which, and its default
+  picks correctly. Options live under `foundrix.services.backup.postgres`.
 
 Enabling a destination is enough; the source side switches itself on as soon as
 one is registered.
