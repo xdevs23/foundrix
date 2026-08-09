@@ -87,10 +87,19 @@ wait for MIGRATION COMPLETE, detach the old volume, power-cycle, unlock.
 Keep the old (cleartext!) volume until the server is verified, then
 delete it.
 
-Volume growth is manual with this provisioner (the repart-based online
-growth doesn't apply — `hardware/cloud/hetzner.nix` disables its resize
-hook via the `varProvisioner` trait): grow the partition, then
-`cryptsetup resize <mapper>`, then `btrfs filesystem resize max /var`.
+Volume growth happens at unlock: enlarge the volume at the provider,
+reboot, enter the passphrase as always. Before asking, the daemon grows
+the partition to fill the volume (no key needed for geometry); the
+passphrase that opens the mapper then also authorizes
+`cryptsetup resize` — required because the volume key lives in the
+kernel keyring, not the dm table, so an open mapping cannot resize
+itself — and the btrfs is grown during the post-open content check. Each
+step is idempotent and size-guarded, so a boot interrupted between
+layers heals on the next unlock. The repart-based *online* growth still
+doesn't apply (`hardware/cloud/hetzner.nix` disables its resize hook via
+the `varProvisioner` trait): growing without a reboot would need key
+material available outside the unlock, which this design deliberately
+avoids.
 
 ## Traits
 

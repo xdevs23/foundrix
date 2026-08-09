@@ -75,6 +75,15 @@ const REQUIRED_TOOLS: &[&str] = &[
 /// source's used bytes.
 const SIZE_HEADROOM: u64 = 1 << 30;
 
+/// Slack a full-size partition may leave unused before growth is worth
+/// doing: GPT metadata at both ends plus alignment never add up to this.
+const GROW_THRESHOLD: u64 = 16 << 20;
+
+/// Headroom between the partition and the mapper inside it that is
+/// explained by the LUKS2 header alone. A larger gap means the mapping
+/// was not resized after the partition grew.
+const LUKS_HEADER_SLACK: u64 = 64 << 20;
+
 // --- UI hub -----------------------------------------------------------------
 
 struct Ui {
@@ -273,6 +282,55 @@ fn part1(cfg: &Cfg, id: &str) -> String {
     format!("{}/{id}-part1", cfg.by_id_dir)
 }
 
+async fn blockdev_bytes(path: &str) -> Result<u64> {
+    let out = run_ok("blockdev", &["--getsize64", path]).await?;
+    Ok(out.trim().parse()?)
+}
+
+/// Grow partition 1 to fill a backing volume that was enlarged. Runs
+/// before the mapper is opened, because partition geometry needs no key
+/// material. Returns whether the partition grew, so the caller knows to
+/// extend the LUKS mapping once it holds the passphrase.
+async fn maybe_grow_partition(ui: &Ui, cfg: &Cfg, luks_id: &str) -> Result<bool> {
+    let disk = dev(cfg, luks_id);
+    let part = part1(cfg, luks_id);
+    let disk_bytes = blockdev_bytes(&disk).await?;
+    let part_bytes = blockdev_bytes(&part).await?;
+    if part_bytes + GROW_THRESHOLD >= disk_bytes {
+        return Ok(false);
+    }
+    ui.state(
+        "grow/partition",
+        format!("volume {luks_id} was enlarged; extending the partition to fill it"),
+    );
+    // The backup GPT header sits where the volume used to end; move it to
+    // the real end first, or the larger geometry is refused.
+    run_ok("sgdisk", &["-e", &disk]).await?;
+    // Recreate in place: deleting first makes the old start the first free
+    // sector, so "1:0:0" reoccupies exactly the old start and runs to the
+    // new end. Type, partuuid and name are restated because a recreated
+    // partition carries none of them over.
+    run_ok(
+        "sgdisk",
+        &[
+            "-d",
+            "1",
+            "-n",
+            "1:0:0",
+            "-t",
+            &format!("1:{VAR_TYPE_GUID}"),
+            "-u",
+            &format!("1:{}", cfg.id.luks_partuuid),
+            "-c",
+            "1:var",
+            &disk,
+        ],
+    )
+    .await?;
+    settle().await;
+    Ok(true)
+}
+
 async fn probe(cfg: &Cfg, id: &str) -> Result<DiskProbe> {
     let p1 = part1(cfg, id);
     let has_part1 = Path::new(&p1).exists();
@@ -427,7 +485,12 @@ async fn format_encrypted(ui: &Ui, cfg: &Cfg, disk_id: &str, passphrase: &str) -
 
 async fn unlock(ui: &Ui, cfg: &Cfg, luks_id: &str) -> Result<()> {
     let part = part1(cfg, luks_id);
-    loop {
+    // Before the mapper exists and without key material; the passphrase
+    // below is then also the authorization to pull the mapping up to the
+    // grown partition. This is the whole online-growth story for LUKS:
+    // enlarge the volume, reboot, enter the passphrase as always.
+    let grew = maybe_grow_partition(ui, cfg, luks_id).await?;
+    let pw = loop {
         let pw = ui
             .ask(
                 PromptKind::UnlockPassphrase,
@@ -449,11 +512,33 @@ async fn unlock(ui: &Ui, cfg: &Cfg, luks_id: &str) -> Result<()> {
         )
         .await
         {
-            Ok(()) => break,
+            Ok(()) => break pw,
             Err(e) => ui.state("unlock", format!("unlock failed ({e}); asking again")),
         }
-    }
+    };
     settle().await;
+
+    // The mapping follows the partition. Checked by size and not only by
+    // `grew`, so a boot that grew the partition but died before this step
+    // heals here instead of leaving the gap forever. The passphrase is
+    // required: the volume key is in the kernel keyring, not the dm table,
+    // so an open mapping alone cannot authorize its own resize.
+    let mapper_dev = format!("/dev/mapper/{}", cfg.id.mapper);
+    let needs_resize = grew || {
+        let part_bytes = blockdev_bytes(&part).await?;
+        let mapper_bytes = blockdev_bytes(&mapper_dev).await?;
+        mapper_bytes + LUKS_HEADER_SLACK < part_bytes
+    };
+    if needs_resize {
+        ui.state("grow/luks", "extending the LUKS mapping to the grown partition");
+        run_with_stdin(
+            "cryptsetup",
+            &["resize", "--key-file", "-", &cfg.id.mapper],
+            &pw,
+        )
+        .await?;
+        settle().await;
+    }
 
     // Post-open content check — a data-loss guard, not a UX nicety.
     // A mapper that opens but holds no btrfs filesystem is ambiguous:
@@ -467,7 +552,6 @@ async fn unlock(ui: &Ui, cfg: &Cfg, luks_id: &str) -> Result<()> {
     // the next reboot, destroying recoverability and masking the bug.
     // Likewise, a failed probe is not proof of emptiness: block, report,
     // and never format.
-    let mapper_dev = format!("/dev/mapper/{}", cfg.id.mapper);
     let probe = Command::new("blkid")
         .args(["-o", "value", "-s", "TYPE", &mapper_dev])
         .output()
@@ -487,6 +571,10 @@ async fn unlock(ui: &Ui, cfg: &Cfg, luks_id: &str) -> Result<()> {
             // silently.
             std::fs::create_dir_all("/new-var-fs")?;
             run_ok("mount", &["-o", "subvol=/", &mapper_dev, "/new-var-fs"]).await?;
+            // The filesystem follows the mapping, closing the growth chain
+            // (volume → partition → mapping → filesystem). A no-op when
+            // nothing beneath it changed.
+            run_ok("btrfs", &["filesystem", "resize", "max", "/new-var-fs"]).await?;
             let have_subvol = subvol_exists("/new-var-fs/var").await;
             if !have_subvol {
                 let yes = ui
