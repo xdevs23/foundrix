@@ -18,12 +18,12 @@ in
     finalImageTag = "2026.08.03-sha-022b374";
   };
 
-  kong = pullImage {
-    imageName = "kong/kong";
-    imageDigest = "sha256:6addf50e6bd8d578314cb9ce4f2d2d1e3781d2edecef59f707e00c6e05d384f5";
-    hash = "sha256-MxxBOpl82TL4ZmReAJdsw3JWqh9pQPZ6RfLQ1wWFaGw=";
-    finalImageName = "kong/kong";
-    finalImageTag = "3.9.1";
+  envoy = pullImage {
+    imageName = "envoyproxy/envoy";
+    imageDigest = "sha256:d59f7f5fa10cff6d5892b6c5e7df5c9297ddfb2c3683e33fbfb82da24de4fa66";
+    hash = "sha256-ww04/uUaIAlFWTaEyTzSdUBA42d2KPQu/R3J1rywr0s=";
+    finalImageName = "envoyproxy/envoy";
+    finalImageTag = "v1.39.0";
   };
 
   auth = pullImage {

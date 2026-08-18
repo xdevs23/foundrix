@@ -1,7 +1,7 @@
 # Supabase self-hosted module
 #
 # Provides a complete Supabase deployment via Docker Compose with:
-# - All core Supabase services (PostgreSQL, Kong, GoTrue, PostgREST, Realtime, Storage, etc.)
+# - All core Supabase services (PostgreSQL, Envoy, GoTrue, PostgREST, Realtime, Storage, etc.)
 # - Automatic secret generation (JWT keys, passwords, encryption keys)
 # - Optional database migrations via supabase-cli
 #
@@ -156,6 +156,7 @@ let
       timeout ? "5s",
       interval ? "5s",
       retries ? 3,
+      start_period ? null,
     }:
     {
       inherit
@@ -164,7 +165,8 @@ let
         interval
         retries
         ;
-    };
+    }
+    // lib.optionalAttrs (start_period != null) { inherit start_period; };
 
   wgetHealth =
     url:
@@ -196,6 +198,7 @@ let
   # ── Docker Compose service definitions ──────────────────────────────
 
   supabaseInitScripts = "${cfg.supabaseSource}/docker/volumes/db";
+  envoyConfigDir = "${cfg.supabaseSource}/docker/volumes/api/envoy";
 
   initScripts = {
     "realtime.sql" = "migrations/99-realtime.sql";
@@ -255,29 +258,39 @@ let
         );
       };
 
-      kong = baseService images.kong // {
-        container_name = "supabase-kong";
-        ports = [
-          "${toString cfg.kong.httpPort}:8000/tcp"
-          "${toString cfg.kong.httpsPort}:8443/tcp"
+      # Envoy is the upstream default API gateway
+      # See: https://github.com/orgs/supabase/discussions/48048
+      api-gw = baseService images.envoy // {
+        container_name = "supabase-envoy";
+        ports = [ "${toString cfg.gateway.httpPort}:8000/tcp" ];
+        volumes = [
+          "${envoyConfigDir}/envoy.yaml:/etc/envoy/envoy.yaml:ro"
+          "${envoyConfigDir}/cds.yaml:/etc/envoy/cds.yaml:ro"
+          "${envoyConfigDir}/lds.template.yaml:/etc/envoy/lds.template.yaml:ro"
+          "${envoyConfigDir}/docker-entrypoint.sh:/docker-entrypoint.sh:ro"
         ];
-        volumes = [ "${secretsPrefix}-kong.yml:/home/kong/kong.yml:ro" ];
+        entrypoint = [
+          "/bin/sh"
+          "/docker-entrypoint.sh"
+        ];
+        # TCP port check because the image includes neither curl nor wget
+        healthcheck = healthcheck {
+          test = [
+            "CMD-SHELL"
+            "timeout 1 bash -c '</dev/tcp/127.0.0.1/8000'"
+          ];
+          interval = "10s";
+        };
         environment = {
-          KONG_DATABASE = "off";
-          KONG_DECLARATIVE_CONFIG = "/home/kong/kong.yml";
-          KONG_DNS_ORDER = "LAST,A,CNAME";
-          KONG_PLUGINS = "request-transformer,cors,key-auth,acl,basic-auth,request-termination,ip-restriction";
-          KONG_NGINX_PROXY_PROXY_BUFFER_SIZE = "160k";
-          KONG_NGINX_PROXY_PROXY_BUFFERS = "64 160k";
-          KONG_UPSTREAM_KEEPALIVE_POOL_SIZE = "60";
-          KONG_UPSTREAM_KEEPALIVE_MAX_REQUESTS = "100";
-          KONG_NGINX_PROXY_PROXY_READ_TIMEOUT = "30s";
-          KONG_NGINX_PROXY_PROXY_SEND_TIMEOUT = "30s";
-          SUPABASE_ANON_KEY = env "ANON_KEY";
-          SUPABASE_SERVICE_KEY = env "SERVICE_ROLE_KEY";
+          ANON_KEY = env "ANON_KEY";
+          SERVICE_ROLE_KEY = env "SERVICE_ROLE_KEY";
+          SUPABASE_PUBLIC_URL = apiExternalUrl;
           DASHBOARD_USERNAME = cfg.dashboardUsername;
           DASHBOARD_PASSWORD = env "DASHBOARD_PASSWORD";
         };
+      }
+      // lib.optionalAttrs cfg.studio.enable {
+        depends_on.studio.condition = "service_healthy";
       };
 
       auth = baseService images.auth // {
@@ -478,6 +491,7 @@ let
             "fetch('http://studio:3000/api/platform/profile').then((r) => {if (r.status !== 200) throw new Error(r.status)})"
           ];
           timeout = "10s";
+          start_period = "20s";
         };
         environment = {
           HOSTNAME = "::";
@@ -489,7 +503,7 @@ let
           PG_META_CRYPTO_KEY = env "PG_META_CRYPTO_KEY";
           DEFAULT_ORGANIZATION_NAME = "Default Organization";
           DEFAULT_PROJECT_NAME = "Default Project";
-          SUPABASE_URL = "http://kong:8000";
+          SUPABASE_URL = "http://api-gw:8000";
           SUPABASE_PUBLIC_URL = apiExternalUrl;
           SUPABASE_ANON_KEY = env "ANON_KEY";
           SUPABASE_SERVICE_KEY = env "SERVICE_ROLE_KEY";
@@ -572,21 +586,9 @@ let
 
   # ── Config generation script ────────────────────────────────────────
 
-  kongYmlTemplate = "${cfg.supabaseSource}/docker/volumes/api/kong.yml";
-
   generateConfigScript = pkgs.writeShellScript "supabase-generate-config" ''
     set -euo pipefail
-    ANON_KEY=$(< ${secretsPrefix}-anon-key)
-    SERVICE_ROLE_KEY=$(< ${secretsPrefix}-service-role-key)
-    DASHBOARD_PASSWORD=$(< ${secretsPrefix}-dashboard-password)
     export POSTGRES_PASSWORD=$(< ${secretsPrefix}-postgres-password)
-
-    ${lib.getExe pkgs.gnused} \
-      -e "s|\$SUPABASE_ANON_KEY|$ANON_KEY|g" \
-      -e "s|\$SUPABASE_SERVICE_KEY|$SERVICE_ROLE_KEY|g" \
-      -e "s|\$DASHBOARD_PASSWORD|$DASHBOARD_PASSWORD|g" \
-      -e "s|\$DASHBOARD_USERNAME|${cfg.dashboardUsername}|g" \
-      ${kongYmlTemplate} > ${secretsPrefix}-kong.yml
 
     ${lib.getExe pkgs.envsubst} < ${poolerTemplate} > ${secretsPrefix}-pooler.exs
 
@@ -693,7 +695,7 @@ in
       default = null;
       description = ''
         Path to the upstream supabase repository source.
-        Provides init SQL scripts and the Kong gateway config template.
+        Provides init SQL scripts and the Envoy gateway configuration.
         Typically a flake input: `supabase = { url = "github:supabase/supabase/<rev>"; flake = false; }`
       '';
     };
@@ -740,17 +742,10 @@ in
       };
     };
 
-    kong = {
-      httpPort = lib.mkOption {
-        type = lib.types.port;
-        default = 8000;
-        description = "HTTP port the Kong API gateway listens on";
-      };
-      httpsPort = lib.mkOption {
-        type = lib.types.port;
-        default = 8443;
-        description = "HTTPS port the Kong API gateway listens on";
-      };
+    gateway.httpPort = lib.mkOption {
+      type = lib.types.port;
+      default = 8000;
+      description = "HTTP port the Envoy API gateway listens on";
     };
 
     studio.enable = lib.mkOption {
@@ -937,6 +932,10 @@ in
       {
         assertion = cfg.migrations.enable -> cfg.migrations.source != null;
         message = "foundrix.services.supabase.migrations.source must be set when migrations are enabled";
+      }
+      {
+        assertion = builtins.pathExists envoyConfigDir;
+        message = "foundrix.services.supabase.supabaseSource does not contain docker/volumes/api/envoy — update the supabase input to a revision that ships the Envoy gateway configs";
       }
     ];
 
