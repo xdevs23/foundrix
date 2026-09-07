@@ -12,7 +12,7 @@
         };
         pname = "proton-cachyos";
         version = "proton-cachyos-11.0-20260703-slr-x86_64_v3";
+        steamDisplayName = "Proton-CachyOS x86_64_v3";
       }
-    )).override
-      { steamDisplayName = "Proton-CachyOS x86_64_v3"; };
+    ));
 }
