@@ -99,6 +99,21 @@ in
           cfg: path: if path == [ ] then cfg else getPath cfg.${builtins.head path} (builtins.tail path);
       in
       getPath config allParts;
+    # Overlay that adds or replaces out-of-tree kernel modules in every kernel
+    # package set. nixpkgs assembles each per-kernel set through
+    # linuxKernel.packagesFor (linuxPackages_latest included), so that is the
+    # hook to extend; the top-level linuxPackagesFor alias is not on that path.
+    # `packagesFor` receives the kernel and returns the attributes to add to
+    # its package set. Used where an upstream module hardcodes
+    # boot.kernelPackages.<module> and offers no package option.
+    _module.args.extendKernelPackages =
+      packagesFor:
+      (_final: prev: {
+        linuxKernel = prev.linuxKernel // {
+          packagesFor =
+            kernel: (prev.linuxKernel.packagesFor kernel).extend (_lpfinal: _lpprev: packagesFor kernel);
+        };
+      });
     _module.args.foundrixPkgs = foundrixPackages pkgs {
       inherit pkgsUnstable;
     };
