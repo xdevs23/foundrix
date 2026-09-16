@@ -12,82 +12,82 @@ in
 {
   studio = pullImage {
     imageName = "supabase/studio";
-    imageDigest = "sha256:606aca9fdaa753b60968d5c304e2ada83869b76c9043684e63d5885aca9550e8";
-    hash = "sha256-gq+a+irLU+Y47hb6TMsDRp8Q78kBQGZt7PK4POhYjR8=";
+    imageDigest = "sha256:94a2a9d2906e8b4109e55159a62e241c3044709a492913ea8edd34b14973d288";
+    hash = "sha256-Ili46/FVDxV9ieb9Fpd/C8TAIM3u9SIHeEFUgRgwpE4=";
     finalImageName = "supabase/studio";
-    finalImageTag = "2026.08.03-sha-022b374";
+    finalImageTag = "2026.09.07-sha-7996410";
   };
 
   envoy = pullImage {
     imageName = "envoyproxy/envoy";
-    imageDigest = "sha256:d59f7f5fa10cff6d5892b6c5e7df5c9297ddfb2c3683e33fbfb82da24de4fa66";
-    hash = "sha256-ww04/uUaIAlFWTaEyTzSdUBA42d2KPQu/R3J1rywr0s=";
+    imageDigest = "sha256:57e14a549d7bd43c8d3f6d03e8cfa653e037d4b38e133acd9b54f38c524401b4";
+    hash = "sha256-UtWyTcbJxMjdlVlDG6WlT6Q6dxKYwXCfB7igRUgefBk=";
     finalImageName = "envoyproxy/envoy";
-    finalImageTag = "v1.39.0";
+    finalImageTag = "v1.39.1";
   };
 
   auth = pullImage {
     imageName = "supabase/gotrue";
-    imageDigest = "sha256:385184459f57569c54c25209f51f3b2be99ddd7c4ce9e3555b5d3eea8447b7cf";
-    hash = "sha256-6cGjhpumJIX3HpMOVC87ihLIOeP+ibQ65tDjM4R/wVU=";
+    imageDigest = "sha256:c0c25187a6b835e65a6f6e6c6b39d090e832d40e6de5186f2c038e0411944232";
+    hash = "sha256-TQSzyp/RQkaxJGyh+wb7KOm2E90pXu/d8mZnlHUkwU0=";
     finalImageName = "supabase/gotrue";
-    finalImageTag = "v2.189.0";
+    finalImageTag = "v2.196.0";
   };
 
   rest = pullImage {
     imageName = "postgrest/postgrest";
-    imageDigest = "sha256:54000f24847d01a2c2302e0041cf0618b875c57fb48507d743cfa9aaa50bf43c";
-    hash = "sha256-hk97XMB8aq4K2Cwpg3G0hzwRV1nghrESdWwtF1qxWPA=";
+    imageDigest = "sha256:c9dc201e555f5d8e37e7f39cdd4df0229774996e213bfd7de8d10ac609030f2c";
+    hash = "sha256-MW3AZf77GhkOXlegcWrcmaJ1wtReq5lPazadseatSwQ=";
     finalImageName = "postgrest/postgrest";
-    finalImageTag = "v14.12";
+    finalImageTag = "v14.17";
   };
 
   realtime = pullImage {
     imageName = "supabase/realtime";
-    imageDigest = "sha256:aa1c92c0cf326007563641730ec9da9c60478caa6853887775365fa2c097a471";
-    hash = "sha256-9M05h6YGYP4pexaiZ3mW8tybaC2AEFqeKMS+ixjaRtY=";
+    imageDigest = "sha256:cbcc6a7986fc28b6dcffa798b077d5fb9c69cd25500371ab49147a86d7edbb03";
+    hash = "sha256-x36nPqH3xDTUW/NqHuKpiJd7pnaxQ7rnktzp4ND3/5g=";
     finalImageName = "supabase/realtime";
-    finalImageTag = "v2.102.3";
+    finalImageTag = "v2.134.10";
   };
 
   storage = pullImage {
     imageName = "supabase/storage-api";
-    imageDigest = "sha256:c8eb9858eafec891a97c27125470aaad54703c3f4eb4d55ca7f1bf6c6411febf";
-    hash = "sha256-on+NwynWVKUSGfw6aw0NTmYivrtqcfinPElgyzQ6C8s=";
+    imageDigest = "sha256:f1546fac6d1c7e345428ac904bfaa7be7cecd50a1f549fe1cf38c628a7b15c85";
+    hash = "sha256-W0IJ5E+QvieRKKtlFNxTWAzOIA6A5pGUwip0vFDZ8AU=";
     finalImageName = "supabase/storage-api";
-    finalImageTag = "v1.60.4";
+    finalImageTag = "v1.74.0";
   };
 
   imgproxy = pullImage {
     imageName = "darthsim/imgproxy";
-    imageDigest = "sha256:3b709e4a0e5e8e0e959b556b7031229202b4b8e7e7d955c517ea7abed68ee34d";
-    hash = "sha256-rVVdeh3V25TLwzgFUZCfEMl7II8D0WlFnWzWeFlw6UA=";
+    imageDigest = "sha256:73c5dda13199745b0d2d00e4149d4a589c5b2e205dbf335ca05eca8276b54712";
+    hash = "sha256-a4Huqvd5dVW00BSBKyMmQE7UcZnCgJdKJF0gHjk9k5M=";
     finalImageName = "darthsim/imgproxy";
-    finalImageTag = "v3.30.1";
+    finalImageTag = "v3.31.4";
   };
 
   meta = pullImage {
     imageName = "supabase/postgres-meta";
-    imageDigest = "sha256:a84cc713585eea7b401e4a2561ec4a1e48c87083d1c7ecb4502f204bb4391300";
-    hash = "sha256-d454M4jmHz9RjUjjp3FpQCdx+ZVDcjQh/U/1nGLNWsM=";
+    imageDigest = "sha256:9a079ac1c94d89629262822a4bd1902d5b1be4adb464e5a0a8fd078aaed72158";
+    hash = "sha256-NL9ihkj/Eo/PUXWD8qDUIJPSyNV+Ipfm6rCkFsogVuw=";
     finalImageName = "supabase/postgres-meta";
-    finalImageTag = "v0.96.6";
+    finalImageTag = "v0.99.0";
   };
 
   functions = pullImage {
     imageName = "supabase/edge-runtime";
-    imageDigest = "sha256:2781daf92394db91f7e94129cc3d04ec474ad16a8fe64b3fbeef6e7d557ab120";
-    hash = "sha256-wM8m7oVsRzXTsi/lyxaLuUqxOMj8Xr5ihxYnj4rszhg=";
+    imageDigest = "sha256:edd22bef4477b900d5c300e287ce9b18bff9b81a0291bee14ee0b7c7b71a2899";
+    hash = "sha256-Ea4HfmaoQPOs6K8ZUCoTD2RSraqEQVr0fqcGPk05zN8=";
     finalImageName = "supabase/edge-runtime";
-    finalImageTag = "v1.74.0";
+    finalImageTag = "v1.76.2";
   };
 
   supavisor = pullImage {
     imageName = "supabase/supavisor";
-    imageDigest = "sha256:31c2f05b13b11069660fdfae2f6cfd37b509748d2710aca121cfee8b16cb8b07";
-    hash = "sha256-S4ltdTXwS4nj3xnJdP/CERtzZf0Z3PAl5fxQIUta5XQ=";
+    imageDigest = "sha256:464b93a60ba8c96bc06dad7f241562d6613b2a994922307717b05f432ae415c2";
+    hash = "sha256-UbNZJGyFR3St/d52EWOx1lt4nnQH5U07eKL6+ANkB40=";
     finalImageName = "supabase/supavisor";
-    finalImageTag = "2.9.5";
+    finalImageTag = "2.9.12";
   };
 
   postgres =
