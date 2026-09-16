@@ -9,12 +9,12 @@ let
   # chore: update from https://github.com/DisplayLink/evdi/releases
   # gh api repos/DisplayLink/evdi/releases/latest --jq .tag_name
   # nix store prefetch-file --unpack --json https://github.com/DisplayLink/evdi/archive/refs/tags/v<TAG>.tar.gz | jq -r .hash
-  evdiVersion = "1.15.0";
+  evdiVersion = "1.15.1";
   evdiSrc = pkgsUnstable.fetchFromGitHub {
     owner = "DisplayLink";
     repo = "evdi";
     tag = "v${evdiVersion}";
-    hash = "sha256-CXF7PvmrPjjNoWXbWxEkFE/Sw4bO6YqDplPwF/OxhB0=";
+    hash = "sha256-3g6OETXJSf6AScJ2K9F67mPlh3Wpi20Yq+f+xe78p9Y=";
   };
   # evdi's conftest probes compile without KBUILD_MODNAME. On kernels built
   # with CONFIG_MEM_ALLOC_PROFILING every allocator expands through alloc
