@@ -767,8 +767,8 @@ in
             settings.bind = map renderBind submapBinds;
           }) cfg.submaps;
         }
-        # Generate the Lua configuration. The option does not exist before
-        # 26.05, so guard it to keep 25.11 evaluating.
+        # Home Manager writes the settings above as a Hyprland Lua
+        # configuration, one Lua call per attribute.
         // lib.optionalAttrs (lib.versionAtLeast lib.version "26.04") {
           configType = "lua";
         };
