@@ -8,6 +8,12 @@ pub enum Error {
     #[error("Hyprland IPC error: {0}")]
     Hyprland(#[from] hyprland::error::HyprError),
 
+    #[error("Hyprland answered {answer:?} to {request:?}")]
+    HyprlandRequest { request: String, answer: String },
+
+    #[error("Hyprland socket not found: {0}")]
+    HyprlandSocket(&'static str),
+
     #[error("IO error: {0}")]
     Io(#[from] io::Error),
 

@@ -2,17 +2,13 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use hyprland::data::{Client, Clients, CursorPosition, Monitor, Monitors, Workspace, Workspaces};
-use hyprland::dispatch::{
-    Dispatch, DispatchType, MonitorIdentifier, WindowIdentifier, WorkspaceIdentifier,
-    WorkspaceIdentifierWithSpecial,
-};
-use hyprland::keyword::Keyword;
 use hyprland::shared::{HyprData, HyprDataActive, WorkspaceId};
 use tokio::sync::Mutex;
 use tracing::{debug, info, warn};
 
 use crate::error::{Error, Result};
 use crate::ipc::{CollapseMode, Direction};
+use crate::request::Request;
 use crate::window::WindowPattern;
 
 // ---------------------------------------------------------------------------
@@ -363,10 +359,11 @@ impl WorkspaceManager {
                     "Moving pinned window {} ({}) from workspace {} to {}",
                     client.class, client.address, client.workspace.id, target_ws
                 );
-                Dispatch::call_async(DispatchType::MoveToWorkspaceSilent(
-                    WorkspaceIdentifierWithSpecial::Id(target_ws),
-                    Some(WindowIdentifier::Address(client.address.clone())),
-                ))
+                Request::MoveWindowSilent {
+                    window: &client.address,
+                    workspace: target_ws,
+                }
+                .send()
                 .await?;
             }
         }
@@ -394,13 +391,14 @@ impl WorkspaceManager {
                 let wsid = vws.hyprland_id(slot);
                 let is_default = n == 1;
 
-                let rule = format!(
-                    "{wsid},monitor:{},persistent:true,default:{is_default}",
-                    monitor.name
-                );
+                let rule = Request::WorkspaceRule {
+                    workspace: wsid,
+                    monitor: &monitor.name,
+                    default: is_default,
+                };
 
-                debug!("Setting workspace rule: {rule}");
-                Keyword::set_async("workspace", rule).await?;
+                debug!("Setting workspace rule: {}", rule.lua());
+                rule.send().await?;
             }
         }
 
@@ -420,10 +418,7 @@ impl WorkspaceManager {
                 "Syncing {} to workspace {target_wsid} (virtual {target})",
                 monitor.name
             );
-            Dispatch::call_async(DispatchType::Workspace(WorkspaceIdentifierWithSpecial::Id(
-                target_wsid,
-            )))
-            .await?;
+            Request::FocusWorkspace(target_wsid).send().await?;
         }
 
         info!("Workspace assignment complete");
@@ -447,10 +442,11 @@ impl WorkspaceManager {
                     "Moving client {} from orphan workspace {orphan_id} to {target}",
                     client.address
                 );
-                Dispatch::call_async(DispatchType::MoveToWorkspaceSilent(
-                    WorkspaceIdentifierWithSpecial::Id(target),
-                    Some(WindowIdentifier::Address(client.address.clone())),
-                ))
+                Request::MoveWindowSilent {
+                    window: &client.address,
+                    workspace: target,
+                }
+                .send()
                 .await?;
             }
         }
@@ -481,10 +477,11 @@ impl WorkspaceManager {
                 "Moving workspace {} from {} to {}",
                 ws.id, ws.monitor, expected_name
             );
-            Dispatch::call_async(DispatchType::MoveWorkspaceToMonitor(
-                WorkspaceIdentifier::Id(ws.id),
-                MonitorIdentifier::Name(expected_name),
-            ))
+            Request::MoveWorkspaceToMonitor {
+                workspace: ws.id,
+                monitor: expected_name,
+            }
+            .send()
             .await?;
         }
 
@@ -502,10 +499,7 @@ impl WorkspaceManager {
             focused.name
         );
 
-        Dispatch::call_async(DispatchType::Workspace(WorkspaceIdentifierWithSpecial::Id(
-            wsid,
-        )))
-        .await?;
+        Request::FocusWorkspace(wsid).send().await?;
 
         Ok(())
     }
@@ -543,10 +537,11 @@ impl WorkspaceManager {
                         "Workspace {target_wsid} is on {} but belongs on {}, relocating",
                         ws.monitor, monitor.name
                     );
-                    if let Err(e) = Dispatch::call_async(DispatchType::MoveWorkspaceToMonitor(
-                        WorkspaceIdentifier::Id(target_wsid),
-                        MonitorIdentifier::Name(&monitor.name),
-                    ))
+                    if let Err(e) = (Request::MoveWorkspaceToMonitor {
+                        workspace: target_wsid,
+                        monitor: &monitor.name,
+                    })
+                    .send()
                     .await
                     {
                         warn!("Failed to move workspace {target_wsid} to {}: {e}", monitor.name);
@@ -555,10 +550,7 @@ impl WorkspaceManager {
             }
 
             debug!("Switching {} to workspace {target_wsid}", monitor.name);
-            if let Err(e) = Dispatch::call_async(DispatchType::Workspace(
-                WorkspaceIdentifierWithSpecial::Id(target_wsid),
-            ))
-            .await
+            if let Err(e) = Request::FocusWorkspace(target_wsid).send().await
             {
                 warn!(
                     "Failed to switch {} to workspace {target_wsid}: {e}",
@@ -573,10 +565,7 @@ impl WorkspaceManager {
 
         let active_ws = Workspace::get_active_async().await?;
         if active_ws.id != trigger_workspace_id {
-            if let Err(e) = Dispatch::call_async(DispatchType::Workspace(
-                WorkspaceIdentifierWithSpecial::Id(trigger_workspace_id),
-            ))
-            .await
+            if let Err(e) = Request::FocusWorkspace(trigger_workspace_id).send().await
             {
                 warn!(
                     "Failed to refocus trigger workspace {trigger_workspace_id}: {e}"
@@ -614,10 +603,7 @@ impl WorkspaceManager {
 
         if let Some(client) = window_under_cursor {
             debug!("Focusing window under cursor: {}", client.class);
-            Dispatch::call_async(DispatchType::FocusWindow(WindowIdentifier::Address(
-                client.address.clone(),
-            )))
-            .await?;
+            Request::FocusWindow(&client.address).send().await?;
         }
 
         Ok(())
@@ -650,11 +636,7 @@ impl WorkspaceManager {
 
         debug!("Moving active window to workspace {wsid} (virtual {vws})");
 
-        Dispatch::call_async(DispatchType::MoveToWorkspace(
-            WorkspaceIdentifierWithSpecial::Id(wsid),
-            None,
-        ))
-        .await?;
+        Request::MoveActiveWindow(wsid).send().await?;
 
         Ok(())
     }
@@ -720,24 +702,27 @@ impl WorkspaceManager {
         const BUFFER_WS: WorkspaceId = 999;
 
         for client in &clients_a {
-            Dispatch::call_async(DispatchType::MoveToWorkspaceSilent(
-                WorkspaceIdentifierWithSpecial::Id(BUFFER_WS),
-                Some(WindowIdentifier::Address(client.address.clone())),
-            ))
+            Request::MoveWindowSilent {
+                window: &client.address,
+                workspace: BUFFER_WS,
+            }
+            .send()
             .await?;
         }
         for client in &clients_b {
-            Dispatch::call_async(DispatchType::MoveToWorkspaceSilent(
-                WorkspaceIdentifierWithSpecial::Id(ws_a),
-                Some(WindowIdentifier::Address(client.address.clone())),
-            ))
+            Request::MoveWindowSilent {
+                window: &client.address,
+                workspace: ws_a,
+            }
+            .send()
             .await?;
         }
         for client in &clients_a {
-            Dispatch::call_async(DispatchType::MoveToWorkspaceSilent(
-                WorkspaceIdentifierWithSpecial::Id(ws_b),
-                Some(WindowIdentifier::Address(client.address.clone())),
-            ))
+            Request::MoveWindowSilent {
+                window: &client.address,
+                workspace: ws_b,
+            }
+            .send()
             .await?;
         }
 
@@ -815,10 +800,11 @@ impl WorkspaceManager {
                     "Moving client {} from workspace {client_ws_id} to {current_ws_id}",
                     client.address
                 );
-                Dispatch::call_async(DispatchType::MoveToWorkspace(
-                    WorkspaceIdentifierWithSpecial::Id(current_ws_id),
-                    Some(WindowIdentifier::Address(client.address.clone())),
-                ))
+                Request::MoveWindow {
+                    window: &client.address,
+                    workspace: current_ws_id,
+                }
+                .send()
                 .await?;
             }
         }

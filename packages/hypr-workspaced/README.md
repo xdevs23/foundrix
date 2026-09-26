@@ -34,33 +34,48 @@ Formula: `workspace_id = (monitor_id * 10) + virtual_workspace` (monitor 0 uses 
 
 ## Installation
 
-### NixOS
+### NixOS with the foundrix Hyprland module
+
+The foundrix Hyprland module installs the daemon and runs it as a systemd user service. After the
+daemon starts, the service runs `assign` and one `pin` per entry of `hyprWorkspacedPins`. The module
+binds `mainMod + 1-9` to `switch`, `mainMod + SHIFT + 1-9` to `move`, `mainMod + C` and
+`mainMod + SHIFT + C` to `collapse invisible` and `collapse all`, `mainMod + I` and
+`mainMod + SHIFT + I` to `swap next` and `swap prev`, and `mainMod` with the horizontal scroll
+buttons to `prev` and `next`.
 
 ```nix
-# In your hyprland config
-let
-  hyprWorkspaced = pkgs.callPackage ./path/to/hypr-workspaced { };
-in {
-  wayland.windowManager.hyprland.settings = {
-    exec-once = [ "${lib.getExe hyprWorkspaced} daemon" ];
-    bind = [
-      "$mainMod, 1, exec, ${lib.getExe hyprWorkspaced} switch 1"
-      "$mainMod, 2, exec, ${lib.getExe hyprWorkspaced} switch 2"
-      # ... etc
-      "$mainMod SHIFT, 1, exec, ${lib.getExe hyprWorkspaced} move 1"
-      "$mainMod SHIFT, 2, exec, ${lib.getExe hyprWorkspaced} move 2"
-      # ... etc
-      "$mainMod, C, exec, ${lib.getExe hyprWorkspaced} collapse"
-    ];
-
-    # Pin windows to follow workspace switches (runs once at startup)
-    exec-once = [
-      "${lib.getExe hyprWorkspaced} daemon"
-      "${lib.getExe hyprWorkspaced} pin class:Mattermost"  # Always visible
-    ];
-  };
-}
+foundrix.components.desktop-environments.hyprland = {
+  # Pin windows to follow workspace switches
+  hyprWorkspacedPins = [ "class:Mattermost" ];
+  # Restart a service when the daemon reconnects to Hyprland
+  hyprWorkspacedOnReconnectRestart = "quickshell-topbar.service";
+  # Further bindings use the module's binding records
+  additionalBinds = [
+    {
+      keys = "SUPER + N";
+      action.exec = "hypr-workspaced next";
+    }
+  ];
+};
 ```
+
+### Other Hyprland Lua configurations
+
+```lua
+hl.on("hyprland.start", function()
+  hl.exec_cmd("hypr-workspaced daemon")
+end)
+
+hl.bind("SUPER + 1", hl.dsp.exec_cmd("hypr-workspaced switch 1"))
+hl.bind("SUPER + 2", hl.dsp.exec_cmd("hypr-workspaced switch 2"))
+-- ... etc
+hl.bind("SUPER + SHIFT + 1", hl.dsp.exec_cmd("hypr-workspaced move 1"))
+hl.bind("SUPER + SHIFT + 2", hl.dsp.exec_cmd("hypr-workspaced move 2"))
+-- ... etc
+hl.bind("SUPER + C", hl.dsp.exec_cmd("hypr-workspaced collapse invisible"))
+```
+
+Pins are added with `hypr-workspaced pin <pattern>` once the daemon runs.
 
 ### Manual
 
@@ -72,7 +87,7 @@ cargo build --release
 ## Commands
 
 ```bash
-hypr-workspaced daemon              # Start the daemon (foreground, for exec-once)
+hypr-workspaced daemon              # Start the daemon (foreground, from a service or hyprland.start)
 hypr-workspaced switch <1-9>        # Switch all monitors to virtual workspace
 hypr-workspaced move <1-9>          # Move active window to virtual workspace, then switch
 hypr-workspaced next                # Switch to next virtual workspace (wraps 9 -> 1)
@@ -133,13 +148,18 @@ echo "switch 3" | socat - UNIX-CONNECT:$XDG_RUNTIME_DIR/hypr-workspaced.sock
 │                                                                 │
 │  ┌─────────────────┐    ┌──────────────────┐    ┌───────────┐  │
 │  │   hyprland-rs   │    │ WorkspaceManager │    │ IpcServer │  │
-│  │                 │◄──►│                  │◄──►│           │  │
+│  │                 │───►│                  │◄──►│           │  │
 │  │ - Monitors::get │    │ - assign_all()   │    │ - socket  │  │
-│  │ - Dispatch::call│    │ - switch(n)      │    │ - Command │  │
-│  │ - EventListener │    │ - move_to(n)     │    │   parsing │  │
+│  │ - EventListener │    │ - switch(n)      │    │ - Command │  │
+│  │                 │    │ - move_to(n)     │    │   parsing │  │
 │  └────────┬────────┘    └────────┬─────────┘    └─────┬─────┘  │
-│           │                      │                    │        │
-│           └──────────────────────┼────────────────────┘        │
+│           │                      ▼                    │        │
+│           │             ┌──────────────────┐          │        │
+│           │             │   Lua requests   │          │        │
+│           │             │ - dispatch       │          │        │
+│           │             │ - eval (rules)   │          │        │
+│           │             └──────────────────┘          │        │
+│           └──────────────────────┬────────────────────┘        │
 │                                  ▼                             │
 │                          ┌──────────────┐                      │
 │                          │ tokio select │                      │
@@ -147,6 +167,10 @@ echo "switch 3" | socat - UNIX-CONNECT:$XDG_RUNTIME_DIR/hypr-workspaced.sock
 │                          └──────────────┘                      │
 └─────────────────────────────────────────────────────────────────┘
 ```
+
+hyprland-rs reads Hyprland's state and delivers its events. Every command the daemon sends to
+Hyprland (workspace focus, window and workspace moves, and workspace rules) goes through the
+daemon's own Lua request module instead.
 
 ---
 
@@ -156,7 +180,7 @@ echo "switch 3" | socat - UNIX-CONNECT:$XDG_RUNTIME_DIR/hypr-workspaced.sock
 
 | Crate | Version | Purpose |
 |-------|---------|---------|
-| `hyprland` | 0.4.0-beta.3 | Hyprland IPC (data queries, dispatches, events) |
+| `hyprland` | 0.4.0-beta.3 | Hyprland IPC (state queries, events) |
 | `tokio` | 1.49 | Async runtime |
 | `clap` | 4.5 | CLI argument parsing |
 | `thiserror` | 2.0 | Error type derivation |
@@ -210,17 +234,23 @@ let monitors: Vec<_> = Monitors::get_async().await?.into_iter().collect();
 if monitors.is_empty() { ... }
 ```
 
-### Dispatch Types
+### Commands to Hyprland
 
-`MonitorIdentifier::Name` takes a borrowed `&str`, not `String`:
+The daemon uses neither the crate's `Dispatch` nor its `Keyword` interface. The crate sends
+dispatches as old dispatcher text and runtime settings as `keyword` requests. With a Lua
+configuration, Hyprland runs the text of a `dispatch` request as the argument of `hl.dispatch(...)`
+and refuses `keyword` requests, so both fail.
+
+The daemon's Lua request module has one variant per command. It renders the Lua text from typed
+values, quotes every string as a Lua string literal, sends dispatches as `dispatch` requests and
+workspace rules as `eval` requests, and treats any answer other than `ok` as an error:
 
 ```rust
-// WRONG
-let name: String = monitor.name.clone();
-Dispatch::call_async(DispatchType::FocusMonitor(MonitorIdentifier::Name(name))).await?;
+Request::FocusWorkspace(wsid).send().await?;
+// dispatch hl.dsp.focus({ workspace = "13" })
 
-// CORRECT
-Dispatch::call_async(DispatchType::FocusMonitor(MonitorIdentifier::Name(&name))).await?;
+Request::WorkspaceRule { workspace: wsid, monitor: &monitor.name, default: true }.send().await?;
+// eval hl.workspace_rule({ workspace = "1", monitor = "DP-1", persistent = true, default = true })
 ```
 
 ### Event Handlers
@@ -339,6 +369,7 @@ src/
 ├── workspace.rs   # WorkspaceManager: all business logic
 ├── window.rs      # WindowPattern: pattern matching for pinned windows
 ├── ipc.rs         # Command/Response enums, protocol parsing
+├── request.rs     # Lua requests sent to Hyprland's command socket
 └── error.rs       # Custom error types
 ```
 
