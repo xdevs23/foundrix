@@ -47,9 +47,7 @@ buttons to `prev` and `next`.
 foundrix.components.desktop-environments.hyprland = {
   # Pin windows to follow workspace switches
   hyprWorkspacedPins = [ "class:Mattermost" ];
-  # Restart a service when the daemon reconnects to Hyprland
   hyprWorkspacedOnReconnectRestart = "quickshell-topbar.service";
-  # Further bindings use the module's binding records
   additionalBinds = [
     {
       keys = "SUPER + N";
@@ -361,17 +359,14 @@ hyprctl clients -j | jq .
 
 ## Project Structure
 
-```
-src/
-├── main.rs        # CLI entry point (clap subcommands)
-├── daemon.rs      # Daemon mode: event loop, IPC server, Hyprland events
-├── client.rs      # Client mode: connect to daemon, send command
-├── workspace.rs   # WorkspaceManager: all business logic
-├── window.rs      # WindowPattern: pattern matching for pinned windows
-├── ipc.rs         # Command/Response enums, protocol parsing
-├── request.rs     # Lua requests sent to Hyprland's command socket
-└── error.rs       # Custom error types
-```
+- Command-line entry: the clap subcommands that start daemon mode or client mode.
+- Daemon mode: the event loop, the IPC server and the handling of Hyprland events.
+- Client mode: connects to the daemon and sends one command.
+- Workspace manager (`WorkspaceManager`): all business logic.
+- Window patterns (`WindowPattern`): pattern matching for pinned windows.
+- IPC protocol: the `Command` and `Response` enums and the parsing of the protocol.
+- Lua request module (`Request`): the Lua requests sent to Hyprland's command socket.
+- Error types: the daemon's own error types.
 
 ## License
 
