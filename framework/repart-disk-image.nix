@@ -52,6 +52,11 @@
       image.repart = {
         inherit (cfg) name seed;
         split = true;
+      }
+      # Since 26.11 the repart module stays inactive until enabled. The option
+      # does not exist on 26.05.
+      // lib.optionalAttrs (lib.versionAtLeast lib.version "26.10") {
+        enable = true;
       };
 
       systemd.services.nix-store-registration = {
