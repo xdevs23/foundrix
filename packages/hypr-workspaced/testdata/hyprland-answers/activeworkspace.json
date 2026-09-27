@@ -1,0 +1,12 @@
+{
+    "id": 1,
+    "name": "1",
+    "monitor": "Virtual-1",
+    "monitorID": 0,
+    "windows": 1,
+    "hasfullscreen": false,
+    "lastwindow": "0x647fc1065230",
+    "lastwindowtitle": "terminal",
+    "ispersistent": false,
+    "tiledLayout": "dwindle"
+}

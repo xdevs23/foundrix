@@ -141,21 +141,23 @@ echo "switch 3" | socat - UNIX-CONNECT:$XDG_RUNTIME_DIR/hypr-workspaced.sock
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                      hypr-workspaced daemon                     │
-│                                                                 │
+┌────────────────────────────────────────────────────────────────┐
+│                      hypr-workspaced daemon                    │
+│                                                                │
 │  ┌─────────────────┐    ┌──────────────────┐    ┌───────────┐  │
 │  │   hyprland-rs   │    │ WorkspaceManager │    │ IpcServer │  │
 │  │                 │───►│                  │◄──►│           │  │
-│  │ - Monitors::get │    │ - assign_all()   │    │ - socket  │  │
-│  │ - EventListener │    │ - switch(n)      │    │ - Command │  │
+│  │ - EventListener │    │ - assign_all()   │    │ - socket  │  │
+│  │ - data types    │    │ - switch(n)      │    │ - Command │  │
 │  │                 │    │ - move_to(n)     │    │   parsing │  │
 │  └────────┬────────┘    └────────┬─────────┘    └─────┬─────┘  │
 │           │                      ▼                    │        │
 │           │             ┌──────────────────┐          │        │
-│           │             │   Lua requests   │          │        │
-│           │             │ - dispatch       │          │        │
-│           │             │ - eval (rules)   │          │        │
+│           │             │  Request module  │          │        │
+│           │             │ - Lua commands   │          │        │
+│           │             │ - JSON queries   │          │        │
+│           │             │ - waits for room │          │        │
+│           │             │   in the queue   │          │        │
 │           │             └──────────────────┘          │        │
 │           └──────────────────────┬────────────────────┘        │
 │                                  ▼                             │
@@ -163,12 +165,20 @@ echo "switch 3" | socat - UNIX-CONNECT:$XDG_RUNTIME_DIR/hypr-workspaced.sock
 │                          │ tokio select │                      │
 │                          │  event loop  │                      │
 │                          └──────────────┘                      │
-└─────────────────────────────────────────────────────────────────┘
+└────────────────────────────────────────────────────────────────┘
 ```
 
-hyprland-rs reads Hyprland's state and delivers its events. Every command the daemon sends to
-Hyprland (workspace focus, window and workspace moves, and workspace rules) goes through the
-daemon's own Lua request module instead.
+hyprland-rs delivers Hyprland's events and provides the data types of its state. Every request the
+daemon sends to Hyprland goes through the daemon's own request module: the commands (workspace
+focus, window and workspace moves, and workspace rules) and the state queries (monitors, windows,
+workspaces, the active workspace and the cursor position).
+
+Hyprland queues at most 10 connections on its command socket. Other clients, such as bars and lock
+screens, can fill that queue for a moment, and a connect that does not wait then fails with
+`EAGAIN`. The request module connects with a blocking connect whose send timeout is 5 s, the time
+Hyprland itself waits for the request of a client it has accepted, so the kernel holds the connect
+until Hyprland accepts it. Only when the queue stays full for the whole 5 s does the request fail,
+with an error that says so.
 
 ---
 
@@ -178,7 +188,9 @@ daemon's own Lua request module instead.
 
 | Crate | Version | Purpose |
 |-------|---------|---------|
-| `hyprland` | 0.4.0-beta.3 | Hyprland IPC (state queries, events) |
+| `hyprland` | 0.4.0-beta.3 | Hyprland events and state data types |
+| `socket2` | 0.6.1 | Connect to Hyprland's command socket with a send timeout |
+| `serde_json` | 1.0.149 | Deserialize Hyprland's JSON answers |
 | `tokio` | 1.49 | Async runtime |
 | `clap` | 4.5 | CLI argument parsing |
 | `thiserror` | 2.0 | Error type derivation |
@@ -218,19 +230,26 @@ pub struct Client {
 }
 ```
 
-### Collection Types
+### State Queries
 
-`Monitors`, `Clients`, `Workspaces` are **not** `Vec` — they implement `IntoIterator`:
+The daemon does not use the crate's query functions (`Monitors::get_async` and the like). They
+connect to Hyprland's command socket without waiting, so they fail while Hyprland's request queue
+is full, and the crate offers no way to change that.
+
+The daemon's query module sends the same requests in their JSON form through the request module
+and deserializes the answers with `serde_json` into the crate's data types. It returns plain
+`Vec`s:
 
 ```rust
-// WRONG
-let monitors = Monitors::get_async().await?;
-if monitors.is_empty() { ... }  // Error: no method `is_empty`
-
-// CORRECT
-let monitors: Vec<_> = Monitors::get_async().await?.into_iter().collect();
-if monitors.is_empty() { ... }
+let monitors = query::monitors().await?;          // j/monitors all, disabled monitors included
+let focused = query::active_monitor().await?;     // the focused entry of that answer
+let clients = query::clients().await?;            // j/clients
+let workspaces = query::workspaces().await?;      // j/workspaces
+let active = query::active_workspace().await?;    // j/activeworkspace
+let cursor = query::cursor_position().await?;     // j/cursorpos
 ```
+
+A monitors answer without a focused entry makes `active_monitor` return an error.
 
 ### Commands to Hyprland
 
@@ -306,7 +325,7 @@ Spawning a process per keybind adds latency. A resident daemon with IPC is much 
 
 ### Use Batch Operations Sparingly
 
-`hyprctl --batch` can help, but with hyprland-rs you're better off making individual async calls. The library handles connection management efficiently.
+`hyprctl --batch` can help, but the daemon makes individual async calls through its request module, one connection per request, each waiting for room in Hyprland's request queue.
 
 ### Handle Special Workspaces
 
@@ -365,7 +384,9 @@ hyprctl clients -j | jq .
 - Workspace manager (`WorkspaceManager`): all business logic.
 - Window patterns (`WindowPattern`): pattern matching for pinned windows.
 - IPC protocol: the `Command` and `Response` enums and the parsing of the protocol.
-- Lua request module (`Request`): the Lua requests sent to Hyprland's command socket.
+- Request module (`Request`): the Lua requests sent to Hyprland's command socket, and the one
+  connection path to that socket, which waits for room in Hyprland's request queue.
+- Query module: Hyprland's state, read with JSON requests through the request module.
 - Error types: the daemon's own error types.
 
 ## License

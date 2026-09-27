@@ -1,7 +1,6 @@
 use std::time::Duration;
 
 use hyprland::event_listener::AsyncEventListener;
-use hyprland::shared::HyprData;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::{mpsc, watch};
@@ -11,6 +10,7 @@ use tracing_subscriber::EnvFilter;
 
 use crate::error::Result;
 use crate::ipc::{socket_path, Command, Response};
+use crate::query;
 use crate::workspace::{VirtualWorkspace, WorkspaceManager};
 
 type LogReloadHandle = Handle<EnvFilter, tracing_subscriber::Registry>;
@@ -77,7 +77,7 @@ pub async fn run(log_handle: LogReloadHandle, on_reconnect_restart: Option<Strin
             // On successful reconnection after a disconnection, restart the service
             if pending_service_restart && had_successful_connection {
                 // Try to connect briefly to verify Hyprland is back
-                if hyprland::data::Monitors::get_async().await.is_ok() {
+                if query::monitors().await.is_ok() {
                     // Hyprland is back
                     if let Some(ref service) = on_reconnect_restart {
                         info!("Hyprland IPC reconnected, restarting service: {service}");

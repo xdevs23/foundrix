@@ -1,13 +1,14 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use hyprland::data::{Client, Clients, CursorPosition, Monitor, Monitors, Workspace, Workspaces};
-use hyprland::shared::{HyprData, HyprDataActive, WorkspaceId};
+use hyprland::data::{Client, Monitor};
+use hyprland::shared::WorkspaceId;
 use tokio::sync::Mutex;
 use tracing::{debug, info, warn};
 
 use crate::error::{Error, Result};
 use crate::ipc::{CollapseMode, Direction};
+use crate::query;
 use crate::request::Request;
 use crate::window::WindowPattern;
 
@@ -329,8 +330,8 @@ impl WorkspaceManager {
             return Ok(());
         }
 
-        let clients: Vec<_> = Clients::get_async().await?.into_iter().collect();
-        let monitors: Vec<_> = Monitors::get_async().await?.into_iter().collect();
+        let clients = query::clients().await?;
+        let monitors = query::monitors().await?;
 
         for client in &clients {
             if !self.is_pinned(client) {
@@ -374,7 +375,7 @@ impl WorkspaceManager {
     pub async fn assign_workspaces(&mut self) -> Result<()> {
         let _guard = self.ipc_lock.lock().await;
 
-        let monitors: Vec<_> = Monitors::get_async().await?.into_iter().collect();
+        let monitors = query::monitors().await?;
 
         if monitors.is_empty() {
             return Err(Error::NoMonitors);
@@ -405,7 +406,7 @@ impl WorkspaceManager {
         self.cleanup_orphan_workspaces().await?;
         self.move_workspaces_to_correct_monitors(&monitors).await?;
 
-        let focused = Monitor::get_active_async().await?;
+        let focused = query::active_monitor().await?;
         let target = VirtualWorkspace::from_hyprland_id(focused.active_workspace.id)
             .unwrap_or(VirtualWorkspace(1));
 
@@ -426,7 +427,7 @@ impl WorkspaceManager {
     }
 
     async fn cleanup_orphan_workspaces(&self) -> Result<()> {
-        let clients = Clients::get_async().await?;
+        let clients = query::clients().await?;
 
         for slot in self.layout.all_slots() {
             let orphan_id = slot.orphan_workspace_id();
@@ -455,7 +456,7 @@ impl WorkspaceManager {
     }
 
     async fn move_workspaces_to_correct_monitors(&self, monitors: &[Monitor]) -> Result<()> {
-        let workspaces: Vec<_> = Workspaces::get_async().await?.into_iter().collect();
+        let workspaces = query::workspaces().await?;
         let slot_to_monitor = self.layout.slot_to_monitor_name(monitors);
 
         for ws in &workspaces {
@@ -491,7 +492,7 @@ impl WorkspaceManager {
     pub async fn switch_virtual(&self, vws: VirtualWorkspace) -> Result<()> {
         let _guard = self.ipc_lock.lock().await;
 
-        let focused = Monitor::get_active_async().await?;
+        let focused = query::active_monitor().await?;
         let wsid = vws.hyprland_id(self.layout.slot_for(focused.id));
 
         debug!(
@@ -512,7 +513,7 @@ impl WorkspaceManager {
             None => return Ok(()),
         };
 
-        let monitors: Vec<_> = Monitors::get_async().await?.into_iter().collect();
+        let monitors = query::monitors().await?;
 
         if monitors.len() <= 1 {
             return Ok(());
@@ -522,7 +523,7 @@ impl WorkspaceManager {
             "Syncing monitors to virtual workspace {vws} (triggered by ws {trigger_workspace_id})"
         );
 
-        let workspaces: Vec<_> = Workspaces::get_async().await?.into_iter().collect();
+        let workspaces = query::workspaces().await?;
 
         for monitor in &monitors {
             let target_wsid = vws.hyprland_id(self.layout.slot_for(monitor.id));
@@ -563,7 +564,7 @@ impl WorkspaceManager {
             warn!("Failed to move pinned windows: {e}");
         }
 
-        let active_ws = Workspace::get_active_async().await?;
+        let active_ws = query::active_workspace().await?;
         if active_ws.id != trigger_workspace_id {
             if let Err(e) = Request::FocusWorkspace(trigger_workspace_id).send().await
             {
@@ -581,9 +582,9 @@ impl WorkspaceManager {
     }
 
     async fn focus_window_under_cursor(&self, vws: VirtualWorkspace) -> Result<()> {
-        let cursor = CursorPosition::get_async().await?;
-        let clients: Vec<_> = Clients::get_async().await?.into_iter().collect();
-        let monitors: Vec<_> = Monitors::get_async().await?.into_iter().collect();
+        let cursor = query::cursor_position().await?;
+        let clients = query::clients().await?;
+        let monitors = query::monitors().await?;
 
         let valid_workspaces: Vec<WorkspaceId> = monitors
             .iter()
@@ -619,7 +620,7 @@ impl WorkspaceManager {
     pub async fn prime_focus(&self) -> Result<()> {
         let _guard = self.ipc_lock.lock().await;
 
-        let focused = Monitor::get_active_async().await?;
+        let focused = query::active_monitor().await?;
         let vws = match VirtualWorkspace::from_hyprland_id(focused.active_workspace.id) {
             Some(v) => v,
             None => return Ok(()),
@@ -631,7 +632,7 @@ impl WorkspaceManager {
     pub async fn move_to_virtual(&self, vws: VirtualWorkspace) -> Result<()> {
         let _guard = self.ipc_lock.lock().await;
 
-        let focused = Monitor::get_active_async().await?;
+        let focused = query::active_monitor().await?;
         let wsid = vws.hyprland_id(self.layout.slot_for(focused.id));
 
         debug!("Moving active window to workspace {wsid} (virtual {vws})");
@@ -647,12 +648,12 @@ impl WorkspaceManager {
     pub async fn swap_monitor(&self, direction: Direction) -> Result<()> {
         let _guard = self.ipc_lock.lock().await;
 
-        let monitors: Vec<_> = Monitors::get_async().await?.into_iter().collect();
+        let monitors = query::monitors().await?;
         if monitors.len() < 2 {
             return Ok(());
         }
 
-        let focused = Monitor::get_active_async().await?;
+        let focused = query::active_monitor().await?;
 
         let mut by_position: Vec<_> = monitors.iter().collect();
         by_position.sort_by_key(|m| m.x);
@@ -687,7 +688,7 @@ impl WorkspaceManager {
         let ws_a = vws.hyprland_id(self.layout.slot_for(focused.id));
         let ws_b = vws.hyprland_id(self.layout.slot_for(target.id));
 
-        let clients: Vec<_> = Clients::get_async().await?.into_iter().collect();
+        let clients = query::clients().await?;
         let clients_a: Vec<_> = clients.iter().filter(|c| c.workspace.id == ws_a).collect();
         let clients_b: Vec<_> = clients.iter().filter(|c| c.workspace.id == ws_b).collect();
 
@@ -730,7 +731,7 @@ impl WorkspaceManager {
     }
 
     pub async fn navigate(&self, direction: Direction) -> Result<()> {
-        let monitors: Vec<_> = Monitors::get_async().await?.into_iter().collect();
+        let monitors = query::monitors().await?;
 
         let primary = monitors
             .iter()
@@ -765,7 +766,7 @@ impl WorkspaceManager {
     pub async fn collapse(&self, mode: CollapseMode) -> Result<()> {
         let _guard = self.ipc_lock.lock().await;
 
-        let active_ws = Workspace::get_active_async().await?;
+        let active_ws = query::active_workspace().await?;
         let current_ws_id = active_ws.id;
 
         let current_vws = match VirtualWorkspace::from_hyprland_id(current_ws_id) {
@@ -773,8 +774,8 @@ impl WorkspaceManager {
             None => return Ok(()),
         };
 
-        let clients = Clients::get_async().await?;
-        let monitors: Vec<_> = Monitors::get_async().await?.into_iter().collect();
+        let clients = query::clients().await?;
+        let monitors = query::monitors().await?;
         let num_monitors = monitors.len();
 
         debug!("Collapsing {mode:?} to workspace {current_ws_id} (virtual {current_vws})");

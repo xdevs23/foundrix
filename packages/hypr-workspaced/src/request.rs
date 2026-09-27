@@ -1,19 +1,32 @@
-//! Commands sent to Hyprland in its Lua request forms.
+//! Requests sent to Hyprland's command socket.
 //!
 //! With a Lua configuration, Hyprland runs the text of a `dispatch` request as
 //! the argument of `hl.dispatch(...)` and the text of an `eval` request as Lua
 //! code. Each [`Request`] variant renders one of those forms from typed values,
 //! and [`Request::send`] writes it to Hyprland's command socket.
+//!
+//! Every request, the commands here and the state queries alike, goes through
+//! [`exchange`]. Hyprland queues at most 10 connections on its command socket,
+//! and a connect that does not wait fails with `EAGAIN` while that queue is
+//! full. [`exchange`] connects so that the kernel waits for room instead.
 
 use std::ffi::OsString;
 use std::fmt::Write as _;
-use std::path::PathBuf;
+use std::io;
+use std::os::fd::OwnedFd;
+use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use hyprland::shared::{Address, WorkspaceId};
+use socket2::{Domain, SockAddr, Socket, Type};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::UnixStream;
 
 use crate::error::{Error, Result};
+
+/// How long a connect waits for room in Hyprland's request queue. Hyprland
+/// waits as long for the request of a client it has accepted.
+const CONNECT_WAIT: Duration = Duration::from_secs(5);
 
 /// One command for Hyprland.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -116,25 +129,56 @@ impl Request<'_> {
     /// Send this command to Hyprland. Any answer other than `ok` is an error
     /// that carries the request and the answer.
     pub async fn send(&self) -> Result<()> {
-        let path = socket_path_from(
-            std::env::var_os("XDG_RUNTIME_DIR"),
-            std::env::var_os("UID"),
-            std::env::var_os("HYPRLAND_INSTANCE_SIGNATURE"),
-        )?;
         let request = self.command();
-
-        let mut stream = UnixStream::connect(&path).await?;
-        // The leading slash separates the (empty) hyprctl flags from the request.
-        stream.write_all(format!("/{request}").as_bytes()).await?;
-        let mut answer = Vec::new();
-        stream.read_to_end(&mut answer).await?;
-        let answer = String::from_utf8_lossy(&answer).into_owned();
+        let answer = exchange("", &request).await?;
 
         if answer == "ok" {
             Ok(())
         } else {
             Err(Error::HyprlandRequest { request, answer })
         }
+    }
+}
+
+/// Send one request to Hyprland's command socket and return its answer.
+/// `flags` are hyprctl's one-letter flags, `j` for an answer in JSON.
+pub async fn exchange(flags: &str, request: &str) -> Result<String> {
+    let path = socket_path_from(
+        std::env::var_os("XDG_RUNTIME_DIR"),
+        std::env::var_os("UID"),
+        std::env::var_os("HYPRLAND_INSTANCE_SIGNATURE"),
+    )?;
+
+    let mut stream = connect(path, CONNECT_WAIT).await?;
+    // The slash separates the flags from the request.
+    stream
+        .write_all(format!("{flags}/{request}").as_bytes())
+        .await?;
+    let mut answer = Vec::new();
+    stream.read_to_end(&mut answer).await?;
+    Ok(String::from_utf8_lossy(&answer).into_owned())
+}
+
+/// Connect to the socket at `path`, waiting up to `wait` for room in its
+/// queue. The connect blocks in the kernel with `wait` as the socket's send
+/// timeout, on a thread of the runtime's blocking pool, and the kernel wakes it
+/// as soon as the listener accepts a queued connection.
+async fn connect(path: PathBuf, wait: Duration) -> Result<UnixStream> {
+    let stream = tokio::task::spawn_blocking(move || connect_blocking(&path, wait))
+        .await
+        .map_err(io::Error::other)??;
+    stream.set_nonblocking(true)?;
+    Ok(UnixStream::from_std(stream)?)
+}
+
+fn connect_blocking(path: &Path, wait: Duration) -> Result<std::os::unix::net::UnixStream> {
+    let socket = Socket::new(Domain::UNIX, Type::STREAM, None)?;
+    socket.set_write_timeout(Some(wait))?;
+    match socket.connect(&SockAddr::unix(path)?) {
+        Ok(()) => Ok(OwnedFd::from(socket).into()),
+        // A blocking connect whose send timeout runs out reports EAGAIN.
+        Err(e) if e.kind() == io::ErrorKind::WouldBlock => Err(Error::HyprlandQueueFull(wait)),
+        Err(e) => Err(e.into()),
     }
 }
 
@@ -320,5 +364,82 @@ mod tests {
     fn socket_path_needs_a_directory_and_a_signature() {
         assert!(socket_path_from(None, None, Some("sig".into())).is_err());
         assert!(socket_path_from(Some("/tmp/runtime".into()), None, None).is_err());
+    }
+
+    /// A listening socket whose queue is full: it queues one connection and
+    /// already holds one. Removes its socket file when dropped.
+    struct FullListener {
+        path: PathBuf,
+        listener: std::os::unix::net::UnixListener,
+        _queued: Socket,
+    }
+
+    impl FullListener {
+        async fn new(name: &str) -> Self {
+            let path = std::env::temp_dir().join(format!(
+                "hypr-workspaced-{}-{name}.sock",
+                std::process::id()
+            ));
+            let _ = std::fs::remove_file(&path);
+            let socket = Socket::new(Domain::UNIX, Type::STREAM, None).unwrap();
+            socket.bind(&SockAddr::unix(&path).unwrap()).unwrap();
+            // Linux queues one connection more than the backlog.
+            socket.listen(0).unwrap();
+            let listener = std::os::unix::net::UnixListener::from(OwnedFd::from(socket));
+
+            let queued = Socket::new(Domain::UNIX, Type::STREAM, None).unwrap();
+            queued.connect(&SockAddr::unix(&path).unwrap()).unwrap();
+
+            let refused = UnixStream::connect(&path).await.unwrap_err();
+            assert_eq!(
+                refused.kind(),
+                io::ErrorKind::WouldBlock,
+                "the queue is not full"
+            );
+
+            Self {
+                path,
+                listener,
+                _queued: queued,
+            }
+        }
+    }
+
+    impl Drop for FullListener {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_file(&self.path);
+        }
+    }
+
+    #[tokio::test]
+    async fn connect_waits_for_room_in_the_queue() {
+        let full = FullListener::new("waits").await;
+        let connecting = tokio::spawn(connect(full.path.clone(), Duration::from_secs(5)));
+
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        assert!(!connecting.is_finished(), "the connect did not wait");
+
+        let _accepted = full.listener.accept().unwrap();
+        let connected = tokio::time::timeout(Duration::from_secs(2), connecting)
+            .await
+            .expect("the connect did not complete after the listener accepted")
+            .unwrap();
+        assert!(connected.is_ok(), "{connected:?}");
+    }
+
+    #[tokio::test]
+    async fn connect_gives_up_after_the_wait() {
+        let full = FullListener::new("gives-up").await;
+        let wait = Duration::from_millis(500);
+
+        let started = std::time::Instant::now();
+        let result = connect(full.path.clone(), wait).await;
+        let waited = started.elapsed();
+
+        assert!(
+            matches!(result, Err(Error::HyprlandQueueFull(w)) if w == wait),
+            "{result:?}"
+        );
+        assert!(waited >= wait * 9 / 10, "gave up after {waited:?}");
     }
 }

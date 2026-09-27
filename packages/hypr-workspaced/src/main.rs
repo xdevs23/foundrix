@@ -2,6 +2,7 @@ mod client;
 mod daemon;
 mod error;
 mod ipc;
+mod query;
 mod request;
 mod window;
 mod workspace;

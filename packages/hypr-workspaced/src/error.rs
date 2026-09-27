@@ -14,6 +14,18 @@ pub enum Error {
     #[error("Hyprland socket not found: {0}")]
     HyprlandSocket(&'static str),
 
+    #[error("Hyprland's request queue stayed full for the whole wait of {0:?}")]
+    HyprlandQueueFull(std::time::Duration),
+
+    #[error("Hyprland's answer to {request:?} could not be read: {source}")]
+    HyprlandAnswer {
+        request: &'static str,
+        source: serde_json::Error,
+    },
+
+    #[error("Hyprland lists no focused monitor")]
+    NoFocusedMonitor,
+
     #[error("IO error: {0}")]
     Io(#[from] io::Error),
 
