@@ -782,7 +782,14 @@ in
               general = {
                 after_sleep_cmd = "hyprctl dispatch 'hl.dsp.dpms({ action = \"on\" })'";
                 ignore_dbus_inhibit = false;
-                lock_cmd = lib.getExe cfg.lockscreen;
+                # hypridle runs lock_cmd on every lock request, also while the
+                # session is locked, and with misc:allow_session_lock_restore a
+                # second lock screen takes the lock over while the first keeps
+                # running. flock starts no lock screen while one it started
+                # still runs. With --close the lock stays with flock, which
+                # waits for the lock screen, so nothing the lock screen leaves
+                # behind keeps it after an exit or a crash.
+                lock_cmd = "${lib.getExe' pkgs.util-linux "flock"} --nonblock --close \"$XDG_RUNTIME_DIR/lockscreen.lock\" ${lib.getExe cfg.lockscreen}";
               };
 
               listener = [
