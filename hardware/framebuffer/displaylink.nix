@@ -16,27 +16,12 @@ let
     tag = "v${evdiVersion}";
     hash = "sha256-3g6OETXJSf6AScJ2K9F67mPlh3Wpi20Yq+f+xe78p9Y=";
   };
-  # evdi's conftest probes compile without KBUILD_MODNAME. On kernels built
-  # with CONFIG_MEM_ALLOC_PROFILING every allocator expands through alloc
-  # tags that need it, so the kzalloc_obj probe fails and evdi's fallback
-  # macro shadows the kernel's own one. Drop once upstream merges the fix:
-  # https://github.com/DisplayLink/evdi/pull/592
-  evdiConftestPatch = pkgsUnstable.fetchpatch {
-    url = "https://github.com/DisplayLink/evdi/commit/18e709424a67e6daf191e683cd2a14dd032b4196.patch";
-    hash = "sha256-6kxeN/xN0msWmxGg8SnTCBOsPn1a6UOJwSJVeKjGSu8=";
-  };
   evdiFor =
     kernel:
-    (pkgsUnstable.linuxPackagesFor kernel).evdi.overrideAttrs (
-      _final: prev: {
-        version = evdiVersion;
-        src = evdiSrc;
-        patches = (prev.patches or [ ]) ++ [ evdiConftestPatch ];
-        # 1.15.0 no longer includes /etc/os-release from module/Makefile,
-        # which is the only thing the nixpkgs prePatch rewrites.
-        prePatch = "";
-      }
-    );
+    (pkgsUnstable.linuxPackagesFor kernel).evdi.overrideAttrs {
+      version = evdiVersion;
+      src = evdiSrc;
+    };
 in
 {
   imports = [
