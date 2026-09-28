@@ -15,12 +15,16 @@
 #
 # Three things are less obvious than they look:
 #
-# Why the filesystem is mounted a second time. A snapshot has to live outside
-# the subvolume it captures, or the next snapshot captures the previous one and
-# the nesting compounds with every run. `poolMountPoint` is the top level of
-# the same filesystem (subvolid=5, the id of the filesystem root, which always
-# exists and never changes), where the subvolume and the snapshot directory sit
-# beside each other and where send can address both by path.
+# Why the filesystem is mounted a second time. Snapshots kept inside a
+# subvolume belong to that subvolume. When the subvolume is swapped for a
+# restored copy, the copy starts with an empty snapshot directory, and the old
+# subvolume cannot be deleted while the snapshots are still inside it.
+# `poolMountPoint` is the top level of the same filesystem (subvolid=5, the id
+# of the filesystem root, which always exists and never changes), where the
+# subvolume and the snapshot directory sit beside each other. Kept there, the
+# snapshots outlive a swap of the subvolume, and with them the btrbk history
+# and the parent of the next incremental send. The rename that such a swap
+# starts with also happens in this directory.
 #
 # Why an absent destination is not a failure. btrbk signals "finished, with
 # warnings" with exit code 10, and an unreachable destination is one of those
@@ -276,8 +280,9 @@ in
       default = "/varpool";
       description = ''
         Where to mount the top level of the btrfs that holds `mountPoint`.
-        Snapshots are taken there, beside the subvolume, since a snapshot
-        inside the subvolume would be captured by the next one.
+        Snapshots are taken there, beside the subvolume, so they outlive a
+        swap of the subvolume for a restored copy. Snapshots inside the
+        subvolume would stay behind in the old one.
       '';
     };
 

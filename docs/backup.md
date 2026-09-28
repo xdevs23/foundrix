@@ -49,10 +49,14 @@ foundrix.services.backup.smb = {
 /mnt/backup/smb/btrbk    the backups themselves
 ```
 
-Three mounts of one filesystem, because a snapshot has to live outside the
-subvolume it captures — otherwise the next snapshot captures the previous one
-and the nesting compounds — and because send addresses subvolumes by their path
-within the filesystem, which needs the top level visible somewhere.
+Three mounts of one filesystem, because snapshots kept inside a subvolume belong
+to that subvolume. When the subvolume is swapped for a restored copy, which
+means renaming it and putting a writable snapshot or a received copy in its
+place, the copy starts with an empty snapshot directory, and the old subvolume
+cannot be deleted while the snapshots are still inside it. Kept beside the
+subvolume at the top level, the snapshots outlive such a swap, and with them the
+btrbk history and the parent of the next incremental send. The rename happens in
+the top level directory as well, which the pool mount makes reachable.
 `subvolid=5` is the id of the filesystem root: it always exists and cannot be
 renamed out from under the mount.
 
