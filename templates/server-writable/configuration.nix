@@ -32,7 +32,7 @@ in
   };
   users.groups.${userName}.gid = config.users.users.${userName}.uid;
 
-  home-manager.users.${userName}.home.stateVersion = "25.11";
+  home-manager.users.${userName}.home.stateVersion = "26.05";
 
   security.sudo.enable = true;
 
@@ -56,5 +56,5 @@ in
   # Image identification
   boot.uki.name = "my-server";
 
-  system.stateVersion = "25.11";
+  system.stateVersion = "26.05";
 }

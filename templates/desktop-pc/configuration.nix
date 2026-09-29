@@ -33,7 +33,7 @@ in
   #users.users.root.hashedPassword = config.users.users.${userName}.hashedPassword;
 
   # Usually the state version is all you need. There is a separate file for home configuration.
-  home-manager.users.${userName}.home.stateVersion = "25.11";
+  home-manager.users.${userName}.home.stateVersion = "26.05";
 
   security.sudo = {
     enable = true;
@@ -54,5 +54,5 @@ in
     iosevka-comfy.comfy
   ];
 
-  system.stateVersion = "25.11";
+  system.stateVersion = "26.05";
 }
