@@ -22,7 +22,7 @@ The foundrix Hyprland desktop module takes Hyprland 0.56.2 from nixpkgs-unstable
 
 **package-source**: The module takes Hyprland and its desktop portal from nixpkgs-unstable: the NixOS Hyprland program, the Home Manager Hyprland module and the session manager's compositor entry use nixpkgs-unstable's Hyprland package and its portal package, and the module neither reads nor checks for a Hyprland flake input any more. Nothing replaces that check. This rules out keeping the flake input.
 
-**lua-config-type**: Home Manager's Hyprland configuration type is set to Lua inside the existing release check, and the check's comment describes that value.
+**lua-config-type**: Home Manager's Hyprland configuration type is set to Lua, and the comment on that setting describes the value.
 
 **option-shape**: The module's options take this shape.
 - monitors is an ordered list of monitor records. A record requires the output selector output and takes
@@ -87,8 +87,6 @@ text through the crate's custom dispatcher variant.
 **no-side-work**: Nothing outside the update and the migration changes. Settings, bindings and behaviour keep their current values unless the Lua format or the new package source forces a change. No unrelated clean-up, refactoring or feature work is part of the unit.
 
 **foundrix-in-scope**: The changes of this unit are made in the foundrix repository.
-
-**no-work-for-25-11**: No work is done for NixOS 25.11. The existing release check around Home Manager's configuration type stays as it is apart from its value, and no release compatibility code is added, changed or removed. The module is not required to evaluate on 25.11.
 
 **desktop-unit-part**: The Quickshell update, the Quickshell shells' Hyprland requests, the removal of the Hyprland flake input and the desktop's own consumer configuration are the nixos-desktop unit's part of the request. This unit covers foundrix: the Hyprland module and hypr-workspaced.
 
@@ -174,7 +172,7 @@ Reason: Structured records were chosen for the module's options.
 4. **zoom-binds-hold**: Pressed on a real keyboard in a headless Hyprland started with the fixture configuration, the zoom keys change the zoom factor from 1 to 1.1, then to 1.21, then zoom out to 1.089, and the reset keys set it to 1; the module no longer contains a keyword, getoption or old dispatcher request.
 5. **idle-wake-holds**: The generated idle daemon configuration's after-sleep command is exactly the form the idle-wake-command requirement gives.
 6. **package-source-holds**: In the fixture system, the NixOS Hyprland program, the Home Manager Hyprland module and the session manager's compositor entry use nixpkgs-unstable's Hyprland 0.56.2 and its portal package, and the module no longer mentions a Hyprland flake input.
-7. **release-check-holds**: The release check around the configuration type is unchanged apart from the value, which is now the Lua type, and its comment describes that value correctly.
+7. **config-type-holds**: Home Manager's Hyprland configuration type is set to Lua, and the comment on that setting describes the value correctly.
 8. **workspaced-requests-hold**: hypr-workspaced no longer uses the hyprland crate's dispatch or keyword interfaces, every command it sends to Hyprland goes through its request module in exactly the forms the workspaced-requests requirement lists, unit tests assert each form as an exact string including the quoting of a string value that holds a double quote, a backslash and a line break, and the package builds with its tests passing.
 9. **workspaced-end-to-end**: Run against a headless Hyprland with a Lua configuration, the hypr-workspaced daemon sets one persistent workspace rule per virtual workspace, switches workspaces, moves the active window with focus following, gathers a window from a workspace no monitor shows, steps to the next and previous workspace, and assigns again without duplicating rules; every command exits successfully and the daemon logs no error.
 10. **workspaced-readme-current**: Nothing in the hypr-workspaced read-me describes the crate's dispatch or keyword interface as the daemon's way of commanding Hyprland: its usage example matches the Lua configuration and the foundrix module's options, its architecture diagram, dependency table and notes on the crate say that dispatches and workspace rules go through the daemon's own Lua request module while the crate handles state queries and events.
