@@ -18,9 +18,5 @@
   environment.etc."avahi/services/.keep".text = "";
 
   # Disable mDNS in resolved (avahi handles it)
-  services.resolved =
-    if lib.versionAtLeast lib.version "26.05" then
-      { settings.Resolve.MulticastDNS = "no"; }
-    else
-      { extraConfig = "MulticastDNS=no"; };
+  services.resolved.settings.Resolve.MulticastDNS = "no";
 }

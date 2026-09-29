@@ -766,10 +766,8 @@ in
           submaps = lib.mapAttrs (_: submapBinds: {
             settings.bind = map renderBind submapBinds;
           }) cfg.submaps;
-        }
-        # Home Manager writes the settings above as a Hyprland Lua
-        # configuration, one Lua call per attribute.
-        // lib.optionalAttrs (lib.versionAtLeast lib.version "26.04") {
+          # Home Manager writes the settings above as a Hyprland Lua
+          # configuration, one Lua call per attribute.
           configType = "lua";
         };
         services.hypridle = {
