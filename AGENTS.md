@@ -5,15 +5,16 @@ before making related changes.
 
 ## Supporting multiple NixOS releases
 
-Foundrix evaluates against more than one nixpkgs/Home Manager release at a
-time. When an option, default, or library function only exists or only changed
-in the newer release, guard it on `lib.versionAtLeast lib.version "<threshold>"`
-so the module still evaluates on the older release. Pin legacy values to
-silence state-version-gated warnings without changing behavior.
+Foundrix supports two releases: NixOS 26.05 and nixos-unstable. No code or
+version check is kept or added for any other release. When an option, default,
+or library function only exists or only changed on nixos-unstable, check it
+with `lib.versionAtLeast lib.version "<threshold>"` so the module still
+evaluates on NixOS 26.05. Set legacy values explicitly to silence
+state-version-gated warnings without changing behavior.
 
-See [docs/release-compat.md](docs/release-compat.md) for the idiom, when to use
-it (and when not to), and how to remove the guards once the older release
-reaches EOL.
+See [docs/release-compat.md](docs/release-compat.md) for the idiom, the
+threshold to use, when a check is not needed, and how to remove checks once a
+release leaves the supported list.
 
 ## Other references
 

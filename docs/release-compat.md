@@ -1,83 +1,106 @@
 # Release Compatibility
 
-Foundrix targets more than one NixOS/nixpkgs release at a time. During an
-overlap window — for example while both the current stable and the previous
-stable are still supported — a module may need to evaluate cleanly on *both*
-releases even though an option, default, or library function only exists (or
-only changed) in the newer one.
+Foundrix supports two releases:
 
-The trick is a single runtime version check against `lib.version`:
+- NixOS 26.05, the stable release. The `nixpkgs-stable` flake input tracks it.
+- nixos-unstable, which the `nixpkgs` flake input tracks.
+
+Every module evaluates on both. No code, version check, fallback or comment is
+kept or added for any other release.
+
+Home Manager follows the same split: `release-26.05` goes with NixOS 26.05 and
+`master` goes with nixos-unstable, so one version check covers NixOS and Home
+Manager options alike.
+
+## The version check
+
+When an option, default or library function only exists or only changed on
+nixos-unstable, a module branches on `lib.version`:
 
 ```nix
-lib.versionAtLeast lib.version "26.04"
+lib.versionAtLeast lib.version "26.10"
 ```
 
-`lib.version` is the nixpkgs/Home Manager release string (e.g. `"25.11..."`
-or `"26.05..."`), so this predicate is `true` on the newer release and
-`false` on the older one. Use the *lowest* version that already contains the
-change as the threshold (the `.04` patchline conventionally lands before the
-`.05` tagged release), and branch on it.
+`lib.version` is the release string of the nixpkgs in use:
 
-## When you need it
+| Release        | Source          | `lib.version`             |
+|----------------|-----------------|---------------------------|
+| NixOS 26.05    | any             | `26.05.<date>.<rev>`      |
+| nixos-unstable | flake           | `26.11.<date>.<rev>`      |
+| nixos-unstable | channel         | `26.11pre<number>.<rev>`  |
+| nixos-unstable | plain checkout  | `26.11pre-git`            |
 
-Reach for a guard whenever a change would break evaluation on the older
-release. Three recurring shapes:
+nixos-unstable reports the number of the next release, 26.11. Nix compares a
+`pre` suffix lower than the bare number, so `26.11pre-git` is lower than
+`26.11` and a check against `"26.11"` is false on a channel or a plain
+checkout. The threshold is therefore the number one minor below the next
+release, `"26.10"`. It is true on every form of nixos-unstable and false on
+NixOS 26.05.
 
-### 1. An option only exists on the newer release
+## When a check is needed
 
-Setting an unknown option is an evaluation error on the old release, so merge
-it conditionally:
+A check is needed whenever a change would break evaluation on NixOS 26.05.
+Three shapes recur.
+
+### 1. An option only exists on nixos-unstable
+
+Setting an unknown option is an evaluation error on NixOS 26.05, so the option
+is merged in conditionally. The repart disk image module does this for the
+`enable` option of `image.repart`, which nixos-unstable added and which keeps
+the repart module inactive until it is set:
 
 ```nix
-wayland.windowManager.hyprland = {
-  enable = true;
-  # ...
+image.repart = {
+  inherit (cfg) name seed;
+  split = true;
 }
-# configType does not exist before 26.05; guard it to keep 25.11 evaluating.
-// lib.optionalAttrs (lib.versionAtLeast lib.version "26.04") {
-  configType = "hyprlang";
+# Since 26.11 the repart module stays inactive until enabled. The option
+# does not exist on 26.05.
+// lib.optionalAttrs (lib.versionAtLeast lib.version "26.10") {
+  enable = true;
 };
 ```
 
-### 2. A module/option was renamed or split
+### 2. A module or option was renamed or split
 
-When the newer release moves configuration to a different module, define the
-shared body once and attach it under the right name with `lib.mkIf`:
+When nixos-unstable moves configuration to a module with a different name, the
+shared body is defined once and attached under the right name with `lib.mkIf`:
 
 ```nix
 let
-  settings = { /* package-agnostic config */ };
-  useNewModule = lib.versionAtLeast lib.version "26.04";
+  settings = { /* configuration shared by both modules */ };
+  useNewModule = lib.versionAtLeast lib.version "26.10";
 in
 {
-  programs.vscodium = lib.mkIf useNewModule settings;
-  programs.vscode = lib.mkIf (!useNewModule) (settings // { package = pkgs.vscodium; });
+  programs.new-name = lib.mkIf useNewModule settings;
+  programs.old-name = lib.mkIf (!useNewModule) settings;
 }
 ```
 
 ### 3. A library function was deprecated
 
-If the replacement exists on *both* releases, just switch unconditionally — no
-guard needed. Only guard when the replacement is absent on the older release.
-Always verify availability against the actual release branch before deciding
-(e.g. `git show origin/nixos-25.11:lib/cli.nix`).
+If the replacement exists on NixOS 26.05 as well, the module switches to it
+unconditionally, with no check. A check is only needed when the replacement is
+absent on NixOS 26.05. Availability is verified against the release branch in
+a nixpkgs checkout before deciding, for example with
+`git grep -n <function> origin/nixos-26.05`.
 
-## When you *don't* need it
+## When a check is not needed
 
-A guard adds noise, so skip it when a value is valid on both releases — most
-commonly when silencing a state-version-gated default warning by pinning the
-legacy value:
+A check adds noise, so it is left out when a value is valid on both releases.
+The common case is a warning that depends on the state version: setting the
+legacy value explicitly silences it without changing behavior.
 
 ```nix
 # Safe on both releases: the legacy default is identical, the explicit
-# assignment just stops the 26.05 warning from firing.
+# assignment just stops the warning introduced in 26.05 from firing.
 programs.zsh.dotDir = config.home.homeDirectory;
 gtk.gtk4.theme = config.gtk.theme;
 ```
 
-## Cleanup
+## Clean-up
 
-These guards are temporary. When the older release reaches EOL and support is
-dropped, grep for `lib.versionAtLeast lib.version` and collapse each guard to
-its newer-release branch — removing the `lib.optionalAttrs`/`lib.mkIf`
-wrappers and any old-release fallback.
+When a release leaves the supported list, search for
+`lib.versionAtLeast lib.version` and collapse every check that release fails to
+its newer branch, removing the `lib.optionalAttrs` or `lib.mkIf` wrapper and
+the fallback for the release that left.
