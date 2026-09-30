@@ -7,6 +7,18 @@
   namespacedCfg,
   ...
 }:
+let
+  # The compute runtime of a package set, with a Level Zero driver that finds the libraries it
+  # opens at run time.
+  computeRuntime =
+    packageSet:
+    let
+      raytracingSupport = packageSet.callPackage ./intel-compute-runtime/raytracing-support { };
+    in
+    packageSet.callPackage ./intel-compute-runtime {
+      level-zero-raytracing-support = raytracingSupport;
+    };
+in
 {
   options = namespaced __curPos {
     rgbFix = lib.mkEnableOption "full range RGB fix for non-compliant monitors";
@@ -23,17 +35,22 @@
     };
     xpuPackages = lib.mkOption {
       type = with lib.types; listOf package;
-      default = with (if (namespacedCfg __curPos).useUnstablePackages then pkgsUnstable else pkgs); [
-        level-zero
-        intel-compute-runtime
-        intel-media-driver
-        vpl-gpu-rt
-        libva-vdpau-driver
-        libvdpau-va-gl
-        mesa
-        ocl-icd
-        oneDNN
-      ];
+      default =
+        let
+          packageSet = if (namespacedCfg __curPos).useUnstablePackages then pkgsUnstable else pkgs;
+        in
+        with packageSet;
+        [
+          level-zero
+          (computeRuntime packageSet)
+          intel-media-driver
+          vpl-gpu-rt
+          libva-vdpau-driver
+          libvdpau-va-gl
+          mesa
+          ocl-icd
+          oneDNN
+        ];
       description = "XPU packages to use";
     };
   };
