@@ -21,5 +21,6 @@ release leaves the supported list.
 - [docs/traits.md](docs/traits.md) — cross-module capability announcements
 - [docs/var-luks.md](docs/var-luks.md) — encrypted /var (LUKS2) with automatic migration
 - [docs/backup.md](docs/backup.md) — snapshot/replicate a subvolume to pluggable destinations
+- [docs/intel-gpu.md](docs/intel-gpu.md) — the Level Zero driver with its compiler and ray tracing library
 - [docs/images.md](docs/images.md) — image build/output conventions
 - [TIPS_AND_TRICKS.md](TIPS_AND_TRICKS.md) — practical recipes

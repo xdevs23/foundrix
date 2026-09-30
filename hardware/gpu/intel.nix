@@ -9,7 +9,7 @@
 }:
 let
   # The compute runtime of a package set, with a Level Zero driver that finds the libraries it
-  # opens at run time.
+  # opens at run time. See docs/intel-gpu.md.
   computeRuntime =
     packageSet:
     let
