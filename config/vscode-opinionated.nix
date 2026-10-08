@@ -33,7 +33,7 @@
             "editorRuler.foreground" = "#242424";
           };
           "terminal.integrated.tabs.enabled" = true;
-          "editor.fontSize" = 13;
+          "editor.fontSize" = 14;
           "git.openRepositoryInParentFolders" = "never";
           "nix.enableLanguageServer" = true;
           "nix.serverPath" = "nixd";
