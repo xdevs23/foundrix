@@ -162,7 +162,7 @@ let
         after = secret.requires;
         before = secret.requiredBy;
 
-        unitConfig.ConditionPathExists = "!${path}";
+        unitConfig.ConditionFileNotEmpty = "!${path}";
 
         serviceConfig = {
           Type = "oneshot";
@@ -174,23 +174,27 @@ let
 
             ${secret.preScript}
 
-            install -Dm600 /dev/null "${path}"
-            install -Dm600 /dev/null "${variantPath}"
+            install -Dm600 /dev/null "${path}.new"
+            install -Dm600 /dev/null "${variantPath}.new"
 
-            ${generateCmd} > "${path}"
+            ${generateCmd} > "${path}.new"
 
             ${lib.optionalString (!secret.binary) ''
               # Remove trailing newline if present
-              if [ "$(tail -c 1 '${path}' | wc -l)" = 1 ]; then
-                truncate --size=-1 '${path}'
+              if [ "$(tail -c 1 '${path}.new' | wc -l)" = 1 ]; then
+                truncate --size=-1 '${path}.new'
               fi
             ''}
 
             # Create variant with prefix/suffix
-            cat ${prefixFile} "${path}" ${suffixFile} > "${variantPath}"
+            cat ${prefixFile} "${path}.new" ${suffixFile} > "${variantPath}.new"
 
-            chown ${secret.owner}:${fileGroup} "${path}" "${variantPath}"
-            chmod ${secret.mode} "${path}" "${variantPath}"
+            chown ${secret.owner}:${fileGroup} "${path}.new" "${variantPath}.new"
+            chmod ${secret.mode} "${path}.new" "${variantPath}.new"
+            sync "${path}.new" "${variantPath}.new"
+            # The secret goes last, because the unit condition checks only the secret.
+            mv "${variantPath}.new" "${variantPath}"
+            mv "${path}.new" "${path}"
 
             ${secret.postScript}
           '';
