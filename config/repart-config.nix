@@ -137,7 +137,10 @@ in
         name: _: lib.nameValuePair name config.system.build.repartConfigs.${name}
       ) config.system.build.repartConfigs;
 
-      # Auto-generate systemd-repart@<name> services for configs with a device
+      # Auto-generate systemd-repart@<name> services for configs with a device.
+      # Mounts in local-fs.target depend on them, and local-fs.target comes
+      # before sysinit.target, so like the upstream systemd-repart.service
+      # they run without the default dependencies on sysinit.target.
       systemd.services = lib.mapAttrs' (
         name: cfg:
         let
@@ -145,8 +148,14 @@ in
         in
         lib.nameValuePair "systemd-repart@${name}" {
           description = "Repart ${name}";
+          unitConfig.DefaultDependencies = false;
           requires = [ deviceUnit ];
-          after = [ deviceUnit ];
+          after = [
+            deviceUnit
+            "systemd-tmpfiles-setup-dev.service"
+          ];
+          before = [ "shutdown.target" ];
+          conflicts = [ "shutdown.target" ];
           wantedBy = [ "local-fs.target" ];
           path = partitionFsTools cfg.partitions;
           serviceConfig = {
