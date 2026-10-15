@@ -18,6 +18,7 @@
   services.dbus.enable = lib.mkDefault true;
   services.bpftune.enable = lib.mkDefault pkgs.stdenv.hostPlatform.isx86_64;
   services.timesyncd.enable = lib.mkDefault true;
+  networking.useNetworkd = lib.mkDefault true;
 
   nix.settings.trusted-users = [
     "root"
