@@ -55,7 +55,7 @@ interface OrgSettings {
   branding: LabelPolicy | null;
 }
 
-interface DesiredState {
+export interface DesiredState {
   apiUrl: string;
   patPath: string;
   adminOrg: string;
@@ -82,8 +82,9 @@ interface DesiredState {
   adminIamRoles: string[];
 }
 
-interface ProjectSpec {
+export interface ProjectSpec {
   apps: Record<string, AppSpec>;
+  samlApps: Record<string, SamlAppSpec>;
   roles: Record<string, { displayName: string }>;
   userGrants: Record<string, string[]>;
 }
@@ -119,6 +120,10 @@ interface PublicAppSpec {
   grantTypes: string[];
 }
 
+export interface SamlAppSpec {
+  metadataUrl: string;
+}
+
 interface OrgDomain {
   domainName: string;
   isVerified: boolean;
@@ -135,7 +140,7 @@ interface ZitadelUser {
   };
 }
 
-class ZitadelClient {
+export class ZitadelClient {
   constructor(
     private apiUrl: string,
     private token: string,
@@ -427,6 +432,18 @@ class ZitadelClient {
     await this.request(
       "PUT",
       `/management/v1/projects/${projectId}/apps/${appId}/oidc_config`,
+      config,
+    );
+  }
+
+  async createSAMLApp(projectId: string, app: { name: string; metadataUrl: string }): Promise<void> {
+    await this.request("POST", `/management/v1/projects/${projectId}/apps/saml`, app);
+  }
+
+  async updateSAMLAppConfig(projectId: string, appId: string, config: { metadataUrl: string }): Promise<void> {
+    await this.request(
+      "PUT",
+      `/management/v1/projects/${projectId}/apps/${appId}/saml_config`,
       config,
     );
   }
@@ -996,7 +1013,9 @@ async function convergeUserEmails(
   console.log("User emails converged");
 }
 
-async function convergeProject(client: ZitadelClient, name: string): Promise<string> {
+type ProjectClient = Pick<ZitadelClient, "searchProjects" | "getProject" | "updateProject" | "createProject">;
+
+async function convergeProject(client: ProjectClient, name: string): Promise<string> {
   const projects = await client.searchProjects(name);
 
   if (projects.length > 0) {
@@ -1236,6 +1255,56 @@ async function convergePublicApp(
 
   await Deno.writeTextFile(spec.outputPath, clientId);
   console.log(`Wrote OIDC client ID to ${spec.outputPath}`);
+}
+
+// Zitadel reads the metadata from the URL again on every update, so an
+// unchanged URL still picks up a changed service provider certificate.
+export type SamlAppClient = ProjectClient &
+  Pick<ZitadelClient, "searchApps" | "createSAMLApp" | "updateSAMLAppConfig">;
+
+export async function convergeSamlApp(
+  client: SamlAppClient,
+  projectId: string,
+  appName: string,
+  spec: SamlAppSpec,
+): Promise<void> {
+  const apps = await client.searchApps(projectId, appName);
+
+  if (apps.length > 0) {
+    console.log(`Updating SAML app: ${appName}`);
+    await client.updateSAMLAppConfig(projectId, apps[0].id, { metadataUrl: spec.metadataUrl });
+    return;
+  }
+
+  console.log(`Creating SAML app: ${appName}`);
+  await client.createSAMLApp(projectId, { name: appName, metadataUrl: spec.metadataUrl });
+}
+
+// A service provider that is down does not delay the apps of the others.
+export async function convergeSamlApps(
+  client: SamlAppClient,
+  spec: Pick<DesiredState, "projects">,
+): Promise<void> {
+  const failed: string[] = [];
+
+  for (const [projectName, projectSpec] of Object.entries(spec.projects)) {
+    const apps = Object.entries(projectSpec.samlApps);
+    if (apps.length === 0) continue;
+
+    const projectId = await convergeProject(client, projectName);
+    for (const [appName, appSpec] of apps) {
+      try {
+        await convergeSamlApp(client, projectId, appName, appSpec);
+      } catch (e) {
+        console.error(`SAML app ${appName} in ${projectName} failed: ${e instanceof Error ? e.message : e}`);
+        failed.push(`${appName} in ${projectName}`);
+      }
+    }
+  }
+
+  if (failed.length > 0) {
+    throw new Error(`SAML apps not converged: ${failed.join(", ")}`);
+  }
 }
 
 async function convergeProjectRole(
@@ -1568,18 +1637,7 @@ async function convergePrivacyPolicy(
   });
 }
 
-async function main(): Promise<void> {
-  const specPath = Deno.args[0];
-  if (!specPath) {
-    console.error("Usage: zitadel-configure.ts <desired-state.json>");
-    Deno.exit(1);
-  }
-
-  const spec: DesiredState = JSON.parse(await Deno.readTextFile(specPath));
-  const token = (await Deno.readTextFile(spec.patPath)).trim();
-  const client = new ZitadelClient(spec.apiUrl, token);
-
-  await waitForApi(client);
+async function configure(client: ZitadelClient, spec: DesiredState): Promise<void> {
   await convergeDomainPolicy(client, spec.policies.domainPolicy);
   await convergeLoginPolicy(client, spec.policies.loginPolicy);
   await convergeSecurityPolicy(client, spec.policies.enableImpersonation);
@@ -1663,4 +1721,30 @@ async function main(): Promise<void> {
   console.log("Configuration complete");
 }
 
-main();
+enum Task {
+  Configure = "configure",
+  SamlApps = "saml-apps",
+}
+
+const TASKS: Record<Task, (client: ZitadelClient, spec: DesiredState) => Promise<void>> = {
+  [Task.Configure]: configure,
+  [Task.SamlApps]: convergeSamlApps,
+};
+
+async function main(): Promise<void> {
+  const [taskName, specPath] = Deno.args;
+  const task = Object.values(Task).find((t) => t === taskName);
+  if (!task || !specPath) {
+    console.error(`Usage: zitadel-configure.ts <${Object.values(Task).join("|")}> <desired-state.json>`);
+    Deno.exit(1);
+  }
+
+  const spec: DesiredState = JSON.parse(await Deno.readTextFile(specPath));
+  const token = (await Deno.readTextFile(spec.patPath)).trim();
+  const client = new ZitadelClient(spec.apiUrl, token);
+
+  await waitForApi(client);
+  await TASKS[task](client, spec);
+}
+
+if (import.meta.main) await main();

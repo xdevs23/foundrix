@@ -350,6 +350,15 @@
             }
           ) profileFiles
         )
+        // {
+          zitadel-configure =
+            pkgs.runCommand "zitadel-configure-tests" { nativeBuildInputs = [ pkgs.deno ]; }
+              ''
+                cd ${./services}
+                DENO_DIR=$TMPDIR/deno deno test --no-prompt zitadel-configure.test.ts
+                touch $out
+              '';
+        }
       );
       templates = {
         desktop-pc = {

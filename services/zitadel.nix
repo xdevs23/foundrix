@@ -388,12 +388,29 @@ let
     }
   );
 
+  samlAppType = lib.types.submodule {
+    options.metadataUrl = lib.mkOption {
+      type = lib.types.str;
+      description = ''
+        URL of the metadata published by the SAML service provider. Zitadel
+        reads the metadata from it whenever the app is created or updated.
+      '';
+      example = "https://api.example.com/auth/v1/sso/saml/metadata";
+    };
+  };
+
   projectType = lib.types.submodule {
     options = {
       apps = lib.mkOption {
         type = lib.types.attrsOf appType;
         default = { };
         description = "OIDC applications to create within this project";
+      };
+
+      samlApps = lib.mkOption {
+        type = lib.types.attrsOf samlAppType;
+        default = { };
+        description = "SAML applications to create within this project";
       };
 
       roles = lib.mkOption {
@@ -414,6 +431,8 @@ let
       };
     };
   };
+
+  hasSamlApps = lib.any (project: project.samlApps != { }) (lib.attrValues cfg.projects);
 
   dbPasswordSecret = config.foundrix.services.secrets."postgres-${cfg.database.name}-user-password";
 
@@ -514,6 +533,9 @@ let
           grantTypes
           ;
       }) project.apps;
+      samlApps = lib.mapAttrs (_: app: {
+        inherit (app) metadataUrl;
+      }) project.samlApps;
       roles = lib.mapAttrs (_: role: {
         inherit (role) displayName;
       }) project.roles;
@@ -798,7 +820,7 @@ in
     projects = lib.mkOption {
       type = lib.types.attrsOf projectType;
       default = { };
-      description = "Zitadel projects with OIDC apps, roles, and user grants";
+      description = "Zitadel projects with OIDC and SAML apps, roles, and user grants";
     };
 
     actions = lib.mkOption {
@@ -1050,7 +1072,27 @@ in
         Type = "oneshot";
         RemainAfterExit = true;
         TimeoutStartSec = "infinity";
-        ExecStart = "${lib.getExe pkgs.deno} run --allow-read --allow-net --allow-write=/run/zitadel,/var/credentials ${configureScript} /run/zitadel/desired-state.json";
+        ExecStart = "${lib.getExe pkgs.deno} run --allow-read --allow-net --allow-write=/run/zitadel,/var/credentials ${configureScript} configure /run/zitadel/desired-state.json";
+      };
+    };
+
+    # Zitadel reads the metadata of a SAML app from the service provider on
+    # another host, so a provider that is down fails this unit only.
+    # zitadel-configure and the units that require it still run.
+    systemd.services.zitadel-saml-apps = lib.mkIf hasSamlApps {
+      description = "Apply declarative Zitadel SAML apps";
+      requires = [ cfg.configureService ];
+      after = [ cfg.configureService ];
+      wantedBy = [ "multi-user.target" ];
+
+      unitConfig.StartLimitIntervalSec = 0;
+
+      serviceConfig = {
+        Type = "oneshot";
+        RemainAfterExit = true;
+        Restart = "on-failure";
+        RestartSec = "10s";
+        ExecStart = "${lib.getExe pkgs.deno} run --allow-read --allow-net ${configureScript} saml-apps /run/zitadel/desired-state.json";
       };
     };
 
