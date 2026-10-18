@@ -12,10 +12,10 @@ in
 {
   studio = pullImage {
     imageName = "supabase/studio";
-    imageDigest = "sha256:94a2a9d2906e8b4109e55159a62e241c3044709a492913ea8edd34b14973d288";
-    hash = "sha256-Ili46/FVDxV9ieb9Fpd/C8TAIM3u9SIHeEFUgRgwpE4=";
+    imageDigest = "sha256:948770ec467f00e6ae34c35018ef7cb23d7b30eb806b42c2cc0d7bcfdcf8a7a8";
+    hash = "sha256-bA+YdlZmFG/KXYdIHx93xTLdvm1NPPV0BbOAmrUeZrc=";
     finalImageName = "supabase/studio";
-    finalImageTag = "2026.09.07-sha-7996410";
+    finalImageTag = "2026.10.12-sha-3699278";
   };
 
   envoy = pullImage {
@@ -28,34 +28,34 @@ in
 
   auth = pullImage {
     imageName = "supabase/gotrue";
-    imageDigest = "sha256:c0c25187a6b835e65a6f6e6c6b39d090e832d40e6de5186f2c038e0411944232";
-    hash = "sha256-TQSzyp/RQkaxJGyh+wb7KOm2E90pXu/d8mZnlHUkwU0=";
+    imageDigest = "sha256:1736a63078f5922b198c4cbe50f80ab9a2d3b54fe8b7b6cfb2e9dc5dbbc12c6b";
+    hash = "sha256-lB1nkhLoqkt73NKGOnRaHi7tIWpX4K/0ppbUb8LPVDI=";
     finalImageName = "supabase/gotrue";
-    finalImageTag = "v2.196.0";
+    finalImageTag = "v2.197.0";
   };
 
   rest = pullImage {
     imageName = "postgrest/postgrest";
-    imageDigest = "sha256:c9dc201e555f5d8e37e7f39cdd4df0229774996e213bfd7de8d10ac609030f2c";
-    hash = "sha256-MW3AZf77GhkOXlegcWrcmaJ1wtReq5lPazadseatSwQ=";
+    imageDigest = "sha256:c7cd7e265a85b05248abf53f4473fcec7e327c282d0bd0cf60f1551996d09fcf";
+    hash = "sha256-4812EeB0eBT2PIR4S4+/uZ4e4HKzI9RzTDSB3xhBn+Q=";
     finalImageName = "postgrest/postgrest";
-    finalImageTag = "v14.17";
+    finalImageTag = "v14.18";
   };
 
   realtime = pullImage {
     imageName = "supabase/realtime";
-    imageDigest = "sha256:cbcc6a7986fc28b6dcffa798b077d5fb9c69cd25500371ab49147a86d7edbb03";
-    hash = "sha256-x36nPqH3xDTUW/NqHuKpiJd7pnaxQ7rnktzp4ND3/5g=";
+    imageDigest = "sha256:768b559241dd234c4e8852c5c0f504e598b80f1df2ad4dd78d5486fbed2f17a2";
+    hash = "sha256-tQkfNIo1D7vOIed92B3c6GTJHrCb1hq03s/reh+sYiQ=";
     finalImageName = "supabase/realtime";
-    finalImageTag = "v2.134.10";
+    finalImageTag = "v2.143.3";
   };
 
   storage = pullImage {
     imageName = "supabase/storage-api";
-    imageDigest = "sha256:f1546fac6d1c7e345428ac904bfaa7be7cecd50a1f549fe1cf38c628a7b15c85";
-    hash = "sha256-W0IJ5E+QvieRKKtlFNxTWAzOIA6A5pGUwip0vFDZ8AU=";
+    imageDigest = "sha256:98ffec5d0678803783c30e404c27f4ec65e97efbe014088f2a86b4b8b54b9f54";
+    hash = "sha256-OM9nUQz4YI4TQhO4iVeQ0Q8D+Tk3gKQy9vDrfA4CpxE=";
     finalImageName = "supabase/storage-api";
-    finalImageTag = "v1.74.0";
+    finalImageTag = "v1.81.0";
   };
 
   imgproxy = pullImage {
@@ -68,26 +68,26 @@ in
 
   meta = pullImage {
     imageName = "supabase/postgres-meta";
-    imageDigest = "sha256:9a079ac1c94d89629262822a4bd1902d5b1be4adb464e5a0a8fd078aaed72158";
-    hash = "sha256-NL9ihkj/Eo/PUXWD8qDUIJPSyNV+Ipfm6rCkFsogVuw=";
+    imageDigest = "sha256:145325b7e39f8ef4931d6e8cfd3f6f4d655de09d72a2ccc96d9513542c2202bd";
+    hash = "sha256-b+rm/c9XS4JI4LvsPataeZI1+Q24LuZTwTNNcB8hAwA=";
     finalImageName = "supabase/postgres-meta";
-    finalImageTag = "v0.99.0";
+    finalImageTag = "v0.100.0";
   };
 
   functions = pullImage {
     imageName = "supabase/edge-runtime";
-    imageDigest = "sha256:edd22bef4477b900d5c300e287ce9b18bff9b81a0291bee14ee0b7c7b71a2899";
-    hash = "sha256-Ea4HfmaoQPOs6K8ZUCoTD2RSraqEQVr0fqcGPk05zN8=";
+    imageDigest = "sha256:ad45164b7548bf5820ed7be714789c17ac2865edce79a09cfb4c3756c3d365a8";
+    hash = "sha256-hz2qcsWYengLJPw7SLaM/RCkoEIs3UW/ivzmpuxMiuc=";
     finalImageName = "supabase/edge-runtime";
-    finalImageTag = "v1.76.2";
+    finalImageTag = "v1.77.4";
   };
 
   supavisor = pullImage {
     imageName = "supabase/supavisor";
-    imageDigest = "sha256:464b93a60ba8c96bc06dad7f241562d6613b2a994922307717b05f432ae415c2";
-    hash = "sha256-UbNZJGyFR3St/d52EWOx1lt4nnQH5U07eKL6+ANkB40=";
+    imageDigest = "sha256:07f1a6098ffc04b80263bca4eb5c3e7bd2e03dfd1fc465aa108d7329000a1a4e";
+    hash = "sha256-hUwheRhSH5PgTmEiUGBMSJnxn3XVrFUWHMCq+Y0PKuw=";
     finalImageName = "supabase/supavisor";
-    finalImageTag = "2.9.12";
+    finalImageTag = "2.9.13";
   };
 
   postgres =
