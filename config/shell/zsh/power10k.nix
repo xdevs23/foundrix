@@ -87,7 +87,7 @@
           url = "https://github.com/ohmyzsh/ohmyzsh";
           # chore: update oh-my-zsh hash to latest commit
           # git ls-remote https://github.com/ohmyzsh/ohmyzsh.git HEAD
-          rev = "0ee67f042872d1dfab74270c31867771ca35aef4";
+          rev = "964ddf789b022b6958b27d02d7fa54f552de21e9";
         };
       };
       oh-my-zsh-plugins = names: lib.lists.forEach names oh-my-zsh-plugin;
