@@ -90,10 +90,10 @@ in
       type = lib.types.package;
       default = pkgs.dockerTools.pullImage {
         imageName = "linagora/tmail-web";
-        imageDigest = "sha256:8c51a8ae6f7056a0d676d4dc50f5ab52aed3d3e5bae85592c1acc3d0a4153fb4";
-        hash = "sha256-iz5oP+dqdztgLRjBEu+46r98RDFCj+gjAiifJdIrJwg=";
+        imageDigest = "sha256:608c06b1786d13a64628fa458d22ca379e780a91a43c71e47e64058087203df9";
+        hash = "sha256-GrDOm7veMVa2FIf2grxmkD9VjWgLV5wzLvDhsyDnwMA=";
         finalImageName = "linagora/tmail-web";
-        finalImageTag = "v0.37.2";
+        finalImageTag = "v0.40.1";
       };
       description = "TMail Web Docker image (from dockerTools.pullImage)";
     };
