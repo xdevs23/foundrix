@@ -1,6 +1,5 @@
 {
   pkgs,
-  lib,
   namespaced,
   namespacedCfg,
   applyHomeManagerUsers,
@@ -18,17 +17,7 @@
     let
       cfg = namespacedCfg __curPos;
 
-      oh-my-zsh-plugin = name: {
-        name = name;
-        file = "plugins/${name}/${name}.plugin.zsh";
-        src = builtins.fetchGit {
-          url = "https://github.com/ohmyzsh/ohmyzsh";
-          # chore: update oh-my-zsh hash to latest commit
-          # git ls-remote https://github.com/ohmyzsh/ohmyzsh.git HEAD
-          rev = "2100c630ba4bd67bb48802c3e7da893a4fdaa1a0";
-        };
-      };
-      oh-my-zsh-plugins = names: lib.lists.forEach names oh-my-zsh-plugin;
+      ohMyZsh = import ./oh-my-zsh;
 
     in
     {
@@ -84,15 +73,13 @@
               COMPLETION_WAITING_DOTS="true"
             '';
 
-            plugins = [
-            ]
-            ++ (oh-my-zsh-plugins [
+            plugins = ohMyZsh.plugins [
               "history"
               "shrink-path"
               "sudo"
               "transfer"
               "z"
-            ]);
+            ];
           };
         }
       );
