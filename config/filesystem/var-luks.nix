@@ -108,7 +108,7 @@
 
       assertions = [
         {
-          assertion = config.boot.initrd.systemd.enable;
+          assertion = lib.versionAtLeast lib.version "26.10" || config.boot.initrd.systemd.enable;
           message = "filesystem.var-luks requires the systemd-based initrd (boot.initrd.systemd.enable)";
         }
         {

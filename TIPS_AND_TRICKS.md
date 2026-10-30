@@ -218,12 +218,14 @@ systemd-sysupdate writes to the empty slot, then reboots into it.
 
 ## Common Gotchas
 
-### boot.initrd.systemd.enable Required
+### boot.initrd.systemd.enable Required on NixOS 26.05
 
-If using `boot.initrd.systemd.repart`, you must also enable:
+On NixOS 26.05, using `boot.initrd.systemd.repart` also requires:
 ```nix
 boot.initrd.systemd.enable = true;
 ```
+
+NixOS unstable always uses systemd in initrd, and this option has been removed.
 
 ### Partition IDs
 

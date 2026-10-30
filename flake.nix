@@ -176,7 +176,7 @@
             {
               nixpkgs.hostPlatform = lib.mkOverride 1200 "x86_64-linux";
               boot.uki.name = "smoke-test";
-              boot.initrd.systemd.enable = true;
+              boot.initrd.systemd.enable = lib.mkIf (!lib.versionAtLeast lib.version "26.10") true;
               foundrix.config.filesystem.var-luks.volumeGlob = "/dev/disk/by-id/scsi-0DATA_*";
               # Dummy key to satisfy the initrd-ssh non-empty-keys assertion.
               boot.initrd.network.ssh.authorizedKeys = [

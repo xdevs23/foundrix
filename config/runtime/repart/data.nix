@@ -84,7 +84,7 @@ in
       ];
 
       # Enable systemd in initrd (required for repart)
-      boot.initrd.systemd.enable = true;
+      boot.initrd.systemd.enable = lib.mkIf (!lib.versionAtLeast lib.version "26.10") true;
 
       # Configure initrd repart
       boot.initrd.systemd.repart = {

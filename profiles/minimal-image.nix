@@ -11,7 +11,7 @@
     config.filesystem.root-tmpfs
     framework.repart-disk-image
   ];
-  boot.initrd.systemd.enable = true;
+  boot.initrd.systemd.enable = lib.mkIf (!lib.versionAtLeast lib.version "26.10") true;
   system.forbiddenDependenciesRegexes = lib.mkForce [ ];
   system.stateVersion = lib.mkDefault (builtins.substring 0 5 lib.version);
 }

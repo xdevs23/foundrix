@@ -72,7 +72,9 @@ in
         }
       ];
 
-      boot.initrd.systemd.enable = lib.mkIf repartEnabled true;
+      boot.initrd.systemd.enable = lib.mkIf (
+        repartEnabled && !lib.versionAtLeast lib.version "26.10"
+      ) true;
       boot.initrd.systemd.repart.device = lib.mkIf repartEnabled deviceCfg.dataDevice;
       boot.initrd.systemd.repart.empty = lib.mkIf repartEnabled "allow";
 

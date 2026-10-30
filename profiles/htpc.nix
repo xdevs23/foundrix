@@ -31,7 +31,7 @@
   users.mutableUsers = lib.mkDefault false;
   services.displayManager.autoLogin.user = config.foundrix.config.kodi-gbm.user;
 
-  boot.initrd.systemd.enable = true;
+  boot.initrd.systemd.enable = lib.mkIf (!lib.versionAtLeast lib.version "26.10") true;
   boot.tmp.cleanOnBoot = true;
 
   networking.hostName = lib.mkOverride 1100 "htpc";

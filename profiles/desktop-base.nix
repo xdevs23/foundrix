@@ -55,7 +55,7 @@
       "udev.log_priority=3"
     ];
     initrd = {
-      systemd.enable = true;
+      systemd.enable = lib.mkIf (!lib.versionAtLeast lib.version "26.10") true;
     };
   };
 

@@ -38,7 +38,7 @@
     configurationLimit = lib.mkDefault 5;
     consoleMode = lib.mkDefault "max";
   };
-  boot.initrd.systemd.enable = true;
+  boot.initrd.systemd.enable = lib.mkIf (!lib.versionAtLeast lib.version "26.10") true;
   foundrix.framework.uefi-secure-boot.keys = {
     includeWindows = true;
     includeMSUEFI = true;
