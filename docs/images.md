@@ -150,6 +150,23 @@ Data disk (runtime):
 |--------|-------------|
 | `config.image.boot.systemd-boot` | UEFI boot with systemd-boot |
 | `config.image.boot.systemd-boot-bios` | UEFI + syslinux BIOS fallback |
+| `config.image.boot.rockchip` | Rockchip loaders in front of the image partitions, packed by `build-sd-image` (see below) |
+
+### Rockchip boards
+
+The Nix build of a Rockchip board does not make a disk image. It builds
+`system.build.sdImageDescription`, a JSON file that contains the rockflasher
+flags for the loaders, and the `systemd-repart` flags and environment with the
+definitions and the files copied by them. The `build-sd-image` package, built for the
+machine it runs on, fills the partitions with `systemd-repart` and writes them
+with the loaders through rockflasher:
+
+```bash
+build-sd-image <description> /dev/sdX    # or a path for an image file
+```
+
+The idbloader starts at sector 64, U-Boot at 8 MiB, and the image partitions
+follow with their labels, types and UUIDs.
 
 ### Slots
 

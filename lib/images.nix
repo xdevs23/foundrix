@@ -156,6 +156,13 @@ rec {
                 finalConfiguration.config.system.build
               else
                 null;
+            diskImage =
+              if
+                buildCfg == null || finalConfiguration.config.foundrix.traits.image.packedOutsideNix or false
+              then
+                null
+              else
+                buildCfg.finalImage or buildCfg.image or null;
           in
           builtins.addErrorContext "while constructing outputs for ${arch}" rec {
             inherit arch finalConfiguration;
@@ -189,7 +196,7 @@ rec {
                   ];
                 };
             # Check if this is an image-based system and if A/B updates are enabled
-            hasImage = (buildCfg.finalImage or buildCfg.image or null) != null;
+            hasImage = diskImage != null;
             hasAbUpdates =
               (finalConfiguration.config.foundrix.traits.image.updateMethod or null) == "systemd-sysupdate";
             qemuGeneralCfg = qemuCfg.config.foundrix.general.qemu or { };
@@ -198,7 +205,7 @@ rec {
             );
             qemuDisks = qemuGeneralCfg.disks or [ ];
             outputs = {
-              image = buildCfg.finalImage or buildCfg.image or null;
+              image = diskImage;
               update = buildCfg.otaUpdate or null;
               "update@compressed" = buildCfg.compressedOtaUpdate or null;
               toplevel = buildCfg.toplevel or null;
@@ -210,7 +217,7 @@ rec {
                     hostForwards = qemuPortForwards;
                     persistentDisks = qemuDisks;
                   }
-                else if (buildCfg.finalImage or buildCfg.image or null) != null then
+                else if diskImage != null then
                   let
                     qemuBuildCfg = qemuCfg.config.system.build;
                   in

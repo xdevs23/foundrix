@@ -10,5 +10,11 @@
       default = null;
       description = "Image update mechanism - determines partition labeling strategy";
     };
+
+    packedOutsideNix = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = "The disk image is packed outside the Nix build. The system does not have an image output";
+    };
   };
 }
