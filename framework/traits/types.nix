@@ -10,6 +10,7 @@
     varProvisioner = {
       repart = "repart";
       luks-manager = "luks-manager";
+      main-subvolume = "main-subvolume";
     };
   };
   homeManager = {
@@ -42,6 +43,7 @@
       varProvisioner = {
         repart = "systemd-repart creates/grows the var partition in the initrd";
         luks-manager = "var-disk-manager provides /var as LUKS2-encrypted btrfs";
+        main-subvolume = "/var is a btrfs subvolume on the image-built main partition";
       };
     };
     homeManager = {

@@ -190,5 +190,6 @@ follow with their labels, types and UUIDs.
 | `config.filesystem.nix` | /nix mount (btrfs) |
 | `config.filesystem.nix-store-erofs` | /nix/store mount (erofs) |
 | `config.filesystem.var` | /var mount with persistence |
+| `config.filesystem.var-subvolume` | /var on a `var` subvolume of the btrfs-writable main partition, added through its `extraSubvolumes` option |
 | `config.filesystem.home-tmpfs` | Ephemeral /home on tmpfs |
 

@@ -5,10 +5,17 @@
   modulesPath,
   foundrixModules,
   installedOnly,
+  namespaced,
+  namespacedCfg,
   ...
 }:
 let
+  cfg = namespacedCfg __curPos;
   partitionIds = config.foundrix.config.image.partition-ids;
+  storeSubvolume = "nix";
+  subvolumePaths = lib.concatMapStringsSep " " (name: "/${name}") (
+    [ storeSubvolume ] ++ cfg.extraSubvolumes
+  );
 in
 {
   imports = [
@@ -17,6 +24,15 @@ in
     foundrixModules.config.filesystem.nix
     ../partition-ids.nix
   ];
+
+  options = namespaced __curPos {
+    extraSubvolumes = lib.mkOption {
+      type = lib.types.listOf (lib.types.strMatching "[^/]+");
+      default = [ ];
+      example = [ "var" ];
+      description = "Names of the subvolumes created by the image on the main btrfs partition next to the nix subvolume";
+    };
+  };
 
   config = installedOnly config {
     # Disabled by default: the btrfs filesystem itself already does zstd
@@ -38,8 +54,8 @@ in
         Type = "linux-generic";
         Label = "main";
         Format = "btrfs";
-        MakeDirectories = "/nix";
-        Subvolumes = "/nix";
+        MakeDirectories = subvolumePaths;
+        Subvolumes = subvolumePaths;
         Minimize = "guess";
         SplitName = "main";
       };
@@ -51,7 +67,7 @@ in
         config.image.repart.partitions.${partitionIds.main}.repartConfig.Label
       }";
       fsOptions = lib.mkDefault [
-        "subvol=nix"
+        "subvol=${storeSubvolume}"
         "compress=zstd"
       ];
     };
