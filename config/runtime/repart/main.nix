@@ -76,6 +76,7 @@
       # afterwards: the same step the online-resize hook performs after its
       # repart run. Idempotent like the rest — a filesystem already at
       # partition size is a no-op.
-      systemd.services."systemd-repart@main-disk".serviceConfig.ExecStartPost = "${config.systemd.package}/bin/systemctl restart systemd-growfs@nix.service";
+      systemd.services."systemd-repart@main-disk".serviceConfig.ExecStartPost =
+        "${config.systemd.package}/bin/systemctl restart systemd-growfs@nix.service";
     };
 }
