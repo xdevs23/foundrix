@@ -6,8 +6,8 @@ let
     # chore: update oh-my-zsh revision to latest commit
     # git ls-remote https://github.com/ohmyzsh/ohmyzsh.git HEAD
     # nix flake prefetch github:ohmyzsh/ohmyzsh/<rev> --json | jq -r .hash
-    rev = "2100c630ba4bd67bb48802c3e7da893a4fdaa1a0";
-    narHash = "sha256-Y6S7urrtsdUN7A7lgWF2FkIWZpA1HNkjf1eWwfkjzUQ=";
+    rev = "cca3bdfbef8c52ef8939ce7911ff68852b949daa";
+    narHash = "sha256-RwuU3bRMxRtdH+TbETZRIHcQYyXaItR4H7ufWL3U4wY=";
   };
 in
 {
@@ -23,6 +23,6 @@ in
         file = "${name}.plugin.zsh";
       }
     else
-      throw "oh-my-zsh at ${src.rev} has no plugin named \"${name}\""
+      throw "oh-my-zsh at ${src.rev} does not have a plugin named \"${name}\""
   );
 }
