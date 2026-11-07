@@ -176,13 +176,11 @@
 
             plugins = ohMyZsh.plugins [
               "git"
-              "adb"
               "battery"
               "colorize"
               "cp"
               "emoji"
               "fancy-ctrl-z"
-              "fd"
               "git-flow"
               "github"
               "gitignore"
@@ -201,7 +199,6 @@
               "pep8"
               "pip"
               "pj"
-              "ripgrep"
               "rsync"
               "shrink-path"
               "sudo"

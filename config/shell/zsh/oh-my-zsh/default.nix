@@ -11,8 +11,18 @@ let
   };
 in
 {
-  plugins = map (name: {
-    inherit name src;
-    file = "plugins/${name}/${name}.plugin.zsh";
-  });
+  plugins = map (
+    name:
+    let
+      dir = "${src}/plugins/${name}";
+    in
+    if builtins.pathExists dir then
+      {
+        inherit name;
+        src = dir;
+        file = "${name}.plugin.zsh";
+      }
+    else
+      throw "oh-my-zsh at ${src.rev} has no plugin named \"${name}\""
+  );
 }
