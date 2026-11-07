@@ -260,38 +260,40 @@ let
 
       # Envoy is the upstream default API gateway
       # See: https://github.com/orgs/supabase/discussions/48048
-      api-gw = baseService images.envoy // {
-        container_name = "supabase-envoy";
-        ports = [ "${toString cfg.gateway.httpPort}:8000/tcp" ];
-        volumes = [
-          "${envoyConfigDir}/envoy.yaml:/etc/envoy/envoy.yaml:ro"
-          "${envoyConfigDir}/cds.yaml:/etc/envoy/cds.yaml:ro"
-          "${envoyConfigDir}/lds.template.yaml:/etc/envoy/lds.template.yaml:ro"
-          "${envoyConfigDir}/docker-entrypoint.sh:/docker-entrypoint.sh:ro"
-        ];
-        entrypoint = [
-          "/bin/sh"
-          "/docker-entrypoint.sh"
-        ];
-        # TCP port check because the image includes neither curl nor wget
-        healthcheck = healthcheck {
-          test = [
-            "CMD-SHELL"
-            "timeout 1 bash -c '</dev/tcp/127.0.0.1/8000'"
+      api-gw =
+        baseService images.envoy
+        // {
+          container_name = "supabase-envoy";
+          ports = [ "${toString cfg.gateway.httpPort}:8000/tcp" ];
+          volumes = [
+            "${envoyConfigDir}/envoy.yaml:/etc/envoy/envoy.yaml:ro"
+            "${envoyConfigDir}/cds.yaml:/etc/envoy/cds.yaml:ro"
+            "${envoyConfigDir}/lds.template.yaml:/etc/envoy/lds.template.yaml:ro"
+            "${envoyConfigDir}/docker-entrypoint.sh:/docker-entrypoint.sh:ro"
           ];
-          interval = "10s";
+          entrypoint = [
+            "/bin/sh"
+            "/docker-entrypoint.sh"
+          ];
+          # TCP port check because the image includes neither curl nor wget
+          healthcheck = healthcheck {
+            test = [
+              "CMD-SHELL"
+              "timeout 1 bash -c '</dev/tcp/127.0.0.1/8000'"
+            ];
+            interval = "10s";
+          };
+          environment = {
+            ANON_KEY = env "ANON_KEY";
+            SERVICE_ROLE_KEY = env "SERVICE_ROLE_KEY";
+            SUPABASE_PUBLIC_URL = apiExternalUrl;
+            DASHBOARD_USERNAME = cfg.dashboardUsername;
+            DASHBOARD_PASSWORD = env "DASHBOARD_PASSWORD";
+          };
+        }
+        // lib.optionalAttrs cfg.studio.enable {
+          depends_on.studio.condition = "service_healthy";
         };
-        environment = {
-          ANON_KEY = env "ANON_KEY";
-          SERVICE_ROLE_KEY = env "SERVICE_ROLE_KEY";
-          SUPABASE_PUBLIC_URL = apiExternalUrl;
-          DASHBOARD_USERNAME = cfg.dashboardUsername;
-          DASHBOARD_PASSWORD = env "DASHBOARD_PASSWORD";
-        };
-      }
-      // lib.optionalAttrs cfg.studio.enable {
-        depends_on.studio.condition = "service_healthy";
-      };
 
       auth = baseService images.auth // {
         container_name = "supabase-auth";
