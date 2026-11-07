@@ -1,4 +1,6 @@
 {
+  lib,
+  pkgs,
   writeShellApplication,
   jq,
   rockflasher,
@@ -8,11 +10,15 @@
   dosfstools,
   mtools,
   e2fsprogs,
-  squashfs-tools,
   erofs-utils,
   btrfs-progs,
   xfsprogs,
 }:
+let
+  # NixOS 26.05 names the package squashfsTools.
+  squashfs-tools =
+    if lib.versionAtLeast lib.version "26.10" then pkgs.squashfs-tools else pkgs.squashfsTools;
+in
 writeShellApplication {
   name = "build-sd-image";
   runtimeInputs = [
