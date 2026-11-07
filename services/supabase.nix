@@ -429,7 +429,7 @@ let
           IMGPROXY_BIND = ":5001";
           IMGPROXY_LOCAL_FILESYSTEM_ROOT = "/";
           IMGPROXY_USE_ETAG = "true";
-          IMGPROXY_ENABLE_WEBP_DETECTION = "true";
+          IMGPROXY_AUTO_WEBP = "true";
         };
       };
 

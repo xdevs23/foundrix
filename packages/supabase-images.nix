@@ -12,18 +12,18 @@ in
 {
   studio = pullImage {
     imageName = "supabase/studio";
-    imageDigest = "sha256:948770ec467f00e6ae34c35018ef7cb23d7b30eb806b42c2cc0d7bcfdcf8a7a8";
-    hash = "sha256-bA+YdlZmFG/KXYdIHx93xTLdvm1NPPV0BbOAmrUeZrc=";
+    imageDigest = "sha256:727a7f37b15f4c76c44e0d765e6be231d8d71c67f2933b2df8c6cbcc9b04c5d0";
+    hash = "sha256-QKbHnln7UAFY/0aPjpY1hOB0FNOxJwBn5Bu7lfys0VE=";
     finalImageName = "supabase/studio";
-    finalImageTag = "2026.10.12-sha-3699278";
+    finalImageTag = "2026.11.02-sha-a05e7ec";
   };
 
   envoy = pullImage {
     imageName = "envoyproxy/envoy";
-    imageDigest = "sha256:57e14a549d7bd43c8d3f6d03e8cfa653e037d4b38e133acd9b54f38c524401b4";
-    hash = "sha256-UtWyTcbJxMjdlVlDG6WlT6Q6dxKYwXCfB7igRUgefBk=";
+    imageDigest = "sha256:1fde8efee875e4e4f6a39a90fe49d9338e1caacce5762034ef9fb4bbb9ad6aed";
+    hash = "sha256-75kg8CeORO2pgoh+S92HQAqTkAKL4KLuWuZd6W/lrFg=";
     finalImageName = "envoyproxy/envoy";
-    finalImageTag = "v1.39.1";
+    finalImageTag = "v1.39.6";
   };
 
   auth = pullImage {
@@ -44,26 +44,26 @@ in
 
   realtime = pullImage {
     imageName = "supabase/realtime";
-    imageDigest = "sha256:768b559241dd234c4e8852c5c0f504e598b80f1df2ad4dd78d5486fbed2f17a2";
-    hash = "sha256-tQkfNIo1D7vOIed92B3c6GTJHrCb1hq03s/reh+sYiQ=";
+    imageDigest = "sha256:25cf375b9b7cb71d90cdf6e04a1a30996e39a8df866ebd0525bba1d959edc8d6";
+    hash = "sha256-10fzp2HyHtLKOmPZtq9pkg/oIy57+q1seZvGdUMWmIw=";
     finalImageName = "supabase/realtime";
-    finalImageTag = "v2.143.3";
+    finalImageTag = "v2.148.3";
   };
 
   storage = pullImage {
     imageName = "supabase/storage-api";
-    imageDigest = "sha256:98ffec5d0678803783c30e404c27f4ec65e97efbe014088f2a86b4b8b54b9f54";
-    hash = "sha256-OM9nUQz4YI4TQhO4iVeQ0Q8D+Tk3gKQy9vDrfA4CpxE=";
+    imageDigest = "sha256:8526956cb462e9f7d392e9848ec77133b2769982ed614e9753cc687e8e4339a6";
+    hash = "sha256-cmJh6oof/rZOEY/9M2o2sMppyhju+UyEAQKTD9XtKRw=";
     finalImageName = "supabase/storage-api";
-    finalImageTag = "v1.81.0";
+    finalImageTag = "v1.89.12";
   };
 
   imgproxy = pullImage {
     imageName = "darthsim/imgproxy";
-    imageDigest = "sha256:73c5dda13199745b0d2d00e4149d4a589c5b2e205dbf335ca05eca8276b54712";
-    hash = "sha256-a4Huqvd5dVW00BSBKyMmQE7UcZnCgJdKJF0gHjk9k5M=";
+    imageDigest = "sha256:69ae09dbc3349944564cb2f66cf35f80a4a9a78fda73d06061a337849520ab1f";
+    hash = "sha256-BjjUOTzc/HIuMWBjvxOh6SCwk3DtD4n8Sj6FbSnGeBg=";
     finalImageName = "darthsim/imgproxy";
-    finalImageTag = "v3.31.4";
+    finalImageTag = "v4.0.21";
   };
 
   meta = pullImage {
@@ -76,10 +76,10 @@ in
 
   functions = pullImage {
     imageName = "supabase/edge-runtime";
-    imageDigest = "sha256:ad45164b7548bf5820ed7be714789c17ac2865edce79a09cfb4c3756c3d365a8";
-    hash = "sha256-hz2qcsWYengLJPw7SLaM/RCkoEIs3UW/ivzmpuxMiuc=";
+    imageDigest = "sha256:6b850a2ccf0bf50ecac9accff8098095cd191c389c2a53c59b857aa0f53a8343";
+    hash = "sha256-u1uKwDW5mj6HHjUIkVL+/j2xWlV08EmquAJk7G8lymM=";
     finalImageName = "supabase/edge-runtime";
-    finalImageTag = "v1.77.4";
+    finalImageTag = "v1.77.9";
   };
 
   supavisor = pullImage {
