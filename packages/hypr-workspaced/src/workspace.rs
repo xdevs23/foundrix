@@ -113,8 +113,34 @@ impl MonitorSlot {
 // MonitorRegistry
 // ---------------------------------------------------------------------------
 
-/// Persistent registry of monitor descriptions to slot indices.
-/// Stored as one description per line; the line number (0-indexed) is the slot.
+/// What the registry knows each of `monitors` by: its description, which
+/// contains the serial number, or its name when it has no description, as a
+/// headless output has none. A description that several of the monitors
+/// have, such as that of two panels of one model without a serial number,
+/// also gets the name of each, so every monitor has a slot of its own.
+fn registry_keys(monitors: &[Monitor]) -> Vec<String> {
+    fn key(monitor: &Monitor) -> &str {
+        if monitor.description.is_empty() {
+            &monitor.name
+        } else {
+            &monitor.description
+        }
+    }
+    monitors
+        .iter()
+        .map(|monitor| {
+            let alike = monitors.iter().filter(|other| key(other) == key(monitor));
+            if alike.count() > 1 {
+                format!("{} ({})", key(monitor), monitor.name)
+            } else {
+                key(monitor).to_owned()
+            }
+        })
+        .collect()
+}
+
+/// Persistent registry of monitor keys ([`registry_keys`]) to slot indices.
+/// Stored as one key per line; the line number (0-indexed) is the slot.
 /// The built-in display (eDP) is always slot 0 when seeding.
 struct MonitorRegistry {
     entries: Vec<String>,
@@ -156,31 +182,24 @@ impl MonitorRegistry {
         }
     }
 
-    fn slot_for(&self, description: &str) -> Option<usize> {
-        self.entries.iter().position(|d| d == description)
+    fn slot_for(&self, key: &str) -> Option<usize> {
+        self.entries.iter().position(|d| d == key)
     }
 
-    /// Register monitors and return whether the registry was modified.
-    /// On first run, monitors are sorted by description. New monitors are
-    /// appended and get the next available slot.
-    fn register(&mut self, monitors: &[Monitor]) -> bool {
+    /// Register monitors by their keys and return whether the registry was
+    /// modified. On first run, monitors are sorted by description. New
+    /// monitors are appended and get the next available slot.
+    fn register<'a>(&mut self, keys: impl IntoIterator<Item = &'a str>) -> bool {
         let mut modified = false;
 
         if self.entries.is_empty() {
-            for m in monitors {
-                self.entries.push(m.description.clone());
-            }
+            self.entries.extend(keys.into_iter().map(String::from));
             modified = !self.entries.is_empty();
         } else {
-            for monitor in monitors {
-                if self.slot_for(&monitor.description).is_none() {
-                    info!(
-                        "New monitor: {} ({}), slot {}",
-                        monitor.name,
-                        monitor.description,
-                        self.entries.len()
-                    );
-                    self.entries.push(monitor.description.clone());
+            for key in keys {
+                if self.slot_for(key).is_none() {
+                    info!("New monitor: {key}, slot {}", self.entries.len());
+                    self.entries.push(key.to_owned());
                     modified = true;
                 }
             }
@@ -210,14 +229,15 @@ impl MonitorLayout {
     /// Each physical monitor (identified by description/serial) gets a permanent
     /// slot that survives disconnects and restarts.
     pub fn assign(monitors: &[Monitor]) -> Self {
+        let keys = registry_keys(monitors);
         let mut registry = MonitorRegistry::load();
-        if registry.register(monitors) {
+        if registry.register(keys.iter().map(String::as_str)) {
             registry.save();
         }
 
         let mut slots = HashMap::new();
-        for monitor in monitors {
-            let Some(index) = registry.slot_for(&monitor.description) else {
+        for (monitor, key) in monitors.iter().zip(&keys) {
+            let Some(index) = registry.slot_for(key) else {
                 continue;
             };
             let Ok(index) = u8::try_from(index) else {
@@ -966,6 +986,46 @@ mod tests {
         assert_eq!(slot(21), Some(2));
         assert_eq!(slot(2559), Some(255));
         assert_eq!(slot(2560), None);
+    }
+
+    #[test]
+    fn registry_gives_each_key_one_slot() {
+        let mut registry = MonitorRegistry {
+            entries: Vec::new(),
+        };
+        assert!(registry.register(["eDP-1 panel", "HEADLESS-2"]));
+        assert!(!registry.register(["HEADLESS-2", "eDP-1 panel"]));
+        assert!(registry.register(["HEADLESS-3", "eDP-1 panel"]));
+        assert_eq!(registry.slot_for("eDP-1 panel"), Some(0));
+        assert_eq!(registry.slot_for("HEADLESS-2"), Some(1));
+        assert_eq!(registry.slot_for("HEADLESS-3"), Some(2));
+    }
+
+    #[test]
+    fn monitors_with_one_description_get_a_slot_each() {
+        let mut monitors: Vec<Monitor> = serde_json::from_str(include_str!(
+            "../testdata/hyprland-answers/monitors-all-two-outputs.json"
+        ))
+        .unwrap();
+        for monitor in &mut monitors {
+            "Dell Inc. DELL U2720Q".clone_into(&mut monitor.description);
+        }
+        let keys = registry_keys(&monitors);
+        assert_eq!(
+            keys,
+            [
+                "Dell Inc. DELL U2720Q (Virtual-1)",
+                "Dell Inc. DELL U2720Q (HYPR-WORKSPACED-1)"
+            ]
+        );
+        let mut registry = MonitorRegistry {
+            entries: Vec::new(),
+        };
+        assert!(registry.register(keys.iter().map(String::as_str)));
+        assert_eq!(registry.slot_for(&keys[0]), Some(0));
+        assert_eq!(registry.slot_for(&keys[1]), Some(1));
+
+        assert_eq!(registry_keys(&monitors[1..]), ["Dell Inc. DELL U2720Q"]);
     }
 
     #[test]
