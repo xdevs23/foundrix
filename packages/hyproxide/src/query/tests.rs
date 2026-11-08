@@ -9,6 +9,7 @@
 //! * `none`: there is no window, or no configuration error.
 
 use super::*;
+use crate::address::Address;
 use crate::geometry::Size;
 use crate::keyboard::Modifier;
 use crate::monitor::MonitorId;
@@ -173,7 +174,7 @@ fn client() {
     );
     assert_eq!(client.fullscreen, FullscreenState::None);
     assert_eq!(client.fullscreen_handler, FullscreenHandler::Default);
-    assert!(client.grouped.is_empty());
+    assert_eq!(client.grouped, Vec::<Address>::new());
     assert_eq!(client.swallowing, None);
     assert_eq!(client.focus_history_id, Some(0));
     assert_eq!(client.content_type, ContentType::None);
@@ -460,7 +461,7 @@ fn option_values() {
 #[test]
 fn config_errors() {
     let none: config::ConfigErrors = read(recorded!("configerrors-none.json"));
-    assert!(Vec::from(none).is_empty());
+    assert_eq!(Vec::from(none), Vec::<String>::new());
     let errors: config::ConfigErrors = read(recorded!("configerrors.json"));
     assert_eq!(Vec::from(errors), ["=[C]:-1: Invalid size"]);
 }

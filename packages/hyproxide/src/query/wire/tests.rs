@@ -23,12 +23,14 @@ fn minus_one_is_none() {
 
 #[test]
 fn null_is_an_empty_list() {
-    assert!(
-        null_as_empty::<_, u8>(&mut json("null"))
-            .unwrap()
-            .is_empty()
+    assert_eq!(
+        null_as_empty::<_, u8>(&mut json("null")).unwrap(),
+        Vec::<u8>::new()
     );
-    assert!(null_as_empty::<_, u8>(&mut json("[]")).unwrap().is_empty());
+    assert_eq!(
+        null_as_empty::<_, u8>(&mut json("[]")).unwrap(),
+        Vec::<u8>::new()
+    );
     assert_eq!(null_as_empty::<_, u8>(&mut json("[4]")).unwrap(), [4]);
 }
 
