@@ -359,6 +359,9 @@
                 touch $out
               '';
         }
+        // lib.mapAttrs' (name: lib.nameValuePair "hyproxide-${name}") (
+          self.packages.${system}."hyproxide.default".tests
+        )
       );
       templates = {
         desktop-pc = {
