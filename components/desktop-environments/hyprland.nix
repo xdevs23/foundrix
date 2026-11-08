@@ -650,7 +650,8 @@ in
                 key_press_enables_dpms = true;
                 focus_on_activate = true;
                 allow_session_lock_restore = true;
-                render_unfocused_fps = 240;
+                # Hyprland 0.57 rejects values above 120.
+                render_unfocused_fps = 120;
                 vrr = 1;
               };
             };
