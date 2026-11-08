@@ -41,7 +41,7 @@ pub async fn run(log_handle: LogReloadHandle, on_reconnect_restart: Option<Strin
     info!("Listening on {}", path.display());
 
     // Signal systemd that we're ready to accept connections
-    match sd_notify::notify(true, &[sd_notify::NotifyState::Ready]) {
+    match sd_notify::notify(&[sd_notify::NotifyState::Ready]) {
         Ok(()) => info!("Notified systemd of readiness"),
         Err(e) => warn!("Failed to notify systemd of readiness: {e}"),
     }
@@ -213,8 +213,7 @@ async fn restart_user_service(service: &str) -> std::result::Result<(), zbus::Er
     .await?;
 
     // RestartUnit(name: s, mode: s) -> job: o
-    let _job: zbus::zvariant::OwnedObjectPath =
-        proxy.call("RestartUnit", &(service, "replace")).await?;
+    let _job: zbus::OwnedObjectPath = proxy.call("RestartUnit", &(service, "replace")).await?;
 
     Ok(())
 }

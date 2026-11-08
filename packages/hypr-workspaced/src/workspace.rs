@@ -171,11 +171,11 @@ impl MonitorRegistry {
 
     fn save(&self) {
         let path = Self::path();
-        if let Some(parent) = path.parent() {
-            if let Err(e) = std::fs::create_dir_all(parent) {
-                warn!("Failed to create registry directory: {e}");
-                return;
-            }
+        if let Some(parent) = path.parent()
+            && let Err(e) = std::fs::create_dir_all(parent)
+        {
+            warn!("Failed to create registry directory: {e}");
+            return;
         }
         if let Err(e) = std::fs::write(&path, self.entries.join("\n") + "\n") {
             warn!("Failed to save monitor registry: {e}");
@@ -601,24 +601,21 @@ impl WorkspaceManager {
             if let Some(ws) = workspaces
                 .iter()
                 .find(|w| w.workspace.address.id() == Some(target_wsid))
+                && ws.monitor.as_deref() != Some(&monitor.name)
             {
-                if ws.monitor.as_deref() != Some(&monitor.name) {
+                warn!(
+                    "Workspace {target_wsid} is on {} but belongs on {}, relocating",
+                    ws.monitor.as_deref().unwrap_or("no monitor"),
+                    monitor.name
+                );
+                if let Err(e) =
+                    dispatch::dispatch(&self.instance, move_workspace(target_wsid, &monitor.name))
+                        .await
+                {
                     warn!(
-                        "Workspace {target_wsid} is on {} but belongs on {}, relocating",
-                        ws.monitor.as_deref().unwrap_or("no monitor"),
+                        "Failed to move workspace {target_wsid} to {}: {e}",
                         monitor.name
                     );
-                    if let Err(e) = dispatch::dispatch(
-                        &self.instance,
-                        move_workspace(target_wsid, &monitor.name),
-                    )
-                    .await
-                    {
-                        warn!(
-                            "Failed to move workspace {target_wsid} to {}: {e}",
-                            monitor.name
-                        );
-                    }
                 }
             }
 
@@ -636,12 +633,11 @@ impl WorkspaceManager {
         }
 
         let active_ws = query::active_workspace(&self.instance).await?;
-        if active_ws.workspace.address.id() != Some(trigger_workspace_id) {
-            if let Err(e) =
+        if active_ws.workspace.address.id() != Some(trigger_workspace_id)
+            && let Err(e) =
                 dispatch::dispatch(&self.instance, focus_workspace(trigger_workspace_id)).await
-            {
-                warn!("Failed to refocus trigger workspace {trigger_workspace_id}: {e}");
-            }
+        {
+            warn!("Failed to refocus trigger workspace {trigger_workspace_id}: {e}");
         }
 
         if let Err(e) = self.focus_window_under_cursor(vws).await {
