@@ -1,0 +1,5 @@
+# SPDX-License-Identifier: GPL-3.0-only
+disallowed-methods = [
+  { path = "std::thread::sleep", reason = "wait on the event or state that signals readiness" },
+  { path = "std::time::Instant::now", reason = "count progress in units of the work, independent of the clock" },
+]

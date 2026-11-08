@@ -24,5 +24,6 @@ unused_results = "deny"
 [lints.clippy]
 all = { level = "deny", priority = -1 }
 pedantic = { level = "deny", priority = -1 }
+allow_attributes = "deny"
 let_underscore_must_use = "deny"
 undocumented_unsafe_blocks = "deny"
