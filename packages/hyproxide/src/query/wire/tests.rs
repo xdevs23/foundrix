@@ -87,6 +87,8 @@ fn addresses_after_0x() {
     assert_eq!(read.get().get(), 0x5731_06b0_db30);
     assert!(address(&mut json(r#""0x0""#)).is_err());
     assert!(address(&mut json(r#""573106b0db30""#)).is_err());
+    assert!(address(&mut json(r#""0x573106B0DB30""#)).is_err());
+    assert!(optional_bare_address(&mut json(r#""+1a""#)).is_err());
     assert_eq!(optional_address(&mut json(r#""0x0""#)).unwrap(), None);
     assert_eq!(
         optional_address(&mut json(r#""0x1a""#))

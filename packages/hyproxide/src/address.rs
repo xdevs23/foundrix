@@ -1,7 +1,7 @@
 //! How Hyprland identifies windows, layers and input devices.
 
 use std::fmt::{self, Display, Formatter};
-use std::num::{NonZeroU64, ParseIntError};
+use std::num::NonZeroU64;
 
 /// Where an object lives in the memory of Hyprland, which is how Hyprland
 /// identifies windows, layers and input devices. It is displayed as
@@ -20,12 +20,25 @@ impl Address {
         self.0
     }
 
-    /// Read an address written as hex digits. Zero, the address Hyprland
-    /// writes for no object, reads as `None`.
-    pub(crate) fn from_hex(hex: &str) -> Result<Option<Self>, ParseIntError> {
-        u64::from_str_radix(hex, 16).map(|address| NonZeroU64::new(address).map(Self))
+    /// Read an address written as lowercase hex digits, the one form
+    /// Hyprland writes. Zero, the address Hyprland writes for no object,
+    /// reads as `None`.
+    pub(crate) fn from_hex(hex: &str) -> Result<Option<Self>, NotAHexAddress> {
+        let digits = !hex.is_empty()
+            && hex
+                .bytes()
+                .all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f'));
+        let address = digits.then(|| u64::from_str_radix(hex, 16).ok()).flatten();
+        address
+            .map(|address| NonZeroU64::new(address).map(Self))
+            .ok_or_else(|| NotAHexAddress(hex.to_owned()))
     }
 }
+
+/// Text that is not an address in lowercase hex digits.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("{0:?} is not an address in lowercase hex digits")]
+pub(crate) struct NotAHexAddress(String);
 
 impl Display for Address {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
@@ -43,6 +56,12 @@ mod tests {
         assert_eq!(read.get().get(), 0x5731_06b0_db30);
         assert_eq!(read.to_string(), "0x573106b0db30");
         assert_eq!(Address::from_hex("0").unwrap(), None);
-        assert!(Address::from_hex("0x1").is_err());
+        for text in ["", "0x1", "+ff", "FF", "fF", " ff", "1ffffffffffffffff"] {
+            assert_eq!(
+                Address::from_hex(text),
+                Err(NotAHexAddress(text.to_owned())),
+                "{text:?}"
+            );
+        }
     }
 }

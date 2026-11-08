@@ -111,7 +111,7 @@ impl PrefixedAddress {
 }
 
 fn bare_address<E: de::Error>(hex: &str) -> Result<Option<Address>, E> {
-    Address::from_hex(hex).map_err(|_| E::custom(format!("{hex:?} is not a hex address")))
+    Address::from_hex(hex).map_err(E::custom)
 }
 
 pub(super) fn address<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Address, D::Error> {
