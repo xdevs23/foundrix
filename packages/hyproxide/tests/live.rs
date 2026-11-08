@@ -3,10 +3,6 @@
 //! Hyprland takes over the display of the machine, so these tests run one at
 //! a time, and only in the NixOS VM check `hyproxide-live`.
 
-#[path = "support/hyprland.rs"]
-mod hyprland;
-mod support;
-
 use std::num::NonZeroU32;
 use std::time::Duration;
 
@@ -19,8 +15,7 @@ use hyproxide::keyboard::Modifier;
 use hyproxide::window::FullscreenState;
 use hyproxide::workspace::{WorkspaceId, WorkspaceName};
 use hyproxide::{Error, Word, query};
-
-use hyprland::with_hyprland;
+use hyproxide_testing::with_hyprland;
 
 fn word(text: &str) -> Word {
     Word::try_from(text).unwrap()

@@ -1,5 +1,3 @@
-//! Fixtures shared by the integration tests.
-
 use std::env;
 use std::fs;
 use std::io;
@@ -9,13 +7,20 @@ use std::sync::atomic::{AtomicU32, Ordering};
 
 /// A new directory under the temporary directory, removed with its contents
 /// when dropped.
+#[derive(Debug)]
 pub struct TempDirectory(PathBuf);
 
 impl TempDirectory {
-    pub fn new() -> Self {
+    /// # Panics
+    ///
+    /// When the directory cannot be created.
+    #[must_use]
+    pub fn create() -> Self {
         static CREATED: AtomicU32 = AtomicU32::new(0);
         loop {
             let number = CREATED.fetch_add(1, Ordering::Relaxed);
+            // Short, as the sockets of a Hyprland started in it lie three
+            // levels deeper, and a socket path has at most 107 bytes.
             let path = env::temp_dir().join(format!("hyproxide-{}-{number}", process::id()));
             match fs::create_dir(&path) {
                 Ok(()) => return Self(path),
@@ -26,6 +31,7 @@ impl TempDirectory {
         }
     }
 
+    #[must_use]
     pub fn path(&self) -> &Path {
         &self.0
     }

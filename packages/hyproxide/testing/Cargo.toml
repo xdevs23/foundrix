@@ -1,0 +1,15 @@
+[package]
+name = "hyproxide-testing"
+description = "Fixtures for tests against a headless Hyprland 0.57 and its sockets"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+hyproxide.workspace = true
+tokio = { workspace = true, features = ["macros", "net", "process", "rt"] }
+
+[lints]
+workspace = true

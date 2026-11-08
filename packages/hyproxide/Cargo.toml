@@ -1,20 +1,51 @@
-[package]
-name = "hyproxide"
+[workspace]
+members = ["testing"]
+
+[workspace.package]
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.95"
-description = "Client for the IPC sockets of Hyprland 0.57 and later"
 license = "GPL-3.0-only"
 
-[dependencies]
-serde = { version = "=1.0.229", features = ["derive"] }
+[workspace.dependencies]
+hyproxide = { path = "." }
+hyproxide-testing = { path = "testing" }
+serde = "=1.0.229"
 serde_json = "=1.0.154"
+socket2 = "=0.6.5"
 thiserror = "=2.0.21"
-tokio = { version = "=1.54.1", features = ["io-util", "net", "rt"] }
+tokio = "=1.54.1"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+unsafe_op_in_unsafe_fn = "deny"
+unused_results = "deny"
+
+[workspace.lints.clippy]
+all = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }
+allow_attributes = "deny"
+let_underscore_must_use = "deny"
+undocumented_unsafe_blocks = "deny"
+
+[package]
+name = "hyproxide"
+description = "Client for the IPC sockets of Hyprland 0.57 and later"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["io-util", "net", "rt"] }
 
 [dev-dependencies]
-socket2 = "=0.6.5"
-tokio = { version = "=1.54.1", features = ["macros", "process"] }
+hyproxide-testing.workspace = true
+socket2.workspace = true
+tokio = { workspace = true, features = ["macros"] }
 
 # Start Hyprland on the display of the machine, so only the NixOS VM check
 # hyproxide-live runs them.
@@ -26,14 +57,5 @@ test = false
 name = "live_events"
 test = false
 
-[lints.rust]
-unsafe_code = "forbid"
-unsafe_op_in_unsafe_fn = "deny"
-unused_results = "deny"
-
-[lints.clippy]
-all = { level = "deny", priority = -1 }
-pedantic = { level = "deny", priority = -1 }
-allow_attributes = "deny"
-let_underscore_must_use = "deny"
-undocumented_unsafe_blocks = "deny"
+[lints]
+workspace = true

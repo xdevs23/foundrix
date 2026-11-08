@@ -1,20 +1,17 @@
 //! Events from a fake Hyprland: a listener on the event socket in a
 //! directory made for each test, which writes lines in pieces.
 
-mod support;
-
 use hyproxide::event::{self, DATA_LIMIT, Event, Events};
 use hyproxide::workspace::{WorkspaceAddress, WorkspaceId, WorkspaceRef};
 use hyproxide::{Error, Instance};
+use hyproxide_testing::TempDirectory;
 use tokio::io::AsyncWriteExt as _;
 use tokio::net::{UnixListener, UnixStream};
-
-use support::TempDirectory;
 
 /// Subscribe to a fake Hyprland, and return the events with the connection
 /// Hyprland writes them into.
 async fn subscribe() -> (TempDirectory, Events, UnixStream) {
-    let directory = TempDirectory::new();
+    let directory = TempDirectory::create();
     let listener = UnixListener::bind(directory.path().join(".socket2.sock")).unwrap();
     let instance = Instance::at(directory.path());
     let (events, accepted) = tokio::join!(event::subscribe(&instance), listener.accept());
@@ -190,7 +187,7 @@ async fn the_stream_ends_when_hyprland_closes_the_socket() {
 
 #[tokio::test]
 async fn subscribing_without_a_socket_fails_to_connect() {
-    let directory = TempDirectory::new();
+    let directory = TempDirectory::create();
     let subscribed = event::subscribe(&Instance::at(directory.path())).await;
     assert!(
         matches!(&subscribed, Err(Error::Connect { path, .. }) if *path == directory.path().join(".socket2.sock")),

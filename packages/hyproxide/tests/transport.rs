@@ -2,8 +2,6 @@
 //! directory made for each test, which reads a request in one read and
 //! writes an answer.
 
-mod support;
-
 use std::future::{Future, poll_fn};
 use std::io;
 use std::os::fd::OwnedFd;
@@ -12,11 +10,10 @@ use std::pin::{Pin, pin};
 use std::task::Poll;
 
 use hyproxide::{Error, Instance, dispatch, query};
+use hyproxide_testing::TempDirectory;
 use socket2::{Domain, SockAddr, Socket, Type};
 use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 use tokio::net::{UnixListener, UnixStream};
-
-use support::TempDirectory;
 
 struct FakeHyprland {
     directory: TempDirectory,
@@ -32,7 +29,7 @@ impl FakeHyprland {
     /// A Hyprland whose socket queues `length` connections that wait to be
     /// accepted.
     fn with_queue_length(length: i32) -> Self {
-        let directory = TempDirectory::new();
+        let directory = TempDirectory::create();
         let socket = Socket::new(Domain::UNIX, Type::STREAM, None).unwrap();
         socket
             .bind(&SockAddr::unix(socket_path(directory.path())).unwrap())
@@ -152,7 +149,7 @@ async fn a_request_waits_while_the_queue_of_the_socket_is_full() {
 
 #[tokio::test]
 async fn an_instance_without_a_socket_fails_to_connect() {
-    let directory = TempDirectory::new();
+    let directory = TempDirectory::create();
     let submap = query::submap(&Instance::at(directory.path())).await;
     assert!(
         matches!(&submap, Err(Error::Connect { path, .. }) if *path == socket_path(directory.path())),

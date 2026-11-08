@@ -22,10 +22,19 @@ dependencies = [
 name = "hyproxide"
 version = "0.1.0"
 dependencies = [
+ "hyproxide-testing",
  "serde",
  "serde_json",
  "socket2",
  "thiserror",
+ "tokio",
+]
+
+[[package]]
+name = "hyproxide-testing"
+version = "0.1.0"
+dependencies = [
+ "hyproxide",
  "tokio",
 ]
 

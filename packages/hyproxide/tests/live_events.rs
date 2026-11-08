@@ -6,34 +6,12 @@
 //! and every event that arrives, so the log of a run that hangs shows which
 //! event is missing.
 
-#[path = "support/hyprland.rs"]
-mod hyprland;
-mod support;
-
 use hyproxide::dispatch::command::{self, Command, OutputBackend};
 use hyproxide::dispatch::{self, Focus, WindowSelector, window, workspace};
 use hyproxide::event::{self, Event, Events};
 use hyproxide::workspace::{WorkspaceAddress, WorkspaceId, WorkspaceRef};
 use hyproxide::{Instance, Word, query};
-
-use hyprland::with_hyprland;
-
-/// Read events until `done` holds for the events read so far, and return
-/// them.
-async fn read_until(
-    events: &mut Events,
-    awaited: &str,
-    done: impl Fn(&[Event]) -> bool,
-) -> Vec<Event> {
-    eprintln!("waiting for {awaited}");
-    let mut received = Vec::new();
-    while !done(&received) {
-        let event = events.next().await.expect("the event stream ended");
-        eprintln!("received {event:?}");
-        received.push(event);
-    }
-    received
-}
+use hyproxide_testing::{read_until, with_hyprland};
 
 fn assert_all_known(received: &[Event]) {
     assert!(
