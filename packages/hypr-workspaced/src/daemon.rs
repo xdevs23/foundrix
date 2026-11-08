@@ -1,6 +1,5 @@
 use std::convert::Infallible;
 use std::panic;
-use std::time::Duration;
 
 use hyproxide::Instance;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -63,10 +62,7 @@ pub async fn run(log_handle: LogReloadHandle, on_reconnect_restart: Option<Strin
 
     // Monitors are ready once the initial assignment has run. Prime pointer
     // focus now so the session does not start with every window unfocused
-    // under input:follow_mouse (see WorkspaceManager::prime_focus). The short
-    // settle delay mirrors the monitor-change path and lets window geometry
-    // populate before we test what is under the cursor.
-    tokio::time::sleep(Duration::from_millis(500)).await;
+    // under input:follow_mouse (see WorkspaceManager::prime_focus).
     if let Err(e) = manager.prime_focus().await {
         warn!("Initial focus priming failed: {e}");
     }
@@ -84,8 +80,12 @@ pub async fn run(log_handle: LogReloadHandle, on_reconnect_restart: Option<Strin
             }
 
             Ok(()) = changes.layout.changed() => {
+                // Hyprland sends monitoraddedv2 once the monitor is arranged
+                // and has its workspaces, and monitorremovedv2 once it is gone
+                // (<https://github.com/hyprwm/Hyprland/blob/v0.57.1/src/output/Monitor.cpp>,
+                // onConnect and onDisconnect, checked 2026-11-08), so the
+                // state read now has the change.
                 info!("Monitor configuration changed, reassigning workspaces");
-                tokio::time::sleep(Duration::from_millis(500)).await;
                 if let Err(e) = manager.assign_workspaces().await {
                     error!("Workspace reassignment failed: {e}");
                 }
