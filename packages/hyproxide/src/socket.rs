@@ -54,13 +54,8 @@ impl Instance {
         runtime_directory: Option<OsString>,
         signature: Option<OsString>,
     ) -> Result<Self> {
-        let set = |value: Option<OsString>, variable| {
-            value
-                .filter(|value| !value.is_empty())
-                .ok_or(Error::NoInstance { variable })
-        };
-        let runtime_directory = PathBuf::from(set(runtime_directory, RUNTIME_DIRECTORY)?);
-        let signature = set(signature, SIGNATURE)?;
+        let runtime_directory = read_runtime_directory(runtime_directory)?;
+        let signature = required(signature, SIGNATURE)?;
         Ok(Self::at(runtime_directory.join("hypr").join(signature)))
     }
 
@@ -105,6 +100,29 @@ impl Instance {
             source,
         })
     }
+}
+
+/// The runtime directory of the session, `$XDG_RUNTIME_DIR`, in which
+/// Hyprland creates its instances, and where other programs of the session
+/// put their sockets too.
+///
+/// # Errors
+///
+/// [`Error::NoInstance`] when the variable is unset or empty, as for
+/// [`Instance::from_environment`].
+pub fn runtime_directory() -> Result<PathBuf> {
+    read_runtime_directory(env::var_os(RUNTIME_DIRECTORY))
+}
+
+fn read_runtime_directory(value: Option<OsString>) -> Result<PathBuf> {
+    required(value, RUNTIME_DIRECTORY).map(PathBuf::from)
+}
+
+/// The value of a variable that has to be set and not empty.
+fn required(value: Option<OsString>, variable: &'static str) -> Result<OsString> {
+    value
+        .filter(|value| !value.is_empty())
+        .ok_or(Error::NoInstance { variable })
 }
 
 /// The form of the answer Hyprland returns for a request.
@@ -164,6 +182,21 @@ mod tests {
     fn instance_directory_is_under_the_runtime_directory() {
         let found = instance(Some("/tmp/runtime"), Some("signature")).unwrap();
         assert_eq!(found, Instance::at("/tmp/runtime/hypr/signature"));
+    }
+
+    #[test]
+    fn runtime_directory_has_to_be_set() {
+        assert_eq!(
+            read_runtime_directory(Some("/tmp/runtime".into())).unwrap(),
+            Path::new("/tmp/runtime")
+        );
+        for unset in [None, Some(OsString::new())] {
+            let result = read_runtime_directory(unset);
+            assert!(
+                matches!(result, Err(Error::NoInstance { variable }) if variable == "XDG_RUNTIME_DIR"),
+                "{result:?}"
+            );
+        }
     }
 
     #[test]

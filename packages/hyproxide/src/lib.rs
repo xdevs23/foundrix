@@ -1,7 +1,8 @@
 //! A client for the command and event sockets of Hyprland 0.57 and later,
 //! whose configuration is Lua.
 //!
-//! * [`Instance`] finds a running Hyprland and sends requests to it.
+//! * [`Instance`] finds a running Hyprland and sends requests to it, and
+//!   [`runtime_directory`] is the directory of the session it lies in.
 //! * [`event`] reads the events of Hyprland into typed values.
 //! * [`query`] reads the state of Hyprland into typed answers.
 //! * [`dispatch`] runs `hl.dsp.*` dispatchers, Lua code and the plain
@@ -30,5 +31,5 @@ mod word;
 pub mod workspace;
 
 pub use error::{Error, Result};
-pub use socket::Instance;
+pub use socket::{Instance, runtime_directory};
 pub use word::{NotAWord, Word};
