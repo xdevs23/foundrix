@@ -1,5 +1,5 @@
-//! The command socket of a Hyprland instance, and how one request travels
-//! over it.
+//! The sockets of a Hyprland instance, and how one request travels over its
+//! command socket.
 //!
 //! Hyprland reads a request until the client stops sending, writes its answer
 //! and closes the connection, so a request goes out in one write and its
@@ -20,6 +20,11 @@ use crate::error::{Error, Result};
 /// (<https://github.com/hyprwm/Hyprland/blob/v0.57.1/src/ipc/s1/Unix.cpp>,
 /// checked 2026-11-08).
 const COMMAND_SOCKET: &str = ".socket.sock";
+
+/// The event socket in the directory of an instance
+/// (<https://github.com/hyprwm/Hyprland/blob/v0.57.1/src/ipc/s2/Unix.cpp>,
+/// checked 2026-11-08).
+const EVENT_SOCKET: &str = ".socket2.sock";
 
 /// The variables a Hyprland session sets for the programs it starts.
 const RUNTIME_DIRECTORY: &str = "XDG_RUNTIME_DIR";
@@ -65,6 +70,14 @@ impl Instance {
         Self {
             directory: directory.into(),
         }
+    }
+
+    /// Connect to the event socket, and return its path with the
+    /// connection.
+    pub(crate) async fn connect_to_events(&self) -> Result<(PathBuf, UnixStream)> {
+        let path = self.directory.join(EVENT_SOCKET);
+        let stream = connect(&path).await?;
+        Ok((path, stream))
     }
 
     /// Send one request and return the answer.

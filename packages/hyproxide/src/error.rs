@@ -33,6 +33,20 @@ pub enum Error {
     },
 
     #[error(
+        "Hyprland closed its event socket {}. {}",
+        path.display(),
+        NextStep::SubscribeAgain
+    )]
+    EventsClosed { path: PathBuf },
+
+    #[error("reading events from the Hyprland socket {} failed. {}", path.display(), NextStep::SubscribeAgain)]
+    ReadEvents {
+        path: PathBuf,
+        #[source]
+        source: io::Error,
+    },
+
+    #[error(
         "the answer from Hyprland to {request:?} is not UTF-8 text. {}",
         NextStep::CloseWindowWithBrokenText
     )]
@@ -66,6 +80,7 @@ pub enum Error {
 pub(crate) enum NextStep {
     RunInsideHyprland,
     CheckHyprlandRuns,
+    SubscribeAgain,
     CloseWindowWithBrokenText,
     ReadTheAnswer,
     CheckTheVersion,
@@ -84,6 +99,14 @@ impl Display for NextStep {
             NextStep::CheckHyprlandRuns => {
                 "Check that this Hyprland instance still runs: Hyprland removes its socket when \
                  it exits."
+            }
+            // Hyprland drops a client once 64 events wait to be written to it
+            // (<https://github.com/hyprwm/Hyprland/blob/v0.57.1/src/ipc/s2/Unix.cpp>,
+            // checked 2026-11-08).
+            NextStep::SubscribeAgain => {
+                "Check that this Hyprland instance still runs, then subscribe again and read its \
+                 state anew: Hyprland replays no event, and it also closes the socket of a \
+                 program that falls 64 events behind."
             }
             NextStep::CloseWindowWithBrokenText => {
                 "Close the window whose title or class has bytes that are not UTF-8, the usual \

@@ -110,6 +110,31 @@ pub enum WorkspaceAddress {
 }
 
 impl WorkspaceAddress {
+    /// Read an address as Hyprland writes it. `None` when the address is a
+    /// number that is not a workspace number, or has leading zeros, which
+    /// Hyprland never writes.
+    ///
+    /// A named workspace created as `name:special:<name>` has an address
+    /// that cannot be told apart from that of a special workspace, and reads
+    /// as special.
+    pub(crate) fn read(address: &str) -> Option<Self> {
+        if address.is_empty() {
+            return Some(Self::None);
+        }
+        if let Some(name) = address.strip_prefix(SPECIAL) {
+            return Some(Self::Special(name.to_owned()));
+        }
+        // Hyprland refuses names that are numbers, so a number is the address
+        // of a numbered workspace.
+        match WorkspaceName::try_from(address) {
+            Ok(name) => Some(Self::Named(name)),
+            Err(NotAWorkspaceName(number)) => {
+                let id = WorkspaceId::try_from(number.parse::<u32>().ok()?).ok()?;
+                (id.to_string() == number).then_some(Self::Numbered(id))
+            }
+        }
+    }
+
     #[must_use]
     pub fn kind(&self) -> WorkspaceKind {
         match self {
@@ -208,6 +233,20 @@ mod tests {
             assert_eq!(address.to_string(), text);
             assert_eq!(address.kind(), kind, "{text:?}");
             assert_eq!(address.id(), id, "{text:?}");
+            assert_eq!(WorkspaceAddress::read(text), Some(address), "{text:?}");
         }
+    }
+
+    #[test]
+    fn numbers_hyprland_does_not_write_are_no_address() {
+        for text in ["0", "06", "2147483648", "99999999999"] {
+            assert_eq!(WorkspaceAddress::read(text), None, "{text:?}");
+        }
+        assert_eq!(
+            WorkspaceAddress::read("6a"),
+            Some(WorkspaceAddress::Named(
+                WorkspaceName::try_from("6a").unwrap()
+            ))
+        );
     }
 }
