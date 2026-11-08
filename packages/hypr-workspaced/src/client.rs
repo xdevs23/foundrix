@@ -4,7 +4,7 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::UnixStream;
 
 use crate::error::{Error, Result};
-use crate::ipc::{socket_path, Command, Response};
+use crate::ipc::{Command, Response, socket_path};
 
 pub async fn send_command(command: Command) -> Result<()> {
     let path = socket_path();

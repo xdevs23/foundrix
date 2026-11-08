@@ -218,10 +218,15 @@ fn socket_path_from(
             dir.push(uid);
             PathBuf::from(dir)
         }
-        (None, None) => return Err(Error::HyprlandSocket("neither XDG_RUNTIME_DIR nor UID is set")),
+        (None, None) => {
+            return Err(Error::HyprlandSocket(
+                "neither XDG_RUNTIME_DIR nor UID is set",
+            ));
+        }
     };
-    let signature =
-        signature.ok_or(Error::HyprlandSocket("HYPRLAND_INSTANCE_SIGNATURE is not set"))?;
+    let signature = signature.ok_or(Error::HyprlandSocket(
+        "HYPRLAND_INSTANCE_SIGNATURE is not set",
+    ))?;
     path.push("hypr");
     path.push(signature);
     path.push(".socket.sock");
@@ -240,7 +245,10 @@ mod tests {
     fn focus_workspace() {
         let request = Request::FocusWorkspace(13);
         assert_eq!(request.lua(), r#"hl.dsp.focus({ workspace = "13" })"#);
-        assert_eq!(request.command(), r#"dispatch hl.dsp.focus({ workspace = "13" })"#);
+        assert_eq!(
+            request.command(),
+            r#"dispatch hl.dsp.focus({ workspace = "13" })"#
+        );
     }
 
     #[test]

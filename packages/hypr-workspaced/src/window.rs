@@ -93,7 +93,10 @@ mod tests {
             WindowPattern::parse("title:YouTube"),
             Some(WindowPattern::Title("YouTube".to_string()))
         );
-        assert_eq!(WindowPattern::parse("pid:1234"), Some(WindowPattern::Pid(1234)));
+        assert_eq!(
+            WindowPattern::parse("pid:1234"),
+            Some(WindowPattern::Pid(1234))
+        );
         assert_eq!(
             WindowPattern::parse("floating:true"),
             Some(WindowPattern::Floating(true))
@@ -108,9 +111,6 @@ mod tests {
     #[test]
     fn roundtrip() {
         let pattern = WindowPattern::Class("mattermost".to_string());
-        assert_eq!(
-            WindowPattern::parse(&pattern.to_string()),
-            Some(pattern)
-        );
+        assert_eq!(WindowPattern::parse(&pattern.to_string()), Some(pattern));
     }
 }

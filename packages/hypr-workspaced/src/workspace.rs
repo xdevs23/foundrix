@@ -554,14 +554,16 @@ impl WorkspaceManager {
                     .send()
                     .await
                     {
-                        warn!("Failed to move workspace {target_wsid} to {}: {e}", monitor.name);
+                        warn!(
+                            "Failed to move workspace {target_wsid} to {}: {e}",
+                            monitor.name
+                        );
                     }
                 }
             }
 
             debug!("Switching {} to workspace {target_wsid}", monitor.name);
-            if let Err(e) = Request::FocusWorkspace(target_wsid).send().await
-            {
+            if let Err(e) = Request::FocusWorkspace(target_wsid).send().await {
                 warn!(
                     "Failed to switch {} to workspace {target_wsid}: {e}",
                     monitor.name
@@ -575,11 +577,8 @@ impl WorkspaceManager {
 
         let active_ws = query::active_workspace().await?;
         if active_ws.id != Some(trigger_workspace_id) {
-            if let Err(e) = Request::FocusWorkspace(trigger_workspace_id).send().await
-            {
-                warn!(
-                    "Failed to refocus trigger workspace {trigger_workspace_id}: {e}"
-                );
+            if let Err(e) = Request::FocusWorkspace(trigger_workspace_id).send().await {
+                warn!("Failed to refocus trigger workspace {trigger_workspace_id}: {e}");
             }
         }
 
@@ -813,11 +812,9 @@ impl WorkspaceManager {
             };
 
             let should_move = match mode {
-                CollapseMode::All => {
-                    VirtualWorkspace::from_hyprland_id(client_ws_id)
-                        .map(|v| v == current_vws && client_ws_id != current_ws_id)
-                        .unwrap_or(false)
-                }
+                CollapseMode::All => VirtualWorkspace::from_hyprland_id(client_ws_id)
+                    .map(|v| v == current_vws && client_ws_id != current_ws_id)
+                    .unwrap_or(false),
                 CollapseMode::Invisible => !is_valid_workspace(client_ws_id, num_monitors),
             };
 

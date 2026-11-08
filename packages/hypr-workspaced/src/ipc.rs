@@ -55,11 +55,15 @@ impl FromStr for Command {
 
         match parts.as_slice() {
             ["switch", n] => {
-                let ws = n.parse::<u8>().map_err(|_| Error::InvalidCommand(s.to_string()))?;
+                let ws = n
+                    .parse::<u8>()
+                    .map_err(|_| Error::InvalidCommand(s.to_string()))?;
                 Ok(Command::Switch(Command::validate_workspace(ws)?))
             }
             ["move", n] => {
-                let ws = n.parse::<u8>().map_err(|_| Error::InvalidCommand(s.to_string()))?;
+                let ws = n
+                    .parse::<u8>()
+                    .map_err(|_| Error::InvalidCommand(s.to_string()))?;
                 Ok(Command::MoveTo(Command::validate_workspace(ws)?))
             }
             ["next"] => Ok(Command::Navigate(Direction::Next)),
@@ -69,12 +73,8 @@ impl FromStr for Command {
             ["swap", "next"] => Ok(Command::Swap(Direction::Next)),
             ["swap", "prev"] => Ok(Command::Swap(Direction::Prev)),
             ["assign"] => Ok(Command::Assign),
-            ["pin", pattern @ ..] if !pattern.is_empty() => {
-                Ok(Command::Pin(pattern.join(" ")))
-            }
-            ["unpin", pattern @ ..] if !pattern.is_empty() => {
-                Ok(Command::Unpin(pattern.join(" ")))
-            }
+            ["pin", pattern @ ..] if !pattern.is_empty() => Ok(Command::Pin(pattern.join(" "))),
+            ["unpin", pattern @ ..] if !pattern.is_empty() => Ok(Command::Unpin(pattern.join(" "))),
             ["pins"] => Ok(Command::Pins),
             ["debug", val] => parse_bool_arg(val)
                 .map(Command::Debug)

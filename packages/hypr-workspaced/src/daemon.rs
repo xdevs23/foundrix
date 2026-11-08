@@ -5,11 +5,11 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::{mpsc, watch};
 use tracing::{debug, error, info, warn};
-use tracing_subscriber::reload::Handle;
 use tracing_subscriber::EnvFilter;
+use tracing_subscriber::reload::Handle;
 
 use crate::error::Result;
-use crate::ipc::{socket_path, Command, Response};
+use crate::ipc::{Command, Response, socket_path};
 use crate::query;
 use crate::workspace::{VirtualWorkspace, WorkspaceManager};
 
@@ -26,7 +26,6 @@ struct SyncState {
     workspace_id: i32,
     generation: u64, // Incremented on each change to detect updates
 }
-
 
 pub async fn run(log_handle: LogReloadHandle, on_reconnect_restart: Option<String>) -> Result<()> {
     let path = socket_path();
@@ -288,9 +287,8 @@ async fn restart_user_service(service: &str) -> std::result::Result<(), zbus::Er
     .await?;
 
     // RestartUnit(name: s, mode: s) -> job: o
-    let _job: zbus::zvariant::OwnedObjectPath = proxy
-        .call("RestartUnit", &(service, "replace"))
-        .await?;
+    let _job: zbus::zvariant::OwnedObjectPath =
+        proxy.call("RestartUnit", &(service, "replace")).await?;
 
     Ok(())
 }

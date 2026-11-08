@@ -11,10 +11,10 @@ mod workspace;
 use clap::{Parser, Subcommand};
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
-use tracing_subscriber::{reload, EnvFilter};
+use tracing_subscriber::{EnvFilter, reload};
 
 use crate::error::Result;
-use crate::ipc::{parse_bool_arg, CollapseMode, Command, Direction};
+use crate::ipc::{CollapseMode, Command, Direction, parse_bool_arg};
 
 #[derive(Parser)]
 #[command(name = "hypr-workspaced")]
@@ -78,15 +78,16 @@ enum Commands {
     },
 }
 
-
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Daemon { on_hypr_ipc_reconnect_restart } => {
-            let filter = EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| EnvFilter::new("info"));
+        Commands::Daemon {
+            on_hypr_ipc_reconnect_restart,
+        } => {
+            let filter =
+                EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
             let (filter_layer, reload_handle) = reload::Layer::new(filter);
 
             tracing_subscriber::registry()
@@ -104,12 +105,8 @@ async fn main() -> Result<()> {
             let cmd = Command::MoveTo(Command::validate_workspace(workspace)?);
             client::send_command(cmd).await
         }
-        Commands::Next => {
-            client::send_command(Command::Navigate(Direction::Next)).await
-        }
-        Commands::Prev => {
-            client::send_command(Command::Navigate(Direction::Prev)).await
-        }
+        Commands::Next => client::send_command(Command::Navigate(Direction::Next)).await,
+        Commands::Prev => client::send_command(Command::Navigate(Direction::Prev)).await,
         Commands::Swap { direction } => {
             let dir = match direction.as_str() {
                 "next" => Direction::Next,
@@ -132,9 +129,7 @@ async fn main() -> Result<()> {
             };
             client::send_command(Command::Collapse(mode)).await
         }
-        Commands::Assign => {
-            client::send_command(Command::Assign).await
-        }
+        Commands::Assign => client::send_command(Command::Assign).await,
         Commands::Pin { pattern } => {
             let pattern = pattern.join(" ");
             client::send_command(Command::Pin(pattern)).await
