@@ -13,9 +13,6 @@ pub enum Error {
     #[error("Hyprland lists no focused monitor")]
     NoFocusedMonitor,
 
-    #[error("IO error: {0}")]
-    Io(#[from] io::Error),
-
     #[error("Invalid command: {0}")]
     InvalidCommand(String),
 
@@ -25,8 +22,31 @@ pub enum Error {
     #[error("Invalid window pattern: {0}")]
     InvalidWindowPattern(String),
 
-    #[error("Daemon not running or socket not found")]
-    DaemonNotRunning,
+    #[error("No daemon listens on {}: start it with `hypr-workspaced daemon`", path.display())]
+    DaemonNotRunning { path: PathBuf },
+
+    #[error("Connecting to the daemon at {} failed: {source}", path.display())]
+    ConnectToDaemon {
+        path: PathBuf,
+        #[source]
+        source: io::Error,
+    },
+
+    #[error("Sending the command to the daemon or reading its answer failed: {0}")]
+    TalkToDaemon(#[source] io::Error),
+
+    #[error("The daemon could not run the command: {0}")]
+    CommandFailed(String),
+
+    #[error("The daemon answered {0:?}, which its protocol does not have")]
+    InvalidResponse(String),
+
+    #[error("Listening for commands on {} failed: {source}", path.display())]
+    Listen {
+        path: PathBuf,
+        #[source]
+        source: io::Error,
+    },
 
     #[error("No monitors found")]
     NoMonitors,
@@ -60,6 +80,6 @@ pub enum Error {
     #[error("RUST_LOG does not read as a log filter: {0}")]
     LogFilter(#[source] tracing_subscriber::filter::FromEnvError),
 
-    #[error("{0}")]
-    Other(String),
+    #[error("Changing the log level failed: {0}")]
+    LogLevel(#[source] tracing_subscriber::reload::Error),
 }

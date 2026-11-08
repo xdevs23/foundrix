@@ -1,5 +1,8 @@
 use std::convert::Infallible;
+use std::fs;
+use std::io;
 use std::panic;
+use std::path::Path;
 
 use hyproxide::Instance;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -32,12 +35,10 @@ pub async fn run(log_handle: LogReloadHandle, on_reconnect_restart: Option<Strin
     let (mut changes, read_events) = events::subscribe(instance.clone()).await?;
 
     let path = socket_path()?;
-
-    if path.exists() {
-        std::fs::remove_file(&path)?;
-    }
-
-    let listener = UnixListener::bind(&path)?;
+    let listener = listen(&path).map_err(|source| Error::Listen {
+        path: path.clone(),
+        source,
+    })?;
     info!("Listening on {}", path.display());
 
     // Signal systemd that we're ready to accept connections
@@ -127,6 +128,16 @@ pub async fn run(log_handle: LogReloadHandle, on_reconnect_restart: Option<Strin
             }
         }
     }
+}
+
+/// Listen on the socket of the daemon, in place of a socket that an earlier
+/// daemon left.
+fn listen(path: &Path) -> io::Result<UnixListener> {
+    match fs::remove_file(path) {
+        Err(error) if error.kind() != io::ErrorKind::NotFound => return Err(error),
+        _ => {}
+    }
+    UnixListener::bind(path)
 }
 
 /// Why a task of the daemon, which runs until it fails, ended.
@@ -239,13 +250,10 @@ async fn handle_command(
                 DebugLogging::On => "debug",
                 DebugLogging::Off => "info",
             };
-            match log_handle.reload(EnvFilter::new(level)) {
-                Ok(()) => {
-                    info!("Log level set to {level}");
-                    return Response::Ok;
-                }
-                Err(e) => return Response::Error(format!("Failed to set log level: {e}")),
-            }
+            log_handle
+                .reload(EnvFilter::new(level))
+                .map_err(Error::LogLevel)
+                .inspect(|()| info!("Log level set to {level}"))
         }
     };
 

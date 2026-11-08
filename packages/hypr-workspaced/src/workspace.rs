@@ -419,32 +419,24 @@ impl WorkspaceManager {
             return Ok(());
         }
 
-        let focused = active_monitor(&self.instance).await?;
+        let focused = focused_monitor(&monitors)?;
 
-        let mut by_position: Vec<_> = monitors.iter().collect();
-        by_position.sort_by_key(|m| m.x);
-
-        let focused_idx = by_position
-            .iter()
-            .position(|m| m.id == focused.id)
-            .ok_or_else(|| Error::Other("Focused monitor not found in list".into()))?;
-
-        let target_idx = match direction {
-            Direction::Next => {
-                if focused_idx + 1 >= by_position.len() {
-                    return Ok(());
-                }
-                focused_idx + 1
-            }
-            Direction::Prev => {
-                if focused_idx == 0 {
-                    return Ok(());
-                }
-                focused_idx - 1
-            }
+        // The neighbor by position from left to right, the id deciding
+        // between monitors above each other.
+        let position = |monitor: &&Monitor| (monitor.x, monitor.id);
+        let neighbor = match direction {
+            Direction::Next => monitors
+                .iter()
+                .filter(|monitor| position(monitor) > position(&focused))
+                .min_by_key(position),
+            Direction::Prev => monitors
+                .iter()
+                .filter(|monitor| position(monitor) < position(&focused))
+                .max_by_key(position),
         };
-
-        let target = by_position[target_idx];
+        let Some(target) = neighbor else {
+            return Ok(());
+        };
 
         let Some(vws) = focused
             .active_workspace
@@ -455,7 +447,7 @@ impl WorkspaceManager {
             return Ok(());
         };
 
-        let ws_a = vws.hyprland_id(self.layout.slot_of(&focused)?);
+        let ws_a = vws.hyprland_id(self.layout.slot_of(focused)?);
         let ws_b = vws.hyprland_id(self.layout.slot_of(target)?);
 
         let clients = query::clients(&self.instance).await?;
@@ -573,9 +565,13 @@ impl WorkspaceManager {
 
 /// The focused monitor.
 async fn active_monitor(instance: &Instance) -> Result<Monitor> {
-    query::monitors(instance)
-        .await?
-        .into_iter()
+    focused_monitor(&query::monitors(instance).await?).cloned()
+}
+
+/// The focused monitor of the monitors answer.
+fn focused_monitor(monitors: &[Monitor]) -> Result<&Monitor> {
+    monitors
+        .iter()
         .find(|monitor| monitor.flags.contains(query::MonitorFlag::Focused))
         .ok_or(Error::NoFocusedMonitor)
 }

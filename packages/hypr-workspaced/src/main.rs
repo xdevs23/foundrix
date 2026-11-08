@@ -14,6 +14,7 @@ mod window;
 mod workspace;
 
 use std::env;
+use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
 use tracing_subscriber::filter::LevelFilter;
@@ -85,9 +86,17 @@ enum Commands {
 }
 
 #[tokio::main]
-async fn main() -> Result<()> {
-    let cli = Cli::parse();
+async fn main() -> ExitCode {
+    match run(Cli::parse()).await {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("hypr-workspaced: {error}");
+            ExitCode::FAILURE
+        }
+    }
+}
 
+async fn run(cli: Cli) -> Result<()> {
     match cli.command {
         Commands::Daemon {
             on_hypr_ipc_reconnect_restart,

@@ -127,7 +127,7 @@ impl FromStr for Response {
         } else if let Some(data) = trimmed.strip_prefix("data: ") {
             Ok(Response::Data(data.to_string()))
         } else {
-            Err(Error::InvalidCommand(format!("Invalid response: {s}")))
+            Err(Error::InvalidResponse(s.to_owned()))
         }
     }
 }
@@ -200,6 +200,17 @@ mod tests {
         ] {
             assert!(invalid.parse::<Command>().is_err(), "{invalid}");
         }
+    }
+
+    #[test]
+    fn responses_read_their_three_forms_and_nothing_else() {
+        assert!(matches!("ok\n".parse(), Ok(Response::Ok)));
+        assert!(matches!("data: a\n".parse(), Ok(Response::Data(data)) if data == "a"));
+        assert!(matches!("error: b\n".parse(), Ok(Response::Error(message)) if message == "b"));
+        assert!(matches!(
+            "".parse::<Response>(),
+            Err(Error::InvalidResponse(response)) if response.is_empty()
+        ));
     }
 
     #[test]
