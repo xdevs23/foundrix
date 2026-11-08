@@ -1,11 +1,13 @@
 {
+    "address": "1",
     "id": 1,
+    "type": "normal",
     "name": "1",
     "monitor": "Virtual-1",
     "monitorID": 0,
     "windows": 1,
     "hasfullscreen": false,
-    "lastwindow": "0x647fc1065230",
+    "lastwindow": "0x573106b0db30",
     "lastwindowtitle": "terminal",
     "ispersistent": false,
     "tiledLayout": "dwindle"

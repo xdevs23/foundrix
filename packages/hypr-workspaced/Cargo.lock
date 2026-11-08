@@ -500,6 +500,7 @@ dependencies = [
  "clap",
  "hyprland",
  "sd-notify",
+ "serde",
  "serde_json",
  "socket2",
  "thiserror",

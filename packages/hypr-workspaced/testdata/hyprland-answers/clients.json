@@ -1,13 +1,15 @@
 [{
-    "address": "0x647fc1065230",
+    "address": "0x573106b0db30",
     "mapped": true,
     "hidden": false,
     "visible": true,
     "acceptsInput": true,
-    "at": [21, 21],
-    "size": [470, 342],
+    "at": [0, 0],
+    "size": [2048, 1080],
     "workspace": {
+        "address": "1",
         "id": 1,
+        "type": "normal",
         "name": "1"
     },
     "floating": false,
@@ -16,7 +18,7 @@
     "title": "terminal",
     "initialClass": "foot",
     "initialTitle": "terminal",
-    "pid": 258186,
+    "pid": 26638,
     "xwayland": false,
     "pinned": false,
     "pinFullscreened": false,
@@ -33,5 +35,5 @@
     "xdgDescription": "",
     "contentType": "none",
     "tearingHint": false,
-    "stableId": "18000000"
+    "stableId": "18000001"
 }]

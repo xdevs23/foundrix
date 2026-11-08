@@ -1,4 +1,6 @@
-use hyprland::data::{Client, FullscreenMode};
+use hyprland::data::FullscreenMode;
+
+use crate::answer::Client;
 
 /// A pattern for matching windows, using Hyprland's window identifier syntax.
 ///

@@ -5,19 +5,22 @@
     "make": "",
     "model": "",
     "serial": "",
-    "width": 1024,
-    "height": 768,
+    "width": 4096,
+    "height": 2160,
     "physicalWidth": 0,
     "physicalHeight": 0,
-    "refreshRate": 60.00400,
+    "refreshRate": 60.00000,
     "x": 0,
     "y": 0,
     "activeWorkspace": {
+        "address": "1",
         "id": 1,
+        "type": "normal",
         "name": "1"
     },
     "specialWorkspace": {
-        "id": 0,
+        "address": "",
+        "type": "",
         "name": ""
     },
     "reserved": [0, 0, 0, 0],
@@ -27,11 +30,11 @@
     "dpmsStatus": true,
     "vrr": false,
     "solitary": "0",
-    "solitaryBlockedBy": ["NOTIFICATION","WINDOWED","CANDIDATE"],
+    "solitaryBlockedBy": ["WINDOWED","CANDIDATE"],
     "activelyTearing": false,
-    "tearingBlockedBy": ["NOT_TORN","USER","CANDIDATE","HW_CURSOR"],
+    "tearingBlockedBy": ["NOT_TORN","USER","ZOOM","CANDIDATE"],
     "directScanoutTo": "0",
-    "directScanoutBlockedBy": ["USER","CANDIDATE"],
+    "directScanoutBlockedBy": ["SW","CANDIDATE"],
     "disabled": false,
     "currentFormat": "XRGB8888",
     "mirrorOf": "none",
@@ -41,5 +44,12 @@
     "sdrSaturation": 1,
     "sdrMinLuminance": 0.2,
     "sdrMaxLuminance": 80,
-    "hardwareCursorsInUse": true
+    "hardwareCursorsInUse": true,
+    "hardwareDetails": {
+        "backend": "drm",
+        "hdr": false,
+        "chroma": false,
+        "bt2020": false,
+        "vrrCapable": false
+    }
 }]

@@ -168,10 +168,10 @@ echo "switch 3" | socat - UNIX-CONNECT:$XDG_RUNTIME_DIR/hypr-workspaced.sock
 └────────────────────────────────────────────────────────────────┘
 ```
 
-hyprland-rs delivers Hyprland's events and provides the data types of its state. Every request the
-daemon sends to Hyprland goes through the daemon's own request module: the commands (workspace
-focus, window and workspace moves, and workspace rules) and the state queries (monitors, windows,
-workspaces, the active workspace and the cursor position).
+hyprland-rs delivers Hyprland's events. Every request the daemon sends to Hyprland goes through the
+daemon's own request module: the commands (workspace focus, window and workspace moves, and
+workspace rules) and the state queries (monitors, windows, workspaces, the active workspace and the
+cursor position).
 
 Hyprland queues at most 10 connections on its command socket. Other clients, such as bars and lock
 screens, can fill that queue for a moment, and a connect that does not wait then fails with
@@ -188,8 +188,9 @@ with an error that says so.
 
 | Crate | Version | Purpose |
 |-------|---------|---------|
-| `hyprland` | 0.4.0-beta.3 | Hyprland events and state data types |
+| `hyprland` | 0.4.0-beta.3 | Hyprland events, and the id, address and fullscreen types |
 | `socket2` | 0.6.1 | Connect to Hyprland's command socket with a send timeout |
+| `serde` | 1.0.228 | Derive the answer types |
 | `serde_json` | 1.0.149 | Deserialize Hyprland's JSON answers |
 | `tokio` | 1.49 | Async runtime |
 | `clap` | 4.5 | CLI argument parsing |
@@ -201,34 +202,12 @@ with an error that says so.
 
 ### Data Types
 
-The hyprland-rs types are not always what you'd expect from the docs:
-
-```rust
-// Workspace ID is just i32
-pub type WorkspaceId = i32;
-
-// WorkspaceBasic contains id and name
-pub struct WorkspaceBasic {
-    pub id: WorkspaceId,  // i32
-    pub name: String,
-}
-
-// Monitor.active_workspace is WorkspaceBasic, not WorkspaceId
-pub struct Monitor {
-    pub active_workspace: WorkspaceBasic,
-    pub id: i128,  // Note: monitor ID is i128!
-    pub name: String,
-    pub focused: bool,
-    // ...
-}
-
-// Client.workspace is also WorkspaceBasic
-pub struct Client {
-    pub workspace: WorkspaceBasic,
-    pub address: Address,
-    // ...
-}
-```
+The daemon deserializes Hyprland's answers into its own types in `src/answer.rs`, each with only
+the fields read by the daemon. The data types of the crate expect fields that Hyprland 0.57 omits:
+a workspace id is present only for a normal workspace, so a window on a special workspace, a
+special workspace itself and a disabled monitor without a workspace come without one. In the
+answer types, a workspace id is an `Option<WorkspaceId>` (`WorkspaceId` is `i32`), and a monitor
+id is an `i128`.
 
 ### State Queries
 
@@ -237,8 +216,7 @@ connect to Hyprland's command socket without waiting, so they fail while Hyprlan
 is full, and the crate offers no way to change that.
 
 The daemon's query module sends the same requests in their JSON form through the request module
-and deserializes the answers with `serde_json` into the crate's data types. It returns plain
-`Vec`s:
+and deserializes the answers with `serde_json` into the answer types. It returns plain `Vec`s:
 
 ```rust
 let monitors = query::monitors().await?;          // j/monitors all, disabled monitors included
