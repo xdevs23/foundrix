@@ -7,7 +7,6 @@ use hyproxide::dispatch::{self, Focus, MonitorSelector, rule, workspace};
 use hyproxide::monitor::MonitorId;
 use hyproxide::query::{self, Client, Monitor};
 use hyproxide::workspace::WorkspaceId;
-use tokio::sync::Mutex;
 use tracing::{debug, info, warn};
 
 use crate::error::{Error, Result};
@@ -41,7 +40,6 @@ fn move_workspace(workspace: WorkspaceId, monitor: &str) -> workspace::MoveToMon
 pub struct WorkspaceManager {
     instance: Instance,
     pinned_patterns: Vec<WindowPattern>,
-    ipc_lock: Mutex<()>,
     layout: MonitorLayout,
 }
 
@@ -50,7 +48,6 @@ impl WorkspaceManager {
         Self {
             instance,
             pinned_patterns: Vec::new(),
-            ipc_lock: Mutex::new(()),
             layout: MonitorLayout::new(),
         }
     }
@@ -144,8 +141,6 @@ impl WorkspaceManager {
     }
 
     pub async fn assign_workspaces(&mut self) -> Result<()> {
-        let _guard = self.ipc_lock.lock().await;
-
         let monitors = query::monitors(&self.instance).await?;
 
         if monitors.is_empty() {
@@ -257,8 +252,6 @@ impl WorkspaceManager {
     }
 
     pub async fn switch_virtual(&self, vws: VirtualWorkspace) -> Result<()> {
-        let _guard = self.ipc_lock.lock().await;
-
         let focused = active_monitor(&self.instance).await?;
         let wsid = vws.hyprland_id(self.layout.slot_of(&focused)?);
 
@@ -273,8 +266,6 @@ impl WorkspaceManager {
     }
 
     pub async fn sync_monitors(&self, trigger_workspace_id: WorkspaceId) -> Result<()> {
-        let _guard = self.ipc_lock.lock().await;
-
         let Some(vws) = VirtualWorkspace::from_hyprland_id(trigger_workspace_id) else {
             return Ok(());
         };
@@ -387,8 +378,6 @@ impl WorkspaceManager {
     /// moved or a workspace is switched. Replaying the same focus logic the
     /// workspace-switch path uses primes that state without warping the cursor.
     pub async fn prime_focus(&self) -> Result<()> {
-        let _guard = self.ipc_lock.lock().await;
-
         let focused = active_monitor(&self.instance).await?;
         let Some(vws) = focused
             .active_workspace
@@ -403,8 +392,6 @@ impl WorkspaceManager {
     }
 
     pub async fn move_to_virtual(&self, vws: VirtualWorkspace) -> Result<()> {
-        let _guard = self.ipc_lock.lock().await;
-
         let focused = active_monitor(&self.instance).await?;
         let wsid = vws.hyprland_id(self.layout.slot_of(&focused)?);
 
@@ -426,8 +413,6 @@ impl WorkspaceManager {
         /// The workspace that holds the windows of the focused monitor while
         /// the windows of the other one move in.
         const BUFFER_WS: NonZeroU16 = NonZeroU16::new(999).unwrap();
-
-        let _guard = self.ipc_lock.lock().await;
 
         let monitors = query::monitors(&self.instance).await?;
         if monitors.len() < 2 {
@@ -537,8 +522,6 @@ impl WorkspaceManager {
     }
 
     pub async fn collapse(&self, mode: CollapseMode) -> Result<()> {
-        let _guard = self.ipc_lock.lock().await;
-
         let Some(current_ws_id) = query::active_workspace(&self.instance)
             .await?
             .workspace
