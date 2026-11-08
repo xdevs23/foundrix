@@ -1,6 +1,6 @@
 use std::io;
 
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::UnixStream;
 
 use crate::error::{Error, Result};
@@ -21,13 +21,15 @@ pub async fn send_command(command: Command) -> Result<()> {
             },
         })?;
 
-    let (reader, mut writer) = stream.into_split();
+    let (mut reader, mut writer) = stream.into_split();
     let exchange = async {
         writer.write_all(format!("{command}\n").as_bytes()).await?;
         writer.shutdown().await?;
+        // The daemon closes the connection after its answer, whose data can
+        // have several lines. An empty answer does not read as a response
+        // below.
         let mut response = String::new();
-        // An empty answer does not read as a response below.
-        let _answer_length: usize = BufReader::new(reader).read_line(&mut response).await?;
+        let _answer_length: usize = reader.read_to_string(&mut response).await?;
         Ok(response)
     };
     let response: String = exchange.await.map_err(Error::TalkToDaemon)?;

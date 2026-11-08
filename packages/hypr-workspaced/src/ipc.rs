@@ -118,16 +118,19 @@ pub enum Response {
 impl FromStr for Response {
     type Err = Error;
 
-    fn from_str(s: &str) -> Result<Self> {
-        let trimmed = s.trim();
-        if trimmed == "ok" {
+    /// Read the answer of the daemon: a response as `Display` writes it,
+    /// with data of several lines, and the line end the daemon adds.
+    fn from_str(answer: &str) -> Result<Self> {
+        let invalid = || Error::InvalidResponse(answer.to_owned());
+        let response = answer.strip_suffix('\n').ok_or_else(invalid)?;
+        if response == "ok" {
             Ok(Response::Ok)
-        } else if let Some(msg) = trimmed.strip_prefix("error: ") {
+        } else if let Some(msg) = response.strip_prefix("error: ") {
             Ok(Response::Error(msg.to_string()))
-        } else if let Some(data) = trimmed.strip_prefix("data: ") {
+        } else if let Some(data) = response.strip_prefix("data: ") {
             Ok(Response::Data(data.to_string()))
         } else {
-            Err(Error::InvalidResponse(s.to_owned()))
+            Err(invalid())
         }
     }
 }
@@ -206,11 +209,15 @@ mod tests {
     fn responses_read_their_three_forms_and_nothing_else() {
         assert!(matches!("ok\n".parse(), Ok(Response::Ok)));
         assert!(matches!("data: a\n".parse(), Ok(Response::Data(data)) if data == "a"));
+        assert!(matches!("data: \n".parse(), Ok(Response::Data(data)) if data.is_empty()));
+        assert!(matches!("data: a\nb\n".parse(), Ok(Response::Data(data)) if data == "a\nb"));
         assert!(matches!("error: b\n".parse(), Ok(Response::Error(message)) if message == "b"));
-        assert!(matches!(
-            "".parse::<Response>(),
-            Err(Error::InvalidResponse(response)) if response.is_empty()
-        ));
+        for invalid in ["", "ok", "okay\n"] {
+            assert!(
+                matches!(invalid.parse::<Response>(), Err(Error::InvalidResponse(response)) if response == invalid),
+                "{invalid:?}"
+            );
+        }
     }
 
     #[test]
