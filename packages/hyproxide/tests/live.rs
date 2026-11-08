@@ -13,7 +13,7 @@ use std::time::Duration;
 use hyproxide::dispatch::command::{self, Color, Command, Icon, Notification, OutputBackend};
 use hyproxide::dispatch::{
     self, Action, Direction, Dispatcher, Focus, KeyState, MonitorSelector, WindowSelector,
-    WorkspaceSelector, cursor, group, window, workspace,
+    WorkspaceSelector, cursor, group, rule, window, workspace,
 };
 use hyproxide::keyboard::Modifier;
 use hyproxide::window::FullscreenState;
@@ -128,12 +128,12 @@ async fn dpms_switches_a_monitor_read_from_hyprland() {
 #[tokio::test]
 async fn lua_and_commands_are_answered_ok() {
     with_hyprland(|instance| async move {
-        dispatch::eval(
-            &instance,
-            r#"hl.workspace_rule({ workspace = "9", persistent = false })"#,
-        )
-        .await
-        .unwrap();
+        let monitors = query::monitors(&instance).await.unwrap();
+        let rule = rule::workspace_rule(id(9))
+            .monitor(&monitors[0].name)
+            .persistent(true)
+            .default(false);
+        rule::apply(&instance, &rule).await.unwrap();
 
         let commands = [
             Command::Notify(Notification {

@@ -4,13 +4,16 @@
 //! Each `hl.dsp` group has a module here with one builder per dispatcher, and
 //! the dispatchers at the top of `hl.dsp` are in this module itself. A builder
 //! takes the arguments a dispatcher requires, has a method for each optional
-//! one, and turns into a [`Dispatcher`] for [`dispatch`]. Hyprland returns
+//! one, and turns into a [`Dispatcher`] for [`dispatch`]. [`rule`] builds the
+//! rule functions of the configuration the same way, and sends them through
+//! [`eval`]. Hyprland returns
 //! `ok` for a dispatcher, Lua code and a command that succeed, and any other
 //! answer is an [`Error::Refused`] that contains it.
 
 pub mod command;
 pub mod cursor;
 pub mod group;
+pub mod rule;
 mod selector;
 mod toplevel;
 pub mod window;
