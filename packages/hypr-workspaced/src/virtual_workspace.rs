@@ -60,9 +60,9 @@ impl std::fmt::Display for VirtualWorkspace {
 
 /// A stable index (0, 1, 2, …) assigned to a physical monitor.
 ///
-/// Slots are assigned by sorting monitors by their description (which contains
-/// the serial number), so the same physical monitor always gets the same slot
-/// regardless of connector name or Hyprland ID.
+/// The monitor registry gives each monitor its slot by its description, which
+/// contains the serial number, so the same physical monitor always gets the
+/// same slot regardless of connector name or Hyprland ID.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct MonitorSlot(u8);
 

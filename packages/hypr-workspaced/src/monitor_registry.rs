@@ -31,7 +31,6 @@ pub fn registry_keys(monitors: &[Monitor]) -> Vec<String> {
 
 /// Persistent registry of monitor keys ([`registry_keys`]) to slot indices.
 /// Stored as one key per line; the line number (0-indexed) is the slot.
-/// The built-in display (eDP) is always slot 0 when seeding.
 pub struct MonitorRegistry {
     entries: Vec<String>,
 }
@@ -78,8 +77,9 @@ impl MonitorRegistry {
     }
 
     /// Register monitors by their keys and return whether the registry was
-    /// modified. On first run, monitors are sorted by description. New
-    /// monitors are appended and get the next available slot.
+    /// modified. On the first run, the monitors get slots in the order
+    /// Hyprland lists them. New monitors are appended and get the next
+    /// available slot.
     pub fn register<'a>(&mut self, keys: impl IntoIterator<Item = &'a str>) -> bool {
         let mut modified = false;
 
