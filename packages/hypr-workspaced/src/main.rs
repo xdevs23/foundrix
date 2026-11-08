@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 mod client;
 mod daemon;
 mod error;
@@ -136,7 +138,7 @@ async fn main() -> Result<()> {
             let pattern = pattern.join(" ");
             client::send_command(Command::Unpin(pattern)).await
         }
-        Commands::Pins => client::send_command_with_output(Command::Pins).await,
+        Commands::Pins => client::send_command(Command::Pins).await,
         Commands::Debug { enabled } => {
             let enabled = match parse_bool_arg(&enabled) {
                 Ok(b) => b,

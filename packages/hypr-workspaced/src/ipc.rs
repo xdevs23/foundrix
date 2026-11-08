@@ -41,8 +41,7 @@ pub enum Command {
 
 impl Command {
     pub fn validate_workspace(ws: u8) -> Result<u8> {
-        VirtualWorkspace::new(ws)?;
-        Ok(ws)
+        VirtualWorkspace::new(ws).map(|_valid| ws)
     }
 }
 

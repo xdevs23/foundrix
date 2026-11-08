@@ -148,12 +148,13 @@ struct MonitorRegistry {
 
 impl MonitorRegistry {
     fn path() -> PathBuf {
-        let state_dir = std::env::var("XDG_STATE_HOME")
-            .map(PathBuf::from)
-            .unwrap_or_else(|_| {
+        let state_dir = std::env::var("XDG_STATE_HOME").map_or_else(
+            |_| {
                 let home = std::env::var("HOME").expect("HOME not set");
                 PathBuf::from(home).join(".local/state")
-            });
+            },
+            PathBuf::from,
+        );
         state_dir.join("hypr-workspaced").join("monitors")
     }
 

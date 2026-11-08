@@ -20,6 +20,18 @@ zbus = { version = "=6.2.1", features = ["tokio"] }
 hyproxide-testing = { path = "../hyproxide/testing" }
 serde_json = "=1.0.154"
 
+[lints.rust]
+unsafe_code = "forbid"
+unsafe_op_in_unsafe_fn = "deny"
+unused_results = "deny"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }
+allow_attributes = "deny"
+let_underscore_must_use = "deny"
+undocumented_unsafe_blocks = "deny"
+
 [profile.release]
 lto = true
 strip = true
