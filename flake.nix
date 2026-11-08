@@ -362,6 +362,9 @@
         // lib.mapAttrs' (name: lib.nameValuePair "hyproxide-${name}") (
           self.packages.${system}."hyproxide.default".tests
         )
+        // lib.mapAttrs' (name: lib.nameValuePair "hypr-workspaced-${name}") (
+          self.packages.${system}."hypr-workspaced.default".tests
+        )
       );
       templates = {
         desktop-pc = {
