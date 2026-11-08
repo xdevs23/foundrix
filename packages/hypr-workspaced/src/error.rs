@@ -161,3 +161,91 @@ fn list(failures: &[SyncFailure]) -> String {
         .collect::<Vec<_>>()
         .join("; ")
 }
+
+/// The failed steps of a sync, collected while it attempts every step.
+#[derive(Default)]
+pub struct SyncFailures(Vec<SyncFailure>);
+
+impl SyncFailures {
+    /// Record the outcome of a step.
+    pub fn record(&mut self, step: SyncStep, outcome: std::result::Result<(), impl Into<Error>>) {
+        if let Err(cause) = outcome {
+            self.0.push(SyncFailure {
+                step,
+                cause: cause.into(),
+            });
+        }
+    }
+
+    /// Record the outcome of a step, and return its value when it succeeded.
+    pub fn check<T>(&mut self, step: SyncStep, outcome: Result<T>) -> Option<T> {
+        match outcome {
+            Ok(value) => Some(value),
+            Err(cause) => {
+                self.0.push(SyncFailure { step, cause });
+                None
+            }
+        }
+    }
+
+    pub fn into_result(self, workspace: VirtualWorkspace) -> Result<()> {
+        if self.0.is_empty() {
+            Ok(())
+        } else {
+            Err(Error::SyncIncomplete {
+                workspace,
+                failures: self.0,
+            })
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn id(number: u32) -> WorkspaceId {
+        WorkspaceId::try_from(number).unwrap()
+    }
+
+    #[test]
+    fn a_sync_succeeds_only_when_every_step_did() {
+        let workspace = VirtualWorkspace::new(3).unwrap();
+        let mut failures = SyncFailures::default();
+        failures.record(SyncStep::MovePinnedWindows, Ok::<(), Error>(()));
+        assert_eq!(failures.check(SyncStep::FindSlot, Ok(7)), Some(7));
+        assert!(failures.into_result(workspace).is_ok());
+
+        let mut failures = SyncFailures::default();
+        let show = SyncStep::ShowWorkspace {
+            workspace: id(13),
+            monitor: "HEADLESS-2".into(),
+        };
+        failures.record(show, Err(Error::NoFocusedMonitor));
+        failures.record(SyncStep::Refocus { workspace: id(3) }, Ok::<(), Error>(()));
+        let no_slot = Err::<(), _>(Error::NoSlot("DP-3".into()));
+        assert_eq!(failures.check(SyncStep::FindSlot, no_slot), None);
+        let synced = failures.into_result(workspace);
+        let Err(Error::SyncIncomplete {
+            workspace: failed,
+            failures,
+        }) = synced
+        else {
+            panic!("{synced:?}");
+        };
+        assert_eq!(failed, workspace);
+        assert!(matches!(
+            failures.as_slice(),
+            [
+                SyncFailure {
+                    step: SyncStep::ShowWorkspace { workspace, .. },
+                    cause: Error::NoFocusedMonitor,
+                },
+                SyncFailure {
+                    step: SyncStep::FindSlot,
+                    cause: Error::NoSlot(_),
+                },
+            ] if *workspace == id(13)
+        ));
+    }
+}
