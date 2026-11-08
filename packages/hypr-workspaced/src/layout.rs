@@ -85,6 +85,14 @@ impl MonitorLayout {
             .collect()
     }
 
+    /// Whether `workspace` is a virtual workspace on a slot of the layout,
+    /// so a monitor connected now shows it.
+    pub fn has_workspace(&self, workspace: WorkspaceId) -> bool {
+        VirtualWorkspace::from_hyprland_id(workspace).is_some()
+            && MonitorSlot::from_hyprland_id(workspace)
+                .is_some_and(|slot| self.slots.values().any(|&assigned| assigned == slot))
+    }
+
     /// Iterate all assigned slots (useful for orphan cleanup).
     pub fn all_slots(&self) -> impl Iterator<Item = MonitorSlot> + '_ {
         let max = self.slots.values().map(|s| s.index()).max().unwrap_or(0);
@@ -92,12 +100,16 @@ impl MonitorLayout {
     }
 }
 
-/// Check whether a Hyprland workspace ID belongs to a valid virtual workspace
-/// on an existing monitor slot.
-pub fn is_valid_workspace(id: WorkspaceId, num_monitors: usize) -> bool {
-    VirtualWorkspace::from_hyprland_id(id).is_some()
-        && MonitorSlot::from_hyprland_id(id)
-            .is_some_and(|slot| usize::from(slot.index()) < num_monitors)
+#[cfg(test)]
+impl MonitorLayout {
+    /// The layout of `monitors` that a fresh registry gives, with the slots
+    /// in their order.
+    pub fn of_new_monitors(monitors: &[Monitor]) -> Self {
+        let keys = registry_keys(monitors);
+        let mut registry = MonitorRegistry::default();
+        assert!(registry.register(keys.iter().map(String::as_str)));
+        Self::from_registry(&registry, monitors, &keys)
+    }
 }
 
 #[cfg(test)]
@@ -105,14 +117,14 @@ mod tests {
     use super::*;
     use crate::recorded;
 
+    fn id(number: u32) -> WorkspaceId {
+        WorkspaceId::try_from(number).unwrap()
+    }
+
     #[test]
     fn only_monitors_of_the_layout_have_a_slot() {
         let monitors = recorded::monitors();
-        let assigned = &monitors[..1];
-        let keys = registry_keys(assigned);
-        let mut registry = MonitorRegistry::default();
-        assert!(registry.register(keys.iter().map(String::as_str)));
-        let layout = MonitorLayout::from_registry(&registry, assigned, &keys);
+        let layout = MonitorLayout::of_new_monitors(&monitors[..1]);
 
         assert_eq!(layout.slot_for(monitors[0].id), Some(MonitorSlot::new(0)));
         // The second output, connected after the assignment, has the
@@ -123,5 +135,20 @@ mod tests {
             matches!(&unassigned, Err(Error::NoSlot(name)) if name == "HYPR-WORKSPACED-1"),
             "{unassigned:?}"
         );
+    }
+
+    #[test]
+    fn only_slots_of_the_layout_have_workspaces() {
+        let monitors = recorded::monitors();
+        let both = MonitorLayout::of_new_monitors(&monitors);
+        assert!(both.has_workspace(id(3)));
+        assert!(both.has_workspace(id(13)));
+        // The orphan workspace of slot 1, and workspace 3 of slot 2.
+        assert!(!both.has_workspace(id(10)));
+        assert!(!both.has_workspace(id(23)));
+
+        let first = MonitorLayout::of_new_monitors(&monitors[..1]);
+        assert!(first.has_workspace(id(3)));
+        assert!(!first.has_workspace(id(13)));
     }
 }

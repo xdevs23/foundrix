@@ -11,7 +11,7 @@ use tracing::{debug, info, warn};
 
 use crate::error::{Error, Result, SyncFailure, SyncStep};
 use crate::ipc::{CollapseMode, Direction};
-use crate::layout::{MonitorLayout, is_valid_workspace};
+use crate::layout::MonitorLayout;
 use crate::virtual_workspace::{MonitorSlot, VirtualWorkspace};
 use crate::window::WindowPattern;
 
@@ -532,8 +532,6 @@ impl WorkspaceManager {
         };
 
         let clients = query::clients(&self.instance).await?;
-        let monitors = query::monitors(&self.instance).await?;
-        let num_monitors = monitors.len();
 
         debug!("Collapsing {mode:?} to workspace {current_ws_id} (virtual {current_vws})");
 
@@ -547,7 +545,7 @@ impl WorkspaceManager {
                     VirtualWorkspace::from_hyprland_id(client_ws_id) == Some(current_vws)
                         && client_ws_id != current_ws_id
                 }
-                CollapseMode::Invisible => !is_valid_workspace(client_ws_id, num_monitors),
+                CollapseMode::Invisible => !self.layout.has_workspace(client_ws_id),
             };
 
             if should_move {
