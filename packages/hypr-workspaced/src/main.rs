@@ -5,6 +5,9 @@ mod daemon;
 mod error;
 mod events;
 mod ipc;
+mod layout;
+mod monitor_registry;
+mod virtual_workspace;
 mod window;
 mod workspace;
 

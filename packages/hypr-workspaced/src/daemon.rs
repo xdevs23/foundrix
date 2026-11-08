@@ -13,7 +13,8 @@ use tracing_subscriber::reload::Handle;
 use crate::error::{Error, Result};
 use crate::events;
 use crate::ipc::{Command, Response, socket_path};
-use crate::workspace::{VirtualWorkspace, WorkspaceManager};
+use crate::virtual_workspace::VirtualWorkspace;
+use crate::workspace::WorkspaceManager;
 
 type LogReloadHandle = Handle<EnvFilter, tracing_subscriber::Registry>;
 

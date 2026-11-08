@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use std::str::FromStr;
 
 use crate::error::{Error, Result};
-use crate::workspace::VirtualWorkspace;
+use crate::virtual_workspace::VirtualWorkspace;
 
 pub fn parse_bool_arg(s: &str) -> std::result::Result<bool, String> {
     match s.to_lowercase().as_str() {
