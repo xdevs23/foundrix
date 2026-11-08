@@ -9,7 +9,7 @@ use hyproxide::query::{self, Client, Monitor};
 use hyproxide::workspace::WorkspaceId;
 use tracing::{debug, info, warn};
 
-use crate::error::{Error, Result};
+use crate::error::{Error, Result, SyncFailure, SyncStep};
 use crate::ipc::{CollapseMode, Direction};
 use crate::layout::{MonitorLayout, is_valid_workspace};
 use crate::virtual_workspace::{MonitorSlot, VirtualWorkspace};
@@ -265,30 +265,32 @@ impl WorkspaceManager {
         Ok(())
     }
 
-    pub async fn sync_monitors(&self, trigger_workspace_id: WorkspaceId) -> Result<()> {
-        let Some(vws) = VirtualWorkspace::from_hyprland_id(trigger_workspace_id) else {
-            return Ok(());
-        };
-
+    /// Show `workspace` on every monitor, after Hyprland showed `trigger`,
+    /// its workspace on one of them, and keep the focus there. Attempts every
+    /// step, and fails with all failed steps when one failed.
+    pub async fn sync_monitors(
+        &self,
+        workspace: VirtualWorkspace,
+        trigger: WorkspaceId,
+    ) -> Result<()> {
         let monitors = query::monitors(&self.instance).await?;
 
         if monitors.len() <= 1 {
             return Ok(());
         }
 
-        debug!(
-            "Syncing monitors to virtual workspace {vws} (triggered by ws {trigger_workspace_id})"
-        );
+        debug!("Syncing monitors to virtual workspace {workspace} (triggered by ws {trigger})");
 
         let workspaces = query::workspaces(&self.instance).await?;
+        let mut failures = SyncFailures::default();
 
         for monitor in &monitors {
-            let Some(slot) = self.layout.slot_for(monitor.id) else {
+            let Some(slot) = failures.check(SyncStep::FindSlot, self.layout.slot_of(monitor))
+            else {
                 continue;
             };
-            let target_wsid = vws.hyprland_id(slot);
-            if target_wsid == trigger_workspace_id
-                || monitor.active_workspace.address.id() == Some(target_wsid)
+            let target_wsid = workspace.hyprland_id(slot);
+            if target_wsid == trigger || monitor.active_workspace.address.id() == Some(target_wsid)
             {
                 continue;
             }
@@ -299,48 +301,50 @@ impl WorkspaceManager {
                 .find(|w| w.workspace.address.id() == Some(target_wsid))
                 && ws.monitor.as_deref() != Some(&monitor.name)
             {
-                warn!(
+                info!(
                     "Workspace {target_wsid} is on {} but belongs on {}, relocating",
                     ws.monitor.as_deref().unwrap_or("no monitor"),
                     monitor.name
                 );
-                if let Err(e) =
+                let moved =
                     dispatch::dispatch(&self.instance, move_workspace(target_wsid, &monitor.name))
-                        .await
-                {
-                    warn!(
-                        "Failed to move workspace {target_wsid} to {}: {e}",
-                        monitor.name
-                    );
-                }
+                        .await;
+                let step = SyncStep::MoveWorkspace {
+                    workspace: target_wsid,
+                    monitor: monitor.name.clone(),
+                };
+                failures.record(step, moved);
             }
 
             debug!("Switching {} to workspace {target_wsid}", monitor.name);
-            if let Err(e) = dispatch::dispatch(&self.instance, focus_workspace(target_wsid)).await {
-                warn!(
-                    "Failed to switch {} to workspace {target_wsid}: {e}",
-                    monitor.name
-                );
+            let shown = dispatch::dispatch(&self.instance, focus_workspace(target_wsid)).await;
+            let step = SyncStep::ShowWorkspace {
+                workspace: target_wsid,
+                monitor: monitor.name.clone(),
+            };
+            failures.record(step, shown);
+        }
+
+        failures.record(
+            SyncStep::MovePinnedWindows,
+            self.move_pinned_windows(workspace).await,
+        );
+
+        let refocus = async {
+            let active = query::active_workspace(&self.instance).await?;
+            if active.workspace.address.id() != Some(trigger) {
+                dispatch::dispatch(&self.instance, focus_workspace(trigger)).await?;
             }
-        }
+            Ok::<(), hyproxide::Error>(())
+        };
+        failures.record(SyncStep::Refocus { workspace: trigger }, refocus.await);
 
-        if let Err(e) = self.move_pinned_windows(vws).await {
-            warn!("Failed to move pinned windows: {e}");
-        }
+        failures.record(
+            SyncStep::FocusWindowUnderCursor,
+            self.focus_window_under_cursor(workspace).await,
+        );
 
-        let active_ws = query::active_workspace(&self.instance).await?;
-        if active_ws.workspace.address.id() != Some(trigger_workspace_id)
-            && let Err(e) =
-                dispatch::dispatch(&self.instance, focus_workspace(trigger_workspace_id)).await
-        {
-            warn!("Failed to refocus trigger workspace {trigger_workspace_id}: {e}");
-        }
-
-        if let Err(e) = self.focus_window_under_cursor(vws).await {
-            warn!("Failed to focus window under cursor: {e}");
-        }
-
-        Ok(())
+        failures.into_result(workspace)
     }
 
     async fn focus_window_under_cursor(&self, vws: VirtualWorkspace) -> Result<()> {
@@ -574,4 +578,92 @@ fn focused_monitor(monitors: &[Monitor]) -> Result<&Monitor> {
         .iter()
         .find(|monitor| monitor.flags.contains(query::MonitorFlag::Focused))
         .ok_or(Error::NoFocusedMonitor)
+}
+
+/// The failed steps of a sync, collected while it attempts every step.
+#[derive(Default)]
+struct SyncFailures(Vec<SyncFailure>);
+
+impl SyncFailures {
+    /// Record the outcome of a step.
+    fn record(&mut self, step: SyncStep, outcome: std::result::Result<(), impl Into<Error>>) {
+        if let Err(cause) = outcome {
+            self.0.push(SyncFailure {
+                step,
+                cause: cause.into(),
+            });
+        }
+    }
+
+    /// Record the outcome of a step, and return its value when it succeeded.
+    fn check<T>(&mut self, step: SyncStep, outcome: Result<T>) -> Option<T> {
+        match outcome {
+            Ok(value) => Some(value),
+            Err(cause) => {
+                self.0.push(SyncFailure { step, cause });
+                None
+            }
+        }
+    }
+
+    fn into_result(self, workspace: VirtualWorkspace) -> Result<()> {
+        if self.0.is_empty() {
+            Ok(())
+        } else {
+            Err(Error::SyncIncomplete {
+                workspace,
+                failures: self.0,
+            })
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn id(number: u32) -> WorkspaceId {
+        WorkspaceId::try_from(number).unwrap()
+    }
+
+    #[test]
+    fn a_sync_succeeds_only_when_every_step_did() {
+        let workspace = VirtualWorkspace::new(3).unwrap();
+        let mut failures = SyncFailures::default();
+        failures.record(SyncStep::MovePinnedWindows, Ok::<(), Error>(()));
+        assert_eq!(failures.check(SyncStep::FindSlot, Ok(7)), Some(7));
+        assert!(failures.into_result(workspace).is_ok());
+
+        let mut failures = SyncFailures::default();
+        let show = SyncStep::ShowWorkspace {
+            workspace: id(13),
+            monitor: "HEADLESS-2".into(),
+        };
+        failures.record(show, Err(Error::NoFocusedMonitor));
+        failures.record(SyncStep::Refocus { workspace: id(3) }, Ok::<(), Error>(()));
+        let no_slot = Err::<(), _>(Error::NoSlot("DP-3".into()));
+        assert_eq!(failures.check(SyncStep::FindSlot, no_slot), None);
+        let synced = failures.into_result(workspace);
+        let Err(Error::SyncIncomplete {
+            workspace: failed,
+            failures,
+        }) = synced
+        else {
+            panic!("{synced:?}");
+        };
+        assert_eq!(failed, workspace);
+        assert!(matches!(
+            failures.as_slice(),
+            [
+                SyncFailure {
+                    step: SyncStep::ShowWorkspace { workspace, .. },
+                    cause: Error::NoFocusedMonitor,
+                },
+                SyncFailure {
+                    step: SyncStep::FindSlot,
+                    cause: Error::NoSlot(_),
+                },
+            ] if *workspace == id(13)
+        ));
+    }
 }

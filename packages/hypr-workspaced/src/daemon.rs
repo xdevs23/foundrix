@@ -120,11 +120,15 @@ pub async fn run(log_handle: LogReloadHandle, on_reconnect_restart: Option<Strin
                 }
 
                 debug!("Workspace changed to {workspace} (vspace {vws}), syncing monitors");
-                if let Err(e) = manager.sync_monitors(workspace).await {
-                    error!("Monitor sync failed: {e}");
-                } else {
-                    last_synced_vspace = Some(vws);
-                }
+                // Only a sync that showed the workspace everywhere stops the
+                // next event of the same virtual workspace from syncing again.
+                last_synced_vspace = match manager.sync_monitors(vws, workspace).await {
+                    Ok(()) => Some(vws),
+                    Err(e) => {
+                        error!("Monitor sync failed: {e}");
+                        None
+                    }
+                };
             }
         }
     }
