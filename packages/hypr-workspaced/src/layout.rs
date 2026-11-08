@@ -30,9 +30,13 @@ impl MonitorLayout {
         if registry.register(keys.iter().map(String::as_str)) {
             registry.save();
         }
+        Self::from_registry(&registry, monitors, &keys)
+    }
 
+    /// The slots `registry` has for `monitors`, which it knows by `keys`.
+    fn from_registry(registry: &MonitorRegistry, monitors: &[Monitor], keys: &[String]) -> Self {
         let mut slots = HashMap::new();
-        for (monitor, key) in monitors.iter().zip(&keys) {
+        for (monitor, key) in monitors.iter().zip(keys) {
             let Some(index) = registry.slot_for(key) else {
                 continue;
             };
@@ -57,14 +61,10 @@ impl MonitorLayout {
         Self { slots }
     }
 
-    /// Look up the slot for a Hyprland monitor ID.
-    /// Falls back to treating the raw ID as a slot index if no mapping exists,
-    /// and to `None` for an ID that is no slot index.
+    /// The slot the layout gave the monitor with this Hyprland id, `None`
+    /// for a monitor connected after the layout was assigned.
     pub fn slot_for(&self, monitor_id: MonitorId) -> Option<MonitorSlot> {
-        self.slots
-            .get(&monitor_id)
-            .copied()
-            .or_else(|| u8::try_from(monitor_id.get()).ok().map(MonitorSlot::new))
+        self.slots.get(&monitor_id).copied()
     }
 
     /// The slot of a monitor that the daemon acts on.
@@ -97,4 +97,30 @@ pub fn is_valid_workspace(id: WorkspaceId, num_monitors: usize) -> bool {
     VirtualWorkspace::from_hyprland_id(id).is_some()
         && MonitorSlot::from_hyprland_id(id)
             .is_some_and(|slot| usize::from(slot.index()) < num_monitors)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::recorded;
+
+    #[test]
+    fn only_monitors_of_the_layout_have_a_slot() {
+        let monitors = recorded::monitors();
+        let assigned = &monitors[..1];
+        let keys = registry_keys(assigned);
+        let mut registry = MonitorRegistry::default();
+        assert!(registry.register(keys.iter().map(String::as_str)));
+        let layout = MonitorLayout::from_registry(&registry, assigned, &keys);
+
+        assert_eq!(layout.slot_for(monitors[0].id), Some(MonitorSlot::new(0)));
+        // The second output, connected after the assignment, has the
+        // Hyprland id 1, which is no slot of it.
+        assert_eq!(layout.slot_for(monitors[1].id), None);
+        let unassigned = layout.slot_of(&monitors[1]);
+        assert!(
+            matches!(&unassigned, Err(Error::NoSlot(name)) if name == "HYPR-WORKSPACED-1"),
+            "{unassigned:?}"
+        );
+    }
 }

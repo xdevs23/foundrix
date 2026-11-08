@@ -29,7 +29,10 @@ pub enum Error {
     #[error("No monitors found")]
     NoMonitors,
 
-    #[error("Monitor {0} has no slot: the daemon knows at most 256 monitors")]
+    #[error(
+        "Monitor {0} has no slot: it was connected after the daemon assigned the workspaces, \
+         or 256 monitors have slots already. Run `hypr-workspaced assign`."
+    )]
     NoSlot(String),
 
     #[error("{0}")]

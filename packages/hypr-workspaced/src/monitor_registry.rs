@@ -31,6 +31,7 @@ pub fn registry_keys(monitors: &[Monitor]) -> Vec<String> {
 
 /// Persistent registry of monitor keys ([`registry_keys`]) to slot indices.
 /// Stored as one key per line; the line number (0-indexed) is the slot.
+#[derive(Default)]
 pub struct MonitorRegistry {
     entries: Vec<String>,
 }
@@ -103,12 +104,11 @@ impl MonitorRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::recorded;
 
     #[test]
     fn registry_gives_each_key_one_slot() {
-        let mut registry = MonitorRegistry {
-            entries: Vec::new(),
-        };
+        let mut registry = MonitorRegistry::default();
         assert!(registry.register(["eDP-1 panel", "HEADLESS-2"]));
         assert!(!registry.register(["HEADLESS-2", "eDP-1 panel"]));
         assert!(registry.register(["HEADLESS-3", "eDP-1 panel"]));
@@ -119,10 +119,7 @@ mod tests {
 
     #[test]
     fn monitors_with_one_description_get_a_slot_each() {
-        let mut monitors: Vec<Monitor> = serde_json::from_str(include_str!(
-            "../testdata/hyprland-answers/monitors-all-two-outputs.json"
-        ))
-        .unwrap();
+        let mut monitors = recorded::monitors();
         for monitor in &mut monitors {
             "Dell Inc. DELL U2720Q".clone_into(&mut monitor.description);
         }
@@ -134,9 +131,7 @@ mod tests {
                 "Dell Inc. DELL U2720Q (HYPR-WORKSPACED-1)"
             ]
         );
-        let mut registry = MonitorRegistry {
-            entries: Vec::new(),
-        };
+        let mut registry = MonitorRegistry::default();
         assert!(registry.register(keys.iter().map(String::as_str)));
         assert_eq!(registry.slot_for(&keys[0]), Some(0));
         assert_eq!(registry.slot_for(&keys[1]), Some(1));

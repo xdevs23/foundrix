@@ -80,6 +80,7 @@ fn parse_bool(s: &str) -> Option<bool> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::recorded;
 
     #[test]
     fn parse_patterns() {
@@ -106,20 +107,10 @@ mod tests {
         assert_eq!(WindowPattern::parse("invalid"), None);
     }
 
-    /// The `clients` answer of Hyprland 0.57.1 with two outputs and windows
-    /// that are tiled, floating, fullscreen, of another class and on a
-    /// special workspace, each with a title that says so.
-    fn recorded_clients() -> Vec<Client> {
-        serde_json::from_str(include_str!(
-            "../testdata/hyprland-answers/clients-two-outputs.json"
-        ))
-        .unwrap()
-    }
-
     /// The titles of the recorded windows that `pattern` matches.
     fn matched(pattern: &str) -> Vec<String> {
         let pattern = WindowPattern::parse(pattern).unwrap();
-        recorded_clients()
+        recorded::clients()
             .into_iter()
             .filter(|client| pattern.matches(client))
             .map(|client| client.title)
@@ -128,7 +119,7 @@ mod tests {
 
     /// The titles of the recorded windows other than `excluded`.
     fn all_but(excluded: &str) -> Vec<String> {
-        recorded_clients()
+        recorded::clients()
             .into_iter()
             .map(|client| client.title)
             .filter(|title| title != excluded)
