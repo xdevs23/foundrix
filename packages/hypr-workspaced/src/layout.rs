@@ -24,13 +24,14 @@ impl MonitorLayout {
     /// Build a layout using the persistent monitor registry.
     /// Each physical monitor (identified by description/serial) gets a permanent
     /// slot that survives disconnects and restarts.
-    pub fn assign(monitors: &[Monitor]) -> Self {
+    pub fn assign(monitors: &[Monitor]) -> Result<Self> {
         let keys = registry_keys(monitors);
-        let mut registry = MonitorRegistry::load();
+        let path = MonitorRegistry::path()?;
+        let mut registry = MonitorRegistry::load(&path)?;
         if registry.register(keys.iter().map(String::as_str)) {
-            registry.save();
+            registry.save(&path)?;
         }
-        Self::from_registry(&registry, monitors, &keys)
+        Ok(Self::from_registry(&registry, monitors, &keys))
     }
 
     /// The slots `registry` has for `monitors`, which it knows by `keys`.

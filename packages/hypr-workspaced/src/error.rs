@@ -1,4 +1,6 @@
 use std::io;
+use std::path::PathBuf;
+
 use thiserror::Error;
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -34,6 +36,26 @@ pub enum Error {
          or 256 monitors have slots already. Run `hypr-workspaced assign`."
     )]
     NoSlot(String),
+
+    #[error(
+        "Neither XDG_STATE_HOME nor HOME is an absolute path, so the monitor registry has no \
+         place. Start the daemon with HOME set."
+    )]
+    NoStateDirectory,
+
+    #[error("Reading the monitor registry {} failed: {source}", path.display())]
+    ReadRegistry {
+        path: PathBuf,
+        #[source]
+        source: io::Error,
+    },
+
+    #[error("Writing the monitor registry {} failed: {source}", path.display())]
+    WriteRegistry {
+        path: PathBuf,
+        #[source]
+        source: io::Error,
+    },
 
     #[error("{0}")]
     Other(String),

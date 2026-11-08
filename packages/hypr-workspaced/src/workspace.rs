@@ -149,7 +149,7 @@ impl WorkspaceManager {
 
         info!("Assigning workspaces to {} monitor(s)", monitors.len());
 
-        self.layout = MonitorLayout::assign(&monitors);
+        self.layout = MonitorLayout::assign(&monitors)?;
 
         for monitor in &monitors {
             let slot = self.layout.slot_of(monitor)?;

@@ -1,7 +1,12 @@
-use std::path::PathBuf;
+use std::env;
+use std::fs;
+use std::io;
+use std::path::{Path, PathBuf};
 
 use hyproxide::query::Monitor;
-use tracing::{info, warn};
+use tracing::info;
+
+use crate::error::{Error, Result};
 
 /// What the registry knows each of `monitors` by: its description, which
 /// contains the serial number, or its name when it has no description, as a
@@ -37,40 +42,58 @@ pub struct MonitorRegistry {
 }
 
 impl MonitorRegistry {
-    fn path() -> PathBuf {
-        let state_dir = std::env::var("XDG_STATE_HOME").map_or_else(
-            |_| {
-                let home = std::env::var("HOME").expect("HOME not set");
-                PathBuf::from(home).join(".local/state")
-            },
-            PathBuf::from,
-        );
-        state_dir.join("hypr-workspaced").join("monitors")
-    }
-
-    pub fn load() -> Self {
-        let entries = match std::fs::read_to_string(Self::path()) {
-            Ok(content) => content
-                .lines()
-                .filter(|l| !l.is_empty())
-                .map(String::from)
-                .collect(),
-            Err(_) => Vec::new(),
+    /// The file of the registry, in the state directory of the XDG Base
+    /// Directory Specification, which ignores a variable that is unset or
+    /// not an absolute path
+    /// (<https://specifications.freedesktop.org/basedir-spec/0.8/>, checked
+    /// 2026-11-08).
+    pub fn path() -> Result<PathBuf> {
+        let absolute = |variable| {
+            env::var_os(variable)
+                .map(PathBuf::from)
+                .filter(|path| path.is_absolute())
         };
-        Self { entries }
+        let state = absolute("XDG_STATE_HOME")
+            .or_else(|| absolute("HOME").map(|home| home.join(".local/state")))
+            .ok_or(Error::NoStateDirectory)?;
+        Ok(state.join("hypr-workspaced").join("monitors"))
     }
 
-    pub fn save(&self) {
-        let path = Self::path();
-        if let Some(parent) = path.parent()
-            && let Err(e) = std::fs::create_dir_all(parent)
-        {
-            warn!("Failed to create registry directory: {e}");
-            return;
+    /// Read the registry at `path`. Before the first start of the daemon it
+    /// does not exist, and no monitor has a slot yet.
+    pub fn load(path: &Path) -> Result<Self> {
+        match fs::read_to_string(path) {
+            Ok(content) => Ok(Self {
+                entries: content
+                    .lines()
+                    .filter(|l| !l.is_empty())
+                    .map(String::from)
+                    .collect(),
+            }),
+            Err(missing) if missing.kind() == io::ErrorKind::NotFound => Ok(Self::default()),
+            Err(source) => Err(Error::ReadRegistry {
+                path: path.to_owned(),
+                source,
+            }),
         }
-        if let Err(e) = std::fs::write(&path, self.entries.join("\n") + "\n") {
-            warn!("Failed to save monitor registry: {e}");
-        }
+    }
+
+    /// Write the registry to `path`. It goes into a file next to it first,
+    /// which then replaces the registry, so a crash leaves either the old or
+    /// the new registry, never a part of one.
+    pub fn save(&self, path: &Path) -> Result<()> {
+        let written = path.with_extension("new");
+        let save = || {
+            if let Some(directory) = path.parent() {
+                fs::create_dir_all(directory)?;
+            }
+            fs::write(&written, self.entries.join("\n") + "\n")?;
+            fs::rename(&written, path)
+        };
+        save().map_err(|source| Error::WriteRegistry {
+            path: path.to_owned(),
+            source,
+        })
     }
 
     pub fn slot_for(&self, key: &str) -> Option<usize> {
@@ -103,8 +126,39 @@ impl MonitorRegistry {
 
 #[cfg(test)]
 mod tests {
+    use hyproxide_testing::TempDirectory;
+
     use super::*;
     use crate::recorded;
+
+    #[test]
+    fn the_registry_keeps_its_slots_in_its_file() {
+        let directory = TempDirectory::create();
+        let path = directory.path().join("hypr-workspaced").join("monitors");
+        let mut registry = MonitorRegistry::load(&path).unwrap();
+        assert!(registry.register(["eDP-1 panel", "HEADLESS-2"]));
+        registry.save(&path).unwrap();
+
+        let loaded = MonitorRegistry::load(&path).unwrap();
+        assert_eq!(loaded.slot_for("eDP-1 panel"), Some(0));
+        assert_eq!(loaded.slot_for("HEADLESS-2"), Some(1));
+        assert_eq!(
+            fs::read_to_string(&path).unwrap(),
+            "eDP-1 panel\nHEADLESS-2\n"
+        );
+    }
+
+    #[test]
+    fn a_registry_that_does_not_read_is_an_error() {
+        // A directory where the file belongs.
+        let directory = TempDirectory::create();
+        let loaded = MonitorRegistry::load(directory.path());
+        assert!(
+            matches!(&loaded, Err(Error::ReadRegistry { path, .. }) if path == directory.path()),
+            "{:?}",
+            loaded.map(|registry| registry.entries)
+        );
+    }
 
     #[test]
     fn registry_gives_each_key_one_slot() {
