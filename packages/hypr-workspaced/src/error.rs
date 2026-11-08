@@ -57,6 +57,9 @@ pub enum Error {
         source: io::Error,
     },
 
+    #[error("RUST_LOG does not read as a log filter: {0}")]
+    LogFilter(#[source] tracing_subscriber::filter::FromEnvError),
+
     #[error("{0}")]
     Other(String),
 }

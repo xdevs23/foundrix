@@ -13,12 +13,15 @@ mod virtual_workspace;
 mod window;
 mod workspace;
 
+use std::env;
+
 use clap::{Parser, Subcommand};
+use tracing_subscriber::filter::LevelFilter;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{EnvFilter, reload};
 
-use crate::error::Result;
+use crate::error::{Error, Result};
 use crate::ipc::{CollapseMode, Command, DebugLogging, Direction};
 use crate::virtual_workspace::VirtualWorkspace;
 
@@ -89,9 +92,7 @@ async fn main() -> Result<()> {
         Commands::Daemon {
             on_hypr_ipc_reconnect_restart,
         } => {
-            let filter =
-                EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
-            let (filter_layer, reload_handle) = reload::Layer::new(filter);
+            let (filter_layer, reload_handle) = reload::Layer::new(log_filter()?);
 
             tracing_subscriber::registry()
                 .with(filter_layer)
@@ -118,4 +119,16 @@ async fn main() -> Result<()> {
         Commands::Pins => client::send_command(Command::Pins).await,
         Commands::Debug { logging } => client::send_command(Command::Debug(logging)).await,
     }
+}
+
+/// The log filter of the daemon from `RUST_LOG`, the info level when the
+/// variable is unset or empty.
+fn log_filter() -> Result<EnvFilter> {
+    let builder = EnvFilter::builder().with_default_directive(LevelFilter::INFO.into());
+    let filter = if env::var_os(EnvFilter::DEFAULT_ENV).is_some() {
+        builder.try_from_env()
+    } else {
+        builder.from_env()
+    };
+    filter.map_err(Error::LogFilter)
 }
