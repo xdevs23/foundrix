@@ -22,7 +22,10 @@ The daemon implements a **virtual workspace** abstraction:
 | ...        | ...       | ...       | ...       |
 | 9          | 9         | 19        | 29        |
 
-Formula: `workspace_id = (monitor_id * 10) + virtual_workspace` (monitor 0 uses 1-9 directly)
+Formula: `workspace_id = (slot * 10) + virtual_workspace` (slot 0 uses 1-9 directly). Each monitor
+gets a slot that stays: the daemon records monitors by description, which contains the serial
+number, or by name when a monitor has no description, such as a headless output, in
+`$XDG_STATE_HOME/hypr-workspaced/monitors`.
 
 ## Features
 
@@ -42,6 +45,13 @@ binds `mainMod + 1-9` to `switch`, `mainMod + SHIFT + 1-9` to `move`, `mainMod +
 `mainMod + SHIFT + C` to `collapse invisible` and `collapse all`, `mainMod + I` and
 `mainMod + SHIFT + I` to `swap next` and `swap prev`, and `mainMod` with the horizontal scroll
 buttons to `prev` and `next`.
+
+`hyprWorkspacedOnReconnectRestart` names a systemd user service that the daemon restarts when its
+event connection to Hyprland closes or fails and it has subscribed again, for example after
+Hyprland dropped it for falling 64 events behind
+(<https://github.com/hyprwm/Hyprland/blob/v0.57.1/src/ipc/s2/Unix.cpp>, `MAX_QUEUED_EVENTS`,
+checked 2026-11-08). A program such as a top bar that reads the events of Hyprland as well usually
+lost its connection at the same moment.
 
 ```nix
 foundrix.components.desktop-environments.hyprland = {
@@ -90,12 +100,19 @@ hypr-workspaced switch <1-9>        # Switch all monitors to virtual workspace
 hypr-workspaced move <1-9>          # Move active window to virtual workspace, then switch
 hypr-workspaced next                # Switch to next virtual workspace (wraps 9 -> 1)
 hypr-workspaced prev                # Switch to previous virtual workspace (wraps 1 -> 9)
-hypr-workspaced collapse            # Move all windows from same virtual WS to current monitor
+hypr-workspaced swap <next|prev>    # Swap windows with the neighboring monitor, by position
+hypr-workspaced collapse all        # Move all windows from same virtual WS to current monitor
+hypr-workspaced collapse invisible  # Move windows on workspaces no monitor shows to current one
 hypr-workspaced assign              # Manually reassign workspaces (usually automatic)
 hypr-workspaced pin <pattern>       # Pin windows matching pattern to follow workspace switches
 hypr-workspaced unpin <pattern>     # Remove a pinned pattern
 hypr-workspaced pins                # List all pinned patterns
+hypr-workspaced debug <on|off>      # Switch debug logging of the daemon
 ```
+
+`daemon` takes `--on-hypr-ipc-reconnect-restart <service>`, the systemd user service to restart
+after the event connection to Hyprland was lost and subscribed again (see the NixOS installation
+above).
 
 ### Window Patterns
 
@@ -116,9 +133,11 @@ Pinned windows will automatically move to the target virtual workspace when you 
 
 The daemon listens on a Unix socket for commands from the CLI.
 
-**Location:** `$XDG_RUNTIME_DIR/hypr-workspaced.sock`
+**Location:** `$XDG_RUNTIME_DIR/hypr-workspaced.sock`. The daemon and the CLI fail with an error
+when `XDG_RUNTIME_DIR` is not set.
 
-**Protocol:** Line-based text protocol.
+**Protocol:** One command line per connection. The daemon writes its answer and closes the
+connection, so the data of `pins` can span several lines.
 
 | Request | Response |
 |---------|----------|
@@ -126,11 +145,14 @@ The daemon listens on a Unix socket for commands from the CLI.
 | `move 5\n` | `ok\n` or `error: message\n` |
 | `next\n` | `ok\n` or `error: message\n` |
 | `prev\n` | `ok\n` or `error: message\n` |
-| `collapse\n` | `ok\n` or `error: message\n` |
+| `swap next\n` | `ok\n` or `error: message\n` |
+| `collapse all\n` | `ok\n` or `error: message\n` |
+| `collapse invisible\n` | `ok\n` or `error: message\n` |
 | `assign\n` | `ok\n` or `error: message\n` |
 | `pin class:Firefox\n` | `ok\n` or `error: message\n` |
 | `unpin class:Firefox\n` | `ok\n` or `error: message\n` |
 | `pins\n` | `data: class:Firefox\nclass:Mattermost\n` |
+| `debug on\n` | `ok\n` or `error: message\n` |
 
 You can interact directly via socat if needed:
 
@@ -145,19 +167,19 @@ echo "switch 3" | socat - UNIX-CONNECT:$XDG_RUNTIME_DIR/hypr-workspaced.sock
 │                      hypr-workspaced daemon                    │
 │                                                                │
 │  ┌─────────────────┐    ┌──────────────────┐    ┌───────────┐  │
-│  │   hyprland-rs   │    │ WorkspaceManager │    │ IpcServer │  │
-│  │                 │───►│                  │◄──►│           │  │
-│  │ - EventListener │    │ - assign_all()   │    │ - socket  │  │
-│  │ - data types    │    │ - switch(n)      │    │ - Command │  │
-│  │                 │    │ - move_to(n)     │    │   parsing │  │
+│  │  event reader   │    │ WorkspaceManager │    │  server   │  │
+│  │                 │    │                  │    │           │  │
+│  │ - hyproxide     │    │ - assign         │    │ - socket  │  │
+│  │   events        │    │ - switch(n)      │    │ - Command │  │
+│  │ - latest change │    │ - move_to(n)     │    │   parsing │  │
+│  │   per kind      │    │                  │    │           │  │
 │  └────────┬────────┘    └────────┬─────────┘    └─────┬─────┘  │
 │           │                      ▼                    │        │
 │           │             ┌──────────────────┐          │        │
-│           │             │  Request module  │          │        │
-│           │             │ - Lua commands   │          │        │
+│           │             │    hyproxide     │          │        │
+│           │             │ - dispatchers    │          │        │
+│           │             │ - workspace rule │          │        │
 │           │             │ - JSON queries   │          │        │
-│           │             │ - waits for room │          │        │
-│           │             │   in the queue   │          │        │
 │           │             └──────────────────┘          │        │
 │           └──────────────────────┬────────────────────┘        │
 │                                  ▼                             │
@@ -168,17 +190,25 @@ echo "switch 3" | socat - UNIX-CONNECT:$XDG_RUNTIME_DIR/hypr-workspaced.sock
 └────────────────────────────────────────────────────────────────┘
 ```
 
-hyprland-rs delivers Hyprland's events. Every request the daemon sends to Hyprland goes through the
-daemon's own request module: the commands (workspace focus, window and workspace moves, and
-workspace rules) and the state queries (monitors, windows, workspaces, the active workspace and the
-cursor position).
+The daemon talks to Hyprland only through [hyproxide](../hyproxide), the IPC library for
+Hyprland 0.57 in this repository: its events, its queries (monitors, windows, workspaces, the
+active workspace and the cursor position), its dispatchers (workspace focus, window and workspace
+moves) and its typed workspace rule.
 
-Hyprland queues at most 10 connections on its command socket. Other clients, such as bars and lock
-screens, can fill that queue for a moment, and a connect that does not wait then fails with
-`EAGAIN`. The request module connects with a blocking connect whose send timeout is 5 s, the time
-Hyprland itself waits for the request of a client it has accepted, so the kernel holds the connect
-until Hyprland accepts it. Only when the queue stays full for the whole 5 s does the request fail,
-with an error that says so.
+The event reader runs in a task of its own. Hyprland drops a program that falls 64 events behind
+(<https://github.com/hyprwm/Hyprland/blob/v0.57.1/src/ipc/s2/Unix.cpp>, `MAX_QUEUED_EVENTS`,
+checked 2026-11-08), so the reader never waits for the daemon: it keeps only the latest change of each kind in a watch
+channel (the numbered workspace focused last, a change of monitors or configuration, a new
+subscription) and reads on, while the event loop acts on those changes and on the commands of the
+CLI. Events the daemon does not act on, special and named workspaces, windows with commas in their
+titles and events newer than hyproxide included, are read and skipped. An event the daemon acts on
+whose data hyproxide cannot read is logged as a warning, and a change of monitors among them still
+makes the daemon reassign the workspaces.
+
+When the event socket closes or fails, the reader subscribes again, the daemon reassigns the
+workspaces, as the events in between are lost, and restarts the service given to
+`--on-hypr-ipc-reconnect-restart`. When Hyprland cannot be reached anymore, the daemon exits with
+an error.
 
 ---
 
@@ -186,111 +216,34 @@ with an error that says so.
 
 ## Dependencies
 
-| Crate | Version | Purpose |
-|-------|---------|---------|
-| `hyprland` | 0.4.0-beta.3 | Hyprland events, and the id, address and fullscreen types |
-| `socket2` | 0.6.1 | Connect to Hyprland's command socket with a send timeout |
-| `serde` | 1.0.228 | Derive the answer types |
-| `serde_json` | 1.0.149 | Deserialize Hyprland's JSON answers |
-| `tokio` | 1.49 | Async runtime |
-| `clap` | 4.5 | CLI argument parsing |
-| `thiserror` | 2.0 | Error type derivation |
-| `tracing` | 0.1 | Structured logging |
-| `tracing-subscriber` | 0.3 | Log output formatting |
+| Crate | Purpose |
+|-------|---------|
+| `hyproxide` | Events, queries and commands of Hyprland 0.57 |
+| `tokio` | Async runtime |
+| `clap` | CLI argument parsing |
+| `thiserror` | Error type derivation |
+| `tracing` | Structured logging |
+| `tracing-subscriber` | Log output formatting |
+| `sd-notify` | Readiness for a systemd service of type notify |
+| `zbus` | Restart a systemd user service over D-Bus |
+| `serde` | The job mode and job result of systemd as typed values on D-Bus |
 
-## hyprland-rs API Learnings
+See `Cargo.toml` for the versions and the minimum Rust version. The Nix package builds from this
+directory and `packages/hyproxide`, with the one `Cargo.lock` of this directory.
 
-### Data Types
+## Checks
 
-The daemon deserializes Hyprland's answers into its own types in `src/answer.rs`, each with only
-the fields read by the daemon. The data types of the crate expect fields that Hyprland 0.57 omits:
-a workspace id is present only for a normal workspace, so a window on a special workspace, a
-special workspace itself and a disabled monitor without a workspace come without one. In the
-answer types, a workspace id is an `Option<WorkspaceId>` (`WorkspaceId` is `i32`), and a monitor
-id is an `i128`.
-
-### State Queries
-
-The daemon does not use the crate's query functions (`Monitors::get_async` and the like). They
-connect to Hyprland's command socket without waiting, so they fail while Hyprland's request queue
-is full, and the crate offers no way to change that.
-
-The daemon's query module sends the same requests in their JSON form through the request module
-and deserializes the answers with `serde_json` into the answer types. It returns plain `Vec`s:
-
-```rust
-let monitors = query::monitors().await?;          // j/monitors all, disabled monitors included
-let focused = query::active_monitor().await?;     // the focused entry of that answer
-let clients = query::clients().await?;            // j/clients
-let workspaces = query::workspaces().await?;      // j/workspaces
-let active = query::active_workspace().await?;    // j/activeworkspace
-let cursor = query::cursor_position().await?;     // j/cursorpos
-```
-
-A monitors answer without a focused entry makes `active_monitor` return an error.
-
-### Commands to Hyprland
-
-The daemon uses neither the crate's `Dispatch` nor its `Keyword` interface. The crate sends
-dispatches as old dispatcher text and runtime settings as `keyword` requests. With a Lua
-configuration, Hyprland runs the text of a `dispatch` request as the argument of `hl.dispatch(...)`
-and refuses `keyword` requests, so both fail.
-
-The daemon's Lua request module has one variant per command. It renders the Lua text from typed
-values, quotes every string as a Lua string literal, sends dispatches as `dispatch` requests and
-workspace rules as `eval` requests, and treats any answer other than `ok` as an error:
-
-```rust
-Request::FocusWorkspace(wsid).send().await?;
-// dispatch hl.dsp.focus({ workspace = "13" })
-
-Request::WorkspaceRule { workspace: wsid, monitor: &monitor.name, default: true }.send().await?;
-// eval hl.workspace_rule({ workspace = "1", monitor = "DP-1", persistent = true, default = true })
-```
-
-### Event Handlers
-
-Event handlers must return `Pin<Box<dyn Future<...>>>`:
-
-```rust
-// WRONG
-listener.add_monitor_added_handler(move |data| {
-    async move { /* ... */ }  // Error: expected Pin<Box<...>>
-});
-
-// CORRECT
-listener.add_monitor_added_handler(move |data| {
-    Box::pin(async move { /* ... */ })
-});
-```
-
-### Event Data Types
-
-Monitor event data types differ:
-
-```rust
-// MonitorAddedEventData has fields: id, name, description
-listener.add_monitor_added_handler(move |data| {
-    println!("Added: {}", data.name);  // NOT data.monitor_name
-});
-
-// MonitorRemovedEventData is just a String (the monitor name)
-listener.add_monitor_removed_handler(move |monitor_name| {
-    println!("Removed: {monitor_name}");
-});
-```
-
-### Error Type Location
-
-`HyprError` is in `hyprland::error`, not `hyprland::shared`:
-
-```rust
-// WRONG
-use hyprland::shared::HyprError;
-
-// CORRECT
-use hyprland::error::HyprError;
-```
+- `cargo test` runs the unit tests, among them one that feeds a fake event socket and closes it,
+  and the tests of the plans of `swap`, `collapse` and the pinned windows on answers recorded from
+  Hyprland 0.57.1 in `testdata/hyprland-answers`.
+- The flake checks `hypr-workspaced-clippy` and `hypr-workspaced-fmt` run clippy, with pedantic
+  lints denied, and `cargo fmt --check`.
+- The flake check `hypr-workspaced-end-to-end` runs `tests/end_to_end.rs` in a NixOS VM against a
+  headless Hyprland with two outputs, started by the crate `hyproxide-testing` in
+  `packages/hyproxide/testing`: it opens and closes a special workspace and a window with a comma
+  in its title, switches workspaces on both outputs, makes Hyprland drop the event connection of
+  the stopped daemon, sends twice as many events while the running daemon is busy, and checks that
+  the daemon keeps the outputs in step and restarts a stand-in service only after the drop.
 
 ## Best Practices
 
@@ -303,17 +256,13 @@ Spawning a process per keybind adds latency. A resident daemon with IPC is much 
 
 ### Use Batch Operations Sparingly
 
-`hyprctl --batch` can help, but the daemon makes individual async calls through its request module, one connection per request, each waiting for room in Hyprland's request queue.
+`hyprctl --batch` can help, but the daemon makes individual async calls through hyproxide, one connection per request, each waiting until Hyprland accepts it.
 
 ### Handle Special Workspaces
 
-Special workspaces have negative IDs. Always check:
-
-```rust
-fn is_special_workspace(id: WorkspaceId) -> bool {
-    id < 0
-}
-```
+Since Hyprland 0.57 only numbered workspaces have an id. Special and named workspaces are known by
+their address, which hyproxide reads into `WorkspaceAddress`. The daemon acts only on numbered
+workspaces, and leaves windows on special and named workspaces where they are.
 
 ### Monitor IDs vs Monitor Names
 
@@ -321,7 +270,7 @@ Monitor IDs are assigned by Hyprland at runtime and can change on hotplug. Monit
 
 ### Orphan Workspace Cleanup
 
-Hyprland may create orphan workspaces (0, 10, 20, ...) before your daemon starts. Clean them up by moving windows to valid workspaces.
+Hyprland may create orphan workspaces (10, 20, ...) before your daemon starts. Clean them up by moving windows to valid workspaces. Hyprland 0.57 has no workspace 0.
 
 ## Debugging
 
@@ -356,16 +305,26 @@ hyprctl clients -j | jq .
 
 ## Project Structure
 
-- Command-line entry: the clap subcommands that start daemon mode or client mode.
-- Daemon mode: the event loop, the IPC server and the handling of Hyprland events.
-- Client mode: connects to the daemon and sends one command.
-- Workspace manager (`WorkspaceManager`): all business logic.
-- Window patterns (`WindowPattern`): pattern matching for pinned windows.
-- IPC protocol: the `Command` and `Response` enums and the parsing of the protocol.
-- Request module (`Request`): the Lua requests sent to Hyprland's command socket, and the one
-  connection path to that socket, which waits for room in Hyprland's request queue.
-- Query module: Hyprland's state, read with JSON requests through the request module.
-- Error types: the daemon's own error types.
+- `main.rs`: the clap subcommands that start daemon mode or client mode, and the log filter.
+- `daemon.rs`: the event loop, with one method of `Daemon` per event or command it handles.
+- `server.rs`: the socket of the daemon, one command and one answer per connection.
+- `systemd.rs`: the typed D-Bus calls to the systemd user manager, in the library target, which the
+  end-to-end test uses as well.
+- `events.rs`: subscribes to the events of Hyprland through hyproxide and keeps the latest change
+  of each kind the daemon acts on.
+- `client.rs`: connects to the daemon, sends one command and prints the answer.
+- `workspace.rs`: `WorkspaceManager`, which queries Hyprland, runs the commands and dispatches
+  their requests through hyproxide.
+- `plan.rs`: the window moves of `swap`, `collapse` and the pinned windows, planned from the
+  answers of Hyprland.
+- `layout.rs`: the slot of each connected monitor.
+- `monitor_registry.rs`: the permanent slot of each monitor ever seen, in the state directory.
+- `virtual_workspace.rs`: virtual workspaces, monitor slots and the Hyprland workspace ids made of
+  both.
+- `window.rs`: `WindowPattern`, the patterns of pinned windows.
+- `ipc.rs`: the `Command` and `Response` enums, their text form and the path of the socket.
+- `error.rs`: the error enum with one variant per operation that fails, and the failed steps of a
+  workspace sync.
 
 ## License
 
