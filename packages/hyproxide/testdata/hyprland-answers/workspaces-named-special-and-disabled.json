@@ -1,0 +1,38 @@
+[{
+    "address": "3",
+    "id": 3,
+    "type": "normal",
+    "name": "three",
+    "monitor": "Virtual-1",
+    "monitorID": 0,
+    "windows": 0,
+    "hasfullscreen": false,
+    "lastwindow": "0x0",
+    "lastwindowtitle": "",
+    "ispersistent": true,
+    "tiledLayout": "dwindle"
+},{
+    "address": "special:scratch",
+    "type": "special",
+    "name": "special:scratch",
+    "monitor": "Virtual-1",
+    "monitorID": 0,
+    "windows": 1,
+    "hasfullscreen": false,
+    "lastwindow": "0x57954a47add0",
+    "lastwindowtitle": "terminal",
+    "ispersistent": false,
+    "tiledLayout": "dwindle"
+},{
+    "address": "web",
+    "type": "normal",
+    "name": "web",
+    "monitor": "Virtual-1",
+    "monitorID": 0,
+    "windows": 0,
+    "hasfullscreen": false,
+    "lastwindow": "0x0",
+    "lastwindowtitle": "",
+    "ispersistent": false,
+    "tiledLayout": "dwindle"
+}]

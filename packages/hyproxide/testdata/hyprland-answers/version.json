@@ -1,0 +1,22 @@
+{
+    "branch": "v0.57.1-b",
+    "commit": "acc1aa0bfd4bd575dcb0f76c35ccf12b660a1ab9",
+    "version": "0.57.1",
+    "dirty": false,
+    "commit_message": "[gha] Nix: update inputs",
+    "commit_date": "2026-11-03",
+    "tag": "v0.57.1",
+    "commits": "-1",
+    "buildAquamarine": "0.16.0",
+    "buildHyprlang": "0.6.8",
+    "buildHyprutils": "0.14.3",
+    "buildHyprcursor": "0.1.13",
+    "buildHyprgraphics": "0.5.1",
+    "systemAquamarine": "unknown",
+    "systemHyprlang": "unknown",
+    "systemHyprutils": "unknown",
+    "systemHyprcursor": "unknown",
+    "systemHyprgraphics": "unknown",
+    "abiHash": "acc1aa0bfd4bd575dcb0f76c35ccf12b660a1ab9_aq_0.16_hu_0.14_hg_0.5_hc_0.1_hlg_0.6",
+    "flags": ["nix"]
+}

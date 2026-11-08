@@ -1,0 +1,28 @@
+[package]
+name = "hyproxide"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+description = "Client for the IPC sockets of Hyprland 0.57 and later"
+license = "GPL-3.0-only"
+
+[dependencies]
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.154"
+thiserror = "=2.0.21"
+tokio = { version = "=1.54.1", features = ["io-util", "net", "rt"] }
+
+[dev-dependencies]
+socket2 = "=0.6.5"
+tokio = { version = "=1.54.1", features = ["macros"] }
+
+[lints.rust]
+unsafe_code = "forbid"
+unsafe_op_in_unsafe_fn = "deny"
+unused_results = "deny"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }
+let_underscore_must_use = "deny"
+undocumented_unsafe_blocks = "deny"

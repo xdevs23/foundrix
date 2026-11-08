@@ -1,0 +1,25 @@
+[{
+    "workspaceString": "w[tv1]",
+    "enabled": true,
+    "gapsIn": [0, 0, 0, 0],
+    "gapsOut": [0, 0, 0, 0]
+},{
+    "workspaceString": "f[1]",
+    "enabled": true,
+    "gapsIn": [0, 0, 0, 0],
+    "gapsOut": [0, 0, 0, 0]
+},{
+    "workspaceString": "3",
+    "enabled": true,
+    "monitor": "Virtual-1",
+    "default": true,
+    "persistent": true,
+    "gapsIn": [5, 5, 5, 5],
+    "gapsOut": [10, 10, 10, 10],
+    "borderSize": 3,
+    "border": false,
+    "rounding": true,
+    "decorate": true,
+    "shadow": false,
+    "defaultName": "three"
+}]
