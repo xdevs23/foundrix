@@ -1,34 +1,44 @@
 use std::env;
+use std::fmt::{self, Display, Formatter};
 use std::path::PathBuf;
 use std::str::FromStr;
+
+use clap::ValueEnum;
+use clap::builder::PossibleValue;
 
 use crate::error::{Error, Result};
 use crate::virtual_workspace::VirtualWorkspace;
 
-pub fn parse_bool_arg(s: &str) -> std::result::Result<bool, String> {
-    match s.to_lowercase().as_str() {
-        "on" | "true" | "1" => Ok(true),
-        "off" | "false" | "0" => Ok(false),
-        _ => Err(format!("expected on/off, true/false, or 1/0, got '{s}'")),
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Which neighbor a command means: the next virtual workspace or the
+/// monitor to the right, or the previous one or the monitor to the left.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum Direction {
+    /// The next virtual workspace, or the monitor to the right
     Next,
+    /// The previous virtual workspace, or the monitor to the left
     Prev,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Which windows `collapse` moves to the focused monitor.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum CollapseMode {
+    /// The windows of the same virtual workspace on the other monitors
     All,
+    /// The windows on workspaces no monitor shows
     Invisible,
+}
+
+/// Whether the daemon logs at the debug level.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum DebugLogging {
+    On,
+    Off,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Command {
-    Switch(u8),
-    MoveTo(u8),
+    Switch(VirtualWorkspace),
+    MoveTo(VirtualWorkspace),
     Navigate(Direction),
     Collapse(CollapseMode),
     Swap(Direction),
@@ -36,69 +46,59 @@ pub enum Command {
     Pin(String),
     Unpin(String),
     Pins,
-    Debug(bool),
+    Debug(DebugLogging),
 }
 
-impl Command {
-    pub fn validate_workspace(ws: u8) -> Result<u8> {
-        VirtualWorkspace::new(ws).map(|_valid| ws)
-    }
+/// How `value` is written on the command line and in the protocol.
+fn spelling(value: &impl ValueEnum) -> PossibleValue {
+    value
+        .to_possible_value()
+        .unwrap_or_else(|| unreachable!("no value is skipped"))
+}
+
+/// The value of a closed set that `word` writes, as [`spelling`] writes it.
+fn named<T: ValueEnum>(word: &str) -> Option<T> {
+    T::from_str(word, false).ok()
 }
 
 impl FromStr for Command {
     type Err = Error;
 
     fn from_str(s: &str) -> Result<Self> {
-        let trimmed = s.trim();
-        let parts: Vec<&str> = trimmed.split_whitespace().collect();
+        let invalid = || Error::InvalidCommand(s.to_owned());
+        let words: Vec<&str> = s.split_whitespace().collect();
 
-        match parts.as_slice() {
-            ["switch", n] => {
-                let ws = n
-                    .parse::<u8>()
-                    .map_err(|_| Error::InvalidCommand(s.to_string()))?;
-                Ok(Command::Switch(Command::validate_workspace(ws)?))
-            }
-            ["move", n] => {
-                let ws = n
-                    .parse::<u8>()
-                    .map_err(|_| Error::InvalidCommand(s.to_string()))?;
-                Ok(Command::MoveTo(Command::validate_workspace(ws)?))
-            }
+        match words.as_slice() {
+            ["switch", workspace] => Ok(Command::Switch(workspace.parse()?)),
+            ["move", workspace] => Ok(Command::MoveTo(workspace.parse()?)),
             ["next"] => Ok(Command::Navigate(Direction::Next)),
             ["prev"] => Ok(Command::Navigate(Direction::Prev)),
-            ["collapse", "all"] => Ok(Command::Collapse(CollapseMode::All)),
-            ["collapse", "invisible"] => Ok(Command::Collapse(CollapseMode::Invisible)),
-            ["swap", "next"] => Ok(Command::Swap(Direction::Next)),
-            ["swap", "prev"] => Ok(Command::Swap(Direction::Prev)),
+            ["collapse", mode] => named(mode).map(Command::Collapse).ok_or_else(invalid),
+            ["swap", direction] => named(direction).map(Command::Swap).ok_or_else(invalid),
             ["assign"] => Ok(Command::Assign),
             ["pin", pattern @ ..] if !pattern.is_empty() => Ok(Command::Pin(pattern.join(" "))),
             ["unpin", pattern @ ..] if !pattern.is_empty() => Ok(Command::Unpin(pattern.join(" "))),
             ["pins"] => Ok(Command::Pins),
-            ["debug", val] => parse_bool_arg(val)
-                .map(Command::Debug)
-                .map_err(|_| Error::InvalidCommand(s.to_string())),
-            _ => Err(Error::InvalidCommand(s.to_string())),
+            ["debug", logging] => named(logging).map(Command::Debug).ok_or_else(invalid),
+            _ => Err(invalid()),
         }
     }
 }
 
-impl std::fmt::Display for Command {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl Display for Command {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Command::Switch(ws) => write!(f, "switch {ws}"),
-            Command::MoveTo(ws) => write!(f, "move {ws}"),
+            Command::Switch(workspace) => write!(f, "switch {workspace}"),
+            Command::MoveTo(workspace) => write!(f, "move {workspace}"),
             Command::Navigate(Direction::Next) => write!(f, "next"),
             Command::Navigate(Direction::Prev) => write!(f, "prev"),
-            Command::Collapse(CollapseMode::All) => write!(f, "collapse all"),
-            Command::Collapse(CollapseMode::Invisible) => write!(f, "collapse invisible"),
-            Command::Swap(Direction::Next) => write!(f, "swap next"),
-            Command::Swap(Direction::Prev) => write!(f, "swap prev"),
+            Command::Collapse(mode) => write!(f, "collapse {}", spelling(mode).get_name()),
+            Command::Swap(direction) => write!(f, "swap {}", spelling(direction).get_name()),
             Command::Assign => write!(f, "assign"),
             Command::Pin(pattern) => write!(f, "pin {pattern}"),
             Command::Unpin(pattern) => write!(f, "unpin {pattern}"),
             Command::Pins => write!(f, "pins"),
-            Command::Debug(on) => write!(f, "debug {}", if *on { "on" } else { "off" }),
+            Command::Debug(logging) => write!(f, "debug {}", spelling(logging).get_name()),
         }
     }
 }
@@ -146,10 +146,20 @@ impl std::fmt::Display for Response {
 mod tests {
     use super::*;
 
+    fn workspace(number: &str) -> VirtualWorkspace {
+        number.parse().unwrap()
+    }
+
     #[test]
     fn parse_commands() {
-        assert_eq!("switch 3".parse::<Command>().unwrap(), Command::Switch(3));
-        assert_eq!("move 5".parse::<Command>().unwrap(), Command::MoveTo(5));
+        assert_eq!(
+            "switch 3".parse::<Command>().unwrap(),
+            Command::Switch(workspace("3"))
+        );
+        assert_eq!(
+            "move 5".parse::<Command>().unwrap(),
+            Command::MoveTo(workspace("5"))
+        );
         assert_eq!(
             "next".parse::<Command>().unwrap(),
             Command::Navigate(Direction::Next)
@@ -166,19 +176,44 @@ mod tests {
             "collapse invisible".parse::<Command>().unwrap(),
             Command::Collapse(CollapseMode::Invisible)
         );
+        assert_eq!(
+            "swap prev".parse::<Command>().unwrap(),
+            Command::Swap(Direction::Prev)
+        );
+        assert_eq!(
+            "debug off".parse::<Command>().unwrap(),
+            Command::Debug(DebugLogging::Off)
+        );
         assert_eq!("assign".parse::<Command>().unwrap(), Command::Assign);
     }
 
     #[test]
-    fn invalid_workspace() {
-        assert!("switch 0".parse::<Command>().is_err());
-        assert!("switch 10".parse::<Command>().is_err());
-        assert!("move 0".parse::<Command>().is_err());
+    fn invalid_commands() {
+        for invalid in [
+            "switch 0",
+            "switch 10",
+            "switch three",
+            "move 0",
+            "collapse some",
+            "swap up",
+            "debug true",
+        ] {
+            assert!(invalid.parse::<Command>().is_err(), "{invalid}");
+        }
     }
 
     #[test]
     fn roundtrip() {
-        let cmd = Command::Switch(5);
-        assert_eq!(cmd.to_string().parse::<Command>().unwrap(), cmd);
+        for command in [
+            Command::Switch(workspace("5")),
+            Command::MoveTo(workspace("9")),
+            Command::Navigate(Direction::Prev),
+            Command::Collapse(CollapseMode::Invisible),
+            Command::Swap(Direction::Next),
+            Command::Pin("class:foot".into()),
+            Command::Debug(DebugLogging::On),
+        ] {
+            assert_eq!(command.to_string().parse::<Command>().unwrap(), command);
+        }
     }
 }

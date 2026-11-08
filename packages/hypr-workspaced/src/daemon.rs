@@ -12,7 +12,7 @@ use tracing_subscriber::reload::Handle;
 
 use crate::error::{Error, Result};
 use crate::events;
-use crate::ipc::{Command, Response, socket_path};
+use crate::ipc::{Command, DebugLogging, Response, socket_path};
 use crate::virtual_workspace::VirtualWorkspace;
 use crate::workspace::WorkspaceManager;
 
@@ -225,14 +225,8 @@ async fn handle_command(
     log_handle: &LogReloadHandle,
 ) -> Response {
     let result = match cmd {
-        Command::Switch(ws) => match VirtualWorkspace::new(ws) {
-            Ok(vws) => manager.switch_virtual(vws).await,
-            Err(e) => Err(e),
-        },
-        Command::MoveTo(ws) => match VirtualWorkspace::new(ws) {
-            Ok(vws) => manager.move_to_virtual(vws).await,
-            Err(e) => Err(e),
-        },
+        Command::Switch(workspace) => manager.switch_virtual(workspace).await,
+        Command::MoveTo(workspace) => manager.move_to_virtual(workspace).await,
         Command::Navigate(dir) => manager.navigate(dir).await,
         Command::Collapse(mode) => manager.collapse(mode).await,
         Command::Swap(dir) => manager.swap_monitor(dir).await,
@@ -240,8 +234,11 @@ async fn handle_command(
         Command::Pin(pattern) => manager.pin(&pattern),
         Command::Unpin(pattern) => manager.unpin(&pattern),
         Command::Pins => return Response::Data(manager.pins().join("\n")),
-        Command::Debug(enabled) => {
-            let level = if enabled { "debug" } else { "info" };
+        Command::Debug(logging) => {
+            let level = match logging {
+                DebugLogging::On => "debug",
+                DebugLogging::Off => "info",
+            };
             match log_handle.reload(EnvFilter::new(level)) {
                 Ok(()) => {
                     info!("Log level set to {level}");

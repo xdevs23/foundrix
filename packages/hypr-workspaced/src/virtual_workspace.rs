@@ -1,4 +1,5 @@
 use std::num::{NonZeroU8, NonZeroU16};
+use std::str::FromStr;
 
 use hyproxide::workspace::WorkspaceId;
 
@@ -14,16 +15,13 @@ pub struct VirtualWorkspace(NonZeroU8);
 impl VirtualWorkspace {
     pub const FIRST: Self = Self(NonZeroU8::MIN);
 
-    pub fn new(n: u8) -> Result<Self> {
-        NonZeroU8::new(n)
-            .filter(|n| n.get() <= 9)
-            .map(Self)
-            .ok_or(Error::InvalidVirtualWorkspace(n))
+    pub fn new(n: u8) -> Option<Self> {
+        NonZeroU8::new(n).filter(|n| n.get() <= 9).map(Self)
     }
 
     /// Virtual workspaces 1 to 9.
     pub fn all() -> impl Iterator<Item = Self> {
-        (1..=9).filter_map(|n| Self::new(n).ok())
+        (1..=9).filter_map(Self::new)
     }
 
     #[cfg(test)]
@@ -49,6 +47,22 @@ impl VirtualWorkspace {
     /// Returns `None` for orphan IDs (multiples of 10).
     pub fn from_hyprland_id(id: WorkspaceId) -> Option<Self> {
         NonZeroU8::new(u8::try_from(id.get() % 10).ok()?).map(Self)
+    }
+}
+
+/// Reads the number of a virtual workspace, as the command line and the
+/// protocol of the daemon write it.
+impl FromStr for VirtualWorkspace {
+    type Err = Error;
+
+    fn from_str(number: &str) -> Result<Self> {
+        let digit = match number.as_bytes() {
+            [digit @ b'1'..=b'9'] => Some(digit - b'0'),
+            _ => None,
+        };
+        digit
+            .and_then(Self::new)
+            .ok_or_else(|| Error::InvalidVirtualWorkspace(number.to_owned()))
     }
 }
 
@@ -99,8 +113,8 @@ mod tests {
 
     #[test]
     fn virtual_workspace_validation() {
-        assert!(VirtualWorkspace::new(0).is_err());
-        assert!(VirtualWorkspace::new(10).is_err());
+        assert!(VirtualWorkspace::new(0).is_none());
+        assert!(VirtualWorkspace::new(10).is_none());
         for n in 1..=9 {
             assert_eq!(VirtualWorkspace::new(n).unwrap().number(), n);
         }
@@ -108,6 +122,23 @@ mod tests {
             .map(VirtualWorkspace::number)
             .collect();
         assert_eq!(all, [1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    }
+
+    #[test]
+    fn virtual_workspace_numbers_read_as_one_digit() {
+        for n in 1..=9 {
+            let workspace: VirtualWorkspace = n.to_string().parse().unwrap();
+            assert_eq!(workspace.number(), n);
+        }
+        for invalid in ["0", "10", "+3", "03", " 3", "three", ""] {
+            assert!(
+                matches!(
+                    invalid.parse::<VirtualWorkspace>(),
+                    Err(Error::InvalidVirtualWorkspace(text)) if text == invalid
+                ),
+                "{invalid:?}"
+            );
+        }
     }
 
     #[test]

@@ -17,8 +17,8 @@ pub enum Error {
     #[error("Invalid command: {0}")]
     InvalidCommand(String),
 
-    #[error("Invalid virtual workspace: {0} (must be 1-9)")]
-    InvalidVirtualWorkspace(u8),
+    #[error("Invalid virtual workspace: {0:?} (must be 1-9)")]
+    InvalidVirtualWorkspace(String),
 
     #[error("Invalid window pattern: {0}")]
     InvalidWindowPattern(String),
