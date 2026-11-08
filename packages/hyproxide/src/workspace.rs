@@ -4,7 +4,7 @@
 //! and a special one are known by their address alone.
 
 use std::fmt::{self, Display, Formatter};
-use std::num::NonZeroU32;
+use std::num::{NonZeroU16, NonZeroU32};
 
 use crate::error::NextStep;
 
@@ -32,6 +32,14 @@ impl TryFrom<u32> for WorkspaceId {
             .filter(|number| number.get() <= Self::LAST)
             .map(Self)
             .ok_or(InvalidWorkspaceId(number))
+    }
+}
+
+/// Every number a [`NonZeroU16`] holds is a workspace number, so this
+/// conversion cannot fail.
+impl From<NonZeroU16> for WorkspaceId {
+    fn from(number: NonZeroU16) -> Self {
+        Self(number.into())
     }
 }
 
@@ -191,6 +199,13 @@ mod tests {
                 WorkspaceId::try_from(number),
                 Err(InvalidWorkspaceId(number))
             );
+        }
+    }
+
+    #[test]
+    fn every_non_zero_u16_is_a_workspace_number() {
+        for number in [NonZeroU16::MIN, NonZeroU16::MAX] {
+            assert_eq!(WorkspaceId::from(number).get(), u32::from(number.get()));
         }
     }
 
