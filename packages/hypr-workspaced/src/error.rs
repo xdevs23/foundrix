@@ -5,23 +5,8 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug, Error)]
 pub enum Error {
-    #[error("Hyprland IPC error: {0}")]
-    Hyprland(#[from] hyprland::error::HyprError),
-
-    #[error("Hyprland answered {answer:?} to {request:?}")]
-    HyprlandRequest { request: String, answer: String },
-
-    #[error("Hyprland socket not found: {0}")]
-    HyprlandSocket(&'static str),
-
-    #[error("Hyprland's request queue stayed full for the whole wait of {0:?}")]
-    HyprlandQueueFull(std::time::Duration),
-
-    #[error("Hyprland's answer to {request:?} could not be read: {source}")]
-    HyprlandAnswer {
-        request: &'static str,
-        source: serde_json::Error,
-    },
+    #[error(transparent)]
+    Hyprland(#[from] hyproxide::Error),
 
     #[error("Hyprland lists no focused monitor")]
     NoFocusedMonitor,
@@ -43,6 +28,9 @@ pub enum Error {
 
     #[error("No monitors found")]
     NoMonitors,
+
+    #[error("Monitor {0} has no slot: the daemon knows at most 256 monitors")]
+    NoSlot(String),
 
     #[error("{0}")]
     Other(String),

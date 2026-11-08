@@ -5,11 +5,11 @@
     "make": "",
     "model": "",
     "serial": "",
-    "width": 4096,
-    "height": 2160,
+    "width": 1024,
+    "height": 768,
     "physicalWidth": 0,
     "physicalHeight": 0,
-    "refreshRate": 60.00000,
+    "refreshRate": 60.00400,
     "x": 0,
     "y": 0,
     "activeWorkspace": {
@@ -19,9 +19,9 @@
         "name": "3"
     },
     "specialWorkspace": {
-        "address": "special:scratch",
-        "type": "special",
-        "name": "special:scratch"
+        "address": "",
+        "type": "",
+        "name": ""
     },
     "reserved": [0, 0, 0, 0],
     "scale": 2,
@@ -29,12 +29,12 @@
     "focused": true,
     "dpmsStatus": true,
     "vrr": false,
-    "solitary": "0",
-    "solitaryBlockedBy": ["WINDOWED","SPECIAL","CANDIDATE"],
+    "solitary": "55a525aa2290",
+    "solitaryBlockedBy": null,
     "activelyTearing": false,
-    "tearingBlockedBy": ["NOT_TORN","USER","ZOOM","CANDIDATE"],
+    "tearingBlockedBy": ["NOT_TORN","USER","WINDOW","HW_CURSOR"],
     "directScanoutTo": "0",
-    "directScanoutBlockedBy": ["SW","CANDIDATE"],
+    "directScanoutBlockedBy": ["USER","SURFACE"],
     "disabled": false,
     "currentFormat": "XRGB8888",
     "mirrorOf": "none",
@@ -54,7 +54,7 @@
     }
 },{
     "id": 1,
-    "name": "HEADLESS-2",
+    "name": "HYPR-WORKSPACED-1",
     "description": "",
     "make": "",
     "model": "",
@@ -64,12 +64,13 @@
     "physicalWidth": 0,
     "physicalHeight": 0,
     "refreshRate": 60.00000,
-    "x": 2048,
+    "x": 512,
     "y": 0,
     "activeWorkspace": {
-        "address": "",
-        "type": "",
-        "name": ""
+        "address": "13",
+        "id": 13,
+        "type": "normal",
+        "name": "13"
     },
     "specialWorkspace": {
         "address": "",
@@ -83,12 +84,12 @@
     "dpmsStatus": true,
     "vrr": false,
     "solitary": "0",
-    "solitaryBlockedBy": ["WORKSPACE"],
+    "solitaryBlockedBy": ["WINDOWED","CANDIDATE"],
     "activelyTearing": false,
-    "tearingBlockedBy": ["NOT_TORN","USER","SUPPORT","CANDIDATE","HW_CURSOR"],
+    "tearingBlockedBy": ["NOT_TORN","USER","SUPPORT","CANDIDATE"],
     "directScanoutTo": "0",
-    "directScanoutBlockedBy": ["CANDIDATE"],
-    "disabled": true,
+    "directScanoutBlockedBy": ["USER","SW","CANDIDATE"],
+    "disabled": false,
     "currentFormat": "XRGB8888",
     "mirrorOf": "none",
     "availableModes": ["1920x1080@60.00Hz"],

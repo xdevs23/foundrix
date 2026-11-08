@@ -1,12 +1,11 @@
-use hyprland::data::FullscreenMode;
-
-use crate::answer::Client;
+use hyproxide::query::{Client, ClientFlag};
+use hyproxide::window::FullscreenState;
 
 /// A pattern for matching windows, using Hyprland's window identifier syntax.
 ///
 /// Supported patterns:
-/// - `class:<regex>` - Match window class
-/// - `title:<regex>` - Match window title
+/// - `class:<text>` - Match a substring of the window class
+/// - `title:<text>` - Match a substring of the window title
 /// - `pid:<number>` - Match process ID
 /// - `address:<hex>` - Match window address
 /// - `floating:` - Match floating windows (true/false or 0/1)
@@ -45,13 +44,12 @@ impl WindowPattern {
                 client.title.contains(pattern) || client.initial_title.contains(pattern)
             }
             WindowPattern::Pid(pid) => client.pid == *pid,
-            WindowPattern::Address(addr) => {
-                let client_addr = format!("{}", client.address);
-                client_addr.contains(addr)
+            WindowPattern::Address(addr) => client.address.to_string().contains(addr),
+            WindowPattern::Floating(floating) => {
+                client.flags.contains(ClientFlag::Floating) == *floating
             }
-            WindowPattern::Floating(floating) => client.floating == *floating,
             WindowPattern::Fullscreen(fs) => {
-                let is_fullscreen = client.fullscreen != FullscreenMode::None;
+                let is_fullscreen = client.fullscreen != FullscreenState::None;
                 is_fullscreen == *fs
             }
         }
@@ -106,6 +104,52 @@ mod tests {
             Some(WindowPattern::Floating(false))
         );
         assert_eq!(WindowPattern::parse("invalid"), None);
+    }
+
+    /// The `clients` answer of Hyprland 0.57.1 with two outputs and windows
+    /// that are tiled, floating, fullscreen, of another class and on a
+    /// special workspace, each with a title that says so.
+    fn recorded_clients() -> Vec<Client> {
+        serde_json::from_str(include_str!(
+            "../testdata/hyprland-answers/clients-two-outputs.json"
+        ))
+        .unwrap()
+    }
+
+    /// The titles of the recorded windows that `pattern` matches.
+    fn matched(pattern: &str) -> Vec<String> {
+        let pattern = WindowPattern::parse(pattern).unwrap();
+        recorded_clients()
+            .into_iter()
+            .filter(|client| pattern.matches(client))
+            .map(|client| client.title)
+            .collect()
+    }
+
+    /// The titles of the recorded windows other than `excluded`.
+    fn all_but(excluded: &str) -> Vec<String> {
+        recorded_clients()
+            .into_iter()
+            .map(|client| client.title)
+            .filter(|title| title != excluded)
+            .collect()
+    }
+
+    #[test]
+    fn patterns_match_the_windows_they_name() {
+        assert_eq!(matched("class:notes"), ["notes on 15"]);
+        assert_eq!(matched("class:foo"), all_but("notes on 15"));
+        assert_eq!(
+            matched("title:on 1"),
+            ["tiled on 13", "floating on 13", "notes on 15"]
+        );
+        assert_eq!(matched("pid:1103"), ["notes on 15"]);
+        assert_eq!(matched("address:0x55a52709a730"), ["floating on 13"]);
+        assert_eq!(matched("address:55a52709a730"), ["floating on 13"]);
+        assert_eq!(matched("floating:true"), ["floating on 13"]);
+        assert_eq!(matched("floating:false"), all_but("floating on 13"));
+        assert_eq!(matched("fullscreen:true"), ["fullscreen on 3"]);
+        assert_eq!(matched("fullscreen:false"), all_but("fullscreen on 3"));
     }
 
     #[test]

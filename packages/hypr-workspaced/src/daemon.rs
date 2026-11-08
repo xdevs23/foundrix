@@ -1,33 +1,36 @@
+use std::convert::Infallible;
+use std::panic;
 use std::time::Duration;
 
-use hyprland::event_listener::AsyncEventListener;
+use hyproxide::Instance;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{UnixListener, UnixStream};
-use tokio::sync::{mpsc, watch};
+use tokio::sync::{mpsc, oneshot};
+use tokio::task::{JoinError, JoinSet};
 use tracing::{debug, error, info, warn};
 use tracing_subscriber::EnvFilter;
 use tracing_subscriber::reload::Handle;
 
-use crate::error::Result;
+use crate::error::{Error, Result};
+use crate::events;
 use crate::ipc::{Command, Response, socket_path};
-use crate::query;
 use crate::workspace::{VirtualWorkspace, WorkspaceManager};
 
 type LogReloadHandle = Handle<EnvFilter, tracing_subscriber::Registry>;
 
-enum Event {
-    Command(Command, tokio::sync::oneshot::Sender<Response>),
-    MonitorChanged,
-}
-
-/// Workspace sync state - uses watch channel so only latest value matters
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct SyncState {
-    workspace_id: i32,
-    generation: u64, // Incremented on each change to detect updates
+/// A command from a client of the daemon socket, with the channel for its
+/// answer.
+struct ClientRequest {
+    command: Command,
+    reply: oneshot::Sender<Response>,
 }
 
 pub async fn run(log_handle: LogReloadHandle, on_reconnect_restart: Option<String>) -> Result<()> {
+    let instance = Instance::from_environment()?;
+    // Subscribe before the state is read for the first time, so no change
+    // after that read is missed.
+    let (mut changes, read_events) = events::subscribe(instance.clone()).await?;
+
     let path = socket_path();
 
     if path.exists() {
@@ -38,80 +41,19 @@ pub async fn run(log_handle: LogReloadHandle, on_reconnect_restart: Option<Strin
     info!("Listening on {}", path.display());
 
     // Signal systemd that we're ready to accept connections
-    let _ = sd_notify::notify(true, &[sd_notify::NotifyState::Ready]);
-    info!("Notified systemd of readiness");
+    match sd_notify::notify(true, &[sd_notify::NotifyState::Ready]) {
+        Ok(()) => info!("Notified systemd of readiness"),
+        Err(e) => warn!("Failed to notify systemd of readiness: {e}"),
+    }
 
-    // Channel for commands and monitor events (need reliable delivery)
-    let (tx, mut rx) = mpsc::channel::<Event>(32);
+    let (requests_tx, mut requests) = mpsc::channel::<ClientRequest>(32);
 
-    // Watch channel for workspace sync (only latest value matters)
-    let (sync_tx, mut sync_rx) = watch::channel(SyncState {
-        workspace_id: 0,
-        generation: 0,
-    });
+    // Both tasks run until they fail. Dropping the set stops them.
+    let mut tasks = JoinSet::new();
+    let _reader = tasks.spawn(read_events);
+    let _server = tasks.spawn(serve_clients(listener, requests_tx));
 
-    // Hyprland event listener with auto-restart
-    let tx_hyprland = tx.clone();
-    let hyprland_task = tokio::spawn(async move {
-        let mut had_successful_connection = false;
-        let mut pending_service_restart = false;
-        loop {
-            info!("Starting Hyprland event listener");
-            let start_time = std::time::Instant::now();
-
-            if let Err(e) = run_hyprland_listener(tx_hyprland.clone(), sync_tx.clone()).await {
-                let ran_for = start_time.elapsed();
-
-                // If listener ran for at least 2 seconds, it was connected
-                if ran_for >= Duration::from_secs(2) {
-                    info!("Hyprland connection lost after {:?}", ran_for);
-                    had_successful_connection = true;
-                    pending_service_restart = true;
-                } else {
-                    // Failed quickly - connection refused or similar
-                    error!("Hyprland event listener failed: {e}");
-                }
-            }
-
-            // On successful reconnection after a disconnection, restart the service
-            if pending_service_restart && had_successful_connection {
-                // Try to connect briefly to verify Hyprland is back
-                if query::monitors().await.is_ok() {
-                    // Hyprland is back
-                    if let Some(ref service) = on_reconnect_restart {
-                        info!("Hyprland IPC reconnected, restarting service: {service}");
-                        match restart_user_service(service).await {
-                            Ok(()) => info!("Successfully restarted {service}"),
-                            Err(e) => error!("Failed to restart {service}: {e}"),
-                        }
-                    }
-                    pending_service_restart = false;
-                }
-            }
-
-            warn!("Hyprland listener stopped, restarting in 1s...");
-            tokio::time::sleep(Duration::from_secs(1)).await;
-        }
-    });
-
-    // IPC server
-    let tx_ipc = tx.clone();
-    let ipc_task = tokio::spawn(async move {
-        loop {
-            match listener.accept().await {
-                Ok((stream, _)) => {
-                    let tx = tx_ipc.clone();
-                    tokio::spawn(handle_client(stream, tx));
-                }
-                Err(e) => {
-                    error!("Failed to accept connection: {e}");
-                }
-            }
-        }
-    });
-
-    let mut manager = WorkspaceManager::new();
-    let mut last_synced_generation: u64 = 0;
+    let mut manager = WorkspaceManager::new(instance);
     let mut last_synced_vspace: Option<VirtualWorkspace> = None;
 
     info!("Performing initial workspace assignment");
@@ -131,39 +73,41 @@ pub async fn run(log_handle: LogReloadHandle, on_reconnect_restart: Option<Strin
 
     loop {
         tokio::select! {
-            event = rx.recv() => {
-                match event {
-                    Some(Event::Command(cmd, reply)) => {
-                        debug!("Received command: {cmd}");
-                        let response = handle_command(&mut manager, cmd, &log_handle).await;
-                        let _ = reply.send(response);
-                    }
-                    Some(Event::MonitorChanged) => {
-                        info!("Monitor configuration changed, reassigning workspaces");
-                        tokio::time::sleep(Duration::from_millis(500)).await;
-                        if let Err(e) = manager.assign_workspaces().await {
-                            error!("Workspace reassignment failed: {e}");
-                        }
-                        last_synced_vspace = None; // Reset on monitor change
-                    }
-                    None => {
-                        warn!("Event channel closed");
-                        break;
+            Some(ended) = tasks.join_next() => return Err(failure(ended)),
+
+            Some(ClientRequest { command, reply }) = requests.recv() => {
+                debug!("Received command: {command}");
+                let response = handle_command(&mut manager, command, &log_handle).await;
+                if reply.send(response).is_err() {
+                    debug!("The client left before its answer");
+                }
+            }
+
+            Ok(()) = changes.layout.changed() => {
+                info!("Monitor configuration changed, reassigning workspaces");
+                tokio::time::sleep(Duration::from_millis(500)).await;
+                if let Err(e) = manager.assign_workspaces().await {
+                    error!("Workspace reassignment failed: {e}");
+                }
+                last_synced_vspace = None; // Reset on monitor change
+            }
+
+            Ok(()) = changes.resubscribed.changed() => {
+                if let Some(service) = &on_reconnect_restart {
+                    info!("Hyprland IPC reconnected, restarting service: {service}");
+                    match restart_user_service(service).await {
+                        Ok(()) => info!("Successfully restarted {service}"),
+                        Err(e) => error!("Failed to restart {service}: {e}"),
                     }
                 }
             }
 
-            _ = sync_rx.changed() => {
-                let state = *sync_rx.borrow();
-
-                if state.generation <= last_synced_generation {
+            Ok(()) = changes.workspace.changed() => {
+                let Some(workspace) = *changes.workspace.borrow() else {
                     continue;
-                }
-                last_synced_generation = state.generation;
-
-                let vws = match VirtualWorkspace::from_hyprland_id(state.workspace_id) {
-                    Some(v) => v,
-                    None => continue,
+                };
+                let Some(vws) = VirtualWorkspace::from_hyprland_id(workspace) else {
+                    continue;
                 };
 
                 // Skip if we already synced to this virtual workspace
@@ -173,8 +117,8 @@ pub async fn run(log_handle: LogReloadHandle, on_reconnect_restart: Option<Strin
                     continue;
                 }
 
-                debug!("Workspace changed to {} (vspace {}), syncing monitors", state.workspace_id, vws);
-                if let Err(e) = manager.sync_monitors(state.workspace_id).await {
+                debug!("Workspace changed to {workspace} (vspace {vws}), syncing monitors");
+                if let Err(e) = manager.sync_monitors(workspace).await {
                     error!("Monitor sync failed: {e}");
                 } else {
                     last_synced_vspace = Some(vws);
@@ -182,65 +126,43 @@ pub async fn run(log_handle: LogReloadHandle, on_reconnect_restart: Option<Strin
             }
         }
     }
-
-    hyprland_task.abort();
-    ipc_task.abort();
-
-    Ok(())
 }
 
-async fn run_hyprland_listener(
-    tx: mpsc::Sender<Event>,
-    sync_tx: watch::Sender<SyncState>,
-) -> Result<()> {
-    let mut listener = AsyncEventListener::new();
+/// Why a task of the daemon, which runs until it fails, ended.
+fn failure(ended: std::result::Result<Result<Infallible>, JoinError>) -> Error {
+    match ended {
+        Ok(Err(error)) => error,
+        Ok(Ok(never)) => match never {},
+        // Nothing cancels the tasks while the daemon runs, so only a panic
+        // ends one this way.
+        Err(failed) => panic::resume_unwind(failed.into_panic()),
+    }
+}
 
-    let tx_added = tx.clone();
-    listener.add_monitor_added_handler(move |data| {
-        let tx = tx_added.clone();
-        Box::pin(async move {
-            info!("Monitor added: {}", data.name);
-            let _ = tx.send(Event::MonitorChanged).await;
-        })
-    });
-
-    let tx_removed = tx.clone();
-    listener.add_monitor_removed_handler(move |monitor_name| {
-        let tx = tx_removed.clone();
-        Box::pin(async move {
-            info!("Monitor removed: {monitor_name}");
-            let _ = tx.send(Event::MonitorChanged).await;
-        })
-    });
-
-    let tx_config = tx.clone();
-    listener.add_config_reloaded_handler(move || {
-        let tx = tx_config.clone();
-        Box::pin(async move {
-            info!("Hyprland config reloaded, reassigning workspaces");
-            if let Err(e) = tx.send(Event::MonitorChanged).await {
-                warn!("Failed to send config reload event: {e}");
+/// Answer the clients of the daemon socket, each in a task of its own.
+async fn serve_clients(
+    listener: UnixListener,
+    requests: mpsc::Sender<ClientRequest>,
+) -> Result<Infallible> {
+    let mut clients = JoinSet::new();
+    loop {
+        tokio::select! {
+            accepted = listener.accept() => match accepted {
+                Ok((stream, _address)) => {
+                    let _client = clients.spawn(handle_client(stream, requests.clone()));
+                }
+                Err(e) => error!("Failed to accept connection: {e}"),
+            },
+            Some(answered) = clients.join_next() => {
+                if let Err(failed) = answered {
+                    panic::resume_unwind(failed.into_panic());
+                }
             }
-        })
-    });
-
-    listener.add_workspace_changed_handler(move |data| {
-        let sync_tx = sync_tx.clone();
-        Box::pin(async move {
-            debug!("Workspace changed event: {}", data.id);
-            sync_tx.send_modify(|state| {
-                state.workspace_id = data.id;
-                state.generation = state.generation.wrapping_add(1);
-            });
-        })
-    });
-
-    listener.start_listener_async().await?;
-
-    Ok(())
+        }
+    }
 }
 
-async fn handle_client(stream: UnixStream, tx: mpsc::Sender<Event>) {
+async fn handle_client(stream: UnixStream, requests: mpsc::Sender<ClientRequest>) {
     let (reader, mut writer) = stream.into_split();
     let mut reader = BufReader::new(reader);
     let mut line = String::new();
@@ -255,10 +177,14 @@ async fn handle_client(stream: UnixStream, tx: mpsc::Sender<Event>) {
     }
 
     let response = match line.trim().parse::<Command>() {
-        Ok(cmd) => {
-            let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
-            if tx.send(Event::Command(cmd, reply_tx)).await.is_ok() {
-                match reply_rx.await {
+        Ok(command) => {
+            let (reply, answer) = oneshot::channel();
+            if requests
+                .send(ClientRequest { command, reply })
+                .await
+                .is_ok()
+            {
+                match answer.await {
                     Ok(resp) => resp,
                     Err(_) => Response::Error("Internal error".to_string()),
                 }

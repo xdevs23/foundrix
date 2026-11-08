@@ -2,11 +2,19 @@
   lib,
   rustPlatform,
 }:
-rustPlatform.buildRustPackage {
+rustPlatform.buildRustPackage (finalAttrs: {
   pname = "hypr-workspaced";
   version = "0.1.0";
 
-  src = ./.;
+  # The crate and hyproxide, its path dependency.
+  src = lib.fileset.toSource {
+    root = ./..;
+    fileset = lib.fileset.unions [
+      ./.
+      ../hyproxide
+    ];
+  };
+  sourceRoot = "${finalAttrs.src.name}/hypr-workspaced";
 
   cargoLock.lockFile = ./Cargo.lock;
 
@@ -16,4 +24,4 @@ rustPlatform.buildRustPackage {
     license = lib.licenses.gpl3Only;
     mainProgram = "hypr-workspaced";
   };
-}
+})

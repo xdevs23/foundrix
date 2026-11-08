@@ -1,10 +1,8 @@
-mod answer;
 mod client;
 mod daemon;
 mod error;
+mod events;
 mod ipc;
-mod query;
-mod request;
 mod window;
 mod workspace;
 
