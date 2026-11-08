@@ -9,6 +9,7 @@ mod layout;
 mod monitor_registry;
 #[cfg(test)]
 mod recorded;
+mod server;
 mod virtual_workspace;
 mod window;
 mod workspace;
