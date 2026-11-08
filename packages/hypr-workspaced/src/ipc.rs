@@ -1,4 +1,3 @@
-use std::env;
 use std::fmt::{self, Display, Formatter};
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -103,9 +102,10 @@ impl Display for Command {
     }
 }
 
-pub fn socket_path() -> PathBuf {
-    let runtime_dir = env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/tmp".to_string());
-    PathBuf::from(runtime_dir).join("hypr-workspaced.sock")
+/// The socket of the daemon, in the runtime directory of the session, which
+/// only its user can reach.
+pub fn socket_path() -> Result<PathBuf> {
+    Ok(hyproxide::runtime_directory()?.join("hypr-workspaced.sock"))
 }
 
 #[derive(Debug)]

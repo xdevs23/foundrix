@@ -31,7 +31,7 @@ pub async fn run(log_handle: LogReloadHandle, on_reconnect_restart: Option<Strin
     // after that read is missed.
     let (mut changes, read_events) = events::subscribe(instance.clone()).await?;
 
-    let path = socket_path();
+    let path = socket_path()?;
 
     if path.exists() {
         std::fs::remove_file(&path)?;

@@ -8,7 +8,7 @@ use crate::ipc::{Command, Response, socket_path};
 
 /// Send a command to the daemon, and print the data it answers with.
 pub async fn send_command(command: Command) -> Result<()> {
-    let stream = match UnixStream::connect(socket_path()).await {
+    let stream = match UnixStream::connect(socket_path()?).await {
         Ok(s) => s,
         Err(e) if e.kind() == ErrorKind::NotFound || e.kind() == ErrorKind::ConnectionRefused => {
             return Err(Error::DaemonNotRunning);
