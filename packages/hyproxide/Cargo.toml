@@ -2,7 +2,7 @@
 name = "hyproxide"
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.95"
 description = "Client for the IPC sockets of Hyprland 0.57 and later"
 license = "GPL-3.0-only"
 
