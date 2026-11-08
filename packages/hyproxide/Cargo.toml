@@ -16,10 +16,14 @@ tokio = { version = "=1.54.1", features = ["io-util", "net", "rt"] }
 socket2 = "=0.6.5"
 tokio = { version = "=1.54.1", features = ["macros", "process"] }
 
-# Starts Hyprland on the display of the machine, so only the NixOS VM check
-# hyproxide-live runs it.
+# Start Hyprland on the display of the machine, so only the NixOS VM check
+# hyproxide-live runs them.
 [[test]]
 name = "live"
+test = false
+
+[[test]]
+name = "live_events"
 test = false
 
 [lints.rust]
