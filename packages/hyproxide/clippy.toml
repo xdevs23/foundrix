@@ -2,4 +2,6 @@
 disallowed-methods = [
   { path = "std::thread::sleep", reason = "wait on the event or state that signals readiness" },
   { path = "std::time::Instant::now", reason = "count progress in units of the work, independent of the clock" },
+  { path = "std::time::SystemTime::now", reason = "count progress in units of the work, independent of the clock" },
+  { path = "std::string::String::from_utf8_lossy", reason = "read text from Hyprland as strict UTF-8 and report text that is not" },
 ]
