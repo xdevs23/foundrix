@@ -7,6 +7,7 @@ mod events;
 mod ipc;
 mod layout;
 mod monitor_registry;
+mod plan;
 #[cfg(test)]
 mod recorded;
 mod server;

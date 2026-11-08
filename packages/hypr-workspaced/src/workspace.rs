@@ -1,17 +1,15 @@
-use std::num::NonZeroU16;
-
 use hyproxide::Instance;
 use hyproxide::address::Address;
 use hyproxide::dispatch::window::{self, Movement};
 use hyproxide::dispatch::{self, Focus, MonitorSelector, rule, workspace};
-use hyproxide::monitor::MonitorId;
-use hyproxide::query::{self, Client, Monitor};
+use hyproxide::query::{self, Monitor};
 use hyproxide::workspace::WorkspaceId;
 use tracing::{debug, info, warn};
 
 use crate::error::{Error, Result, SyncFailure, SyncStep};
 use crate::ipc::{CollapseMode, Direction};
 use crate::layout::MonitorLayout;
+use crate::plan::{self, Move, focused_monitor};
 use crate::virtual_workspace::{MonitorSlot, VirtualWorkspace};
 use crate::window::WindowPattern;
 
@@ -81,62 +79,30 @@ impl WorkspaceManager {
             .collect()
     }
 
-    fn is_pinned(&self, client: &Client) -> bool {
-        self.pinned_patterns.iter().any(|p| p.matches(client))
-    }
-
-    fn find_monitor_for_client(client: &Client, monitors: &[Monitor]) -> Option<MonitorId> {
-        client.monitor.or_else(|| {
-            let workspace = client.workspace.address.id()?;
-            monitors
-                .iter()
-                .find(|m| m.active_workspace.address.id() == Some(workspace))
-                .map(|m| m.id)
-        })
-    }
-
-    async fn move_pinned_windows(&self, vws: VirtualWorkspace) -> Result<()> {
+    /// Move each pinned window to `workspace` on its monitor.
+    async fn move_pinned_windows(&self, workspace: VirtualWorkspace) -> Result<()> {
         if self.pinned_patterns.is_empty() {
             return Ok(());
         }
 
         let clients = query::clients(&self.instance).await?;
         let monitors = query::monitors(&self.instance).await?;
+        let moves = plan::follow_pins(
+            &clients,
+            &monitors,
+            &self.layout,
+            &self.pinned_patterns,
+            workspace,
+        )?;
+        self.dispatch_moves(moves, false).await
+    }
 
-        for client in &clients {
-            if !self.is_pinned(client) {
-                continue;
-            }
-
-            let Some(client_ws) = client.workspace.address.id() else {
-                continue;
-            };
-
-            let Some(slot) = Self::find_monitor_for_client(client, &monitors)
-                .and_then(|monitor| self.layout.slot_for(monitor))
-            else {
-                warn!(
-                    "Could not determine monitor for pinned client {}",
-                    client.address
-                );
-                continue;
-            };
-
-            let target_ws = vws.hyprland_id(slot);
-
-            if client_ws != target_ws {
-                debug!(
-                    "Moving pinned window {} ({}) from workspace {client_ws} to {target_ws}",
-                    client.class, client.address
-                );
-                dispatch::dispatch(
-                    &self.instance,
-                    move_window(client.address, target_ws, false),
-                )
-                .await?;
-            }
+    /// Move each window of `moves`, and follow it with the focus if `follow`.
+    async fn dispatch_moves(&self, moves: Vec<Move>, follow: bool) -> Result<()> {
+        for Move { window, workspace } in moves {
+            debug!("Moving window {window} to workspace {workspace}");
+            dispatch::dispatch(&self.instance, move_window(window, workspace, follow)).await?;
         }
-
         Ok(())
     }
 
@@ -410,79 +376,14 @@ impl WorkspaceManager {
         Ok(())
     }
 
-    /// Swap windows between the focused monitor and its physical neighbor.
-    /// Only affects the current virtual workspace. Windows are moved individually
-    /// so that workspace IDs stay bound to their correct monitors.
+    /// Swap the windows of the current virtual workspace between the focused
+    /// monitor and its neighbor in `direction`.
     pub async fn swap_monitor(&self, direction: Direction) -> Result<()> {
-        /// The workspace that holds the windows of the focused monitor while
-        /// the windows of the other one move in.
-        const BUFFER_WS: NonZeroU16 = NonZeroU16::new(999).unwrap();
-
-        let monitors = query::monitors(&self.instance).await?;
-        if monitors.len() < 2 {
-            return Ok(());
-        }
-
-        let focused = focused_monitor(&monitors)?;
-
-        // The neighbor by position from left to right, the id deciding
-        // between monitors above each other.
-        let position = |monitor: &&Monitor| (monitor.x, monitor.id);
-        let neighbor = match direction {
-            Direction::Next => monitors
-                .iter()
-                .filter(|monitor| position(monitor) > position(&focused))
-                .min_by_key(position),
-            Direction::Prev => monitors
-                .iter()
-                .filter(|monitor| position(monitor) < position(&focused))
-                .max_by_key(position),
-        };
-        let Some(target) = neighbor else {
-            return Ok(());
-        };
-
-        let Some(vws) = focused
-            .active_workspace
-            .address
-            .id()
-            .and_then(VirtualWorkspace::from_hyprland_id)
-        else {
-            return Ok(());
-        };
-
-        let ws_a = vws.hyprland_id(self.layout.slot_of(focused)?);
-        let ws_b = vws.hyprland_id(self.layout.slot_of(target)?);
-
         let clients = query::clients(&self.instance).await?;
-        let on = |workspace: WorkspaceId| -> Vec<Address> {
-            clients
-                .iter()
-                .filter(|c| c.workspace.address.id() == Some(workspace))
-                .map(|c| c.address)
-                .collect()
-        };
-        let clients_a = on(ws_a);
-        let clients_b = on(ws_b);
-
-        debug!(
-            "Swapping ws {ws_a} ({}, {} windows) <-> ws {ws_b} ({}, {} windows)",
-            focused.name,
-            clients_a.len(),
-            target.name,
-            clients_b.len(),
-        );
-
-        let moves = clients_a
-            .iter()
-            .map(|&window| (window, WorkspaceId::from(BUFFER_WS)))
-            .chain(clients_b.iter().map(|&window| (window, ws_a)))
-            .chain(clients_a.iter().map(|&window| (window, ws_b)));
-        for (window, workspace) in moves {
-            dispatch::dispatch(&self.instance, move_window(window, workspace, false)).await?;
-        }
-
-        Ok(())
+        let monitors = query::monitors(&self.instance).await?;
+        let moves = plan::swap(&clients, &monitors, &self.layout, direction)?;
+        debug!("Swapping {direction:?} with {} moves", moves.len());
+        self.dispatch_moves(moves, false).await
     }
 
     pub async fn navigate(&self, direction: Direction) -> Result<()> {
@@ -518,64 +419,17 @@ impl WorkspaceManager {
     }
 
     pub async fn collapse(&self, mode: CollapseMode) -> Result<()> {
-        let Some(current_ws_id) = query::active_workspace(&self.instance)
-            .await?
-            .workspace
-            .address
-            .id()
-        else {
-            return Ok(());
-        };
-
-        let Some(current_vws) = VirtualWorkspace::from_hyprland_id(current_ws_id) else {
-            return Ok(());
-        };
-
         let clients = query::clients(&self.instance).await?;
-
-        debug!("Collapsing {mode:?} to workspace {current_ws_id} (virtual {current_vws})");
-
-        for client in &clients {
-            let Some(client_ws_id) = client.workspace.address.id() else {
-                continue;
-            };
-
-            let should_move = match mode {
-                CollapseMode::All => {
-                    VirtualWorkspace::from_hyprland_id(client_ws_id) == Some(current_vws)
-                        && client_ws_id != current_ws_id
-                }
-                CollapseMode::Invisible => !self.layout.has_workspace(client_ws_id),
-            };
-
-            if should_move {
-                debug!(
-                    "Moving client {} from workspace {client_ws_id} to {current_ws_id}",
-                    client.address
-                );
-                dispatch::dispatch(
-                    &self.instance,
-                    move_window(client.address, current_ws_id, true),
-                )
-                .await?;
-            }
-        }
-
-        Ok(())
+        let monitors = query::monitors(&self.instance).await?;
+        let moves = plan::collapse(&clients, &monitors, &self.layout, mode)?;
+        debug!("Collapsing {mode:?} with {} moves", moves.len());
+        self.dispatch_moves(moves, true).await
     }
 }
 
 /// The focused monitor.
 async fn active_monitor(instance: &Instance) -> Result<Monitor> {
     focused_monitor(&query::monitors(instance).await?).cloned()
-}
-
-/// The focused monitor of the monitors answer.
-fn focused_monitor(monitors: &[Monitor]) -> Result<&Monitor> {
-    monitors
-        .iter()
-        .find(|monitor| monitor.flags.contains(query::MonitorFlag::Focused))
-        .ok_or(Error::NoFocusedMonitor)
 }
 
 /// The failed steps of a sync, collected while it attempts every step.
