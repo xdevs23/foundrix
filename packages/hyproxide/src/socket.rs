@@ -75,9 +75,16 @@ impl Instance {
     /// Connect to the event socket, and return its path with the
     /// connection.
     pub(crate) async fn connect_to_events(&self) -> Result<(PathBuf, UnixStream)> {
-        let path = self.directory.join(EVENT_SOCKET);
+        let path = self.event_socket();
         let stream = connect(&path).await?;
         Ok((path, stream))
+    }
+
+    /// The path of the event socket, to which
+    /// [`event::subscribe`](crate::event::subscribe) connects.
+    #[must_use]
+    pub fn event_socket(&self) -> PathBuf {
+        self.directory.join(EVENT_SOCKET)
     }
 
     /// Send one request and return the answer.
