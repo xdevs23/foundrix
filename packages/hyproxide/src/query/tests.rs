@@ -14,7 +14,7 @@ use crate::geometry::Size;
 use crate::keyboard::Modifier;
 use crate::monitor::MonitorId;
 use crate::window::{FullscreenState, StableId};
-use crate::workspace::{WorkspaceId, WorkspaceKind, WorkspaceRef};
+use crate::workspace::{WorkspaceAddress, WorkspaceId, WorkspaceName, WorkspaceRef};
 
 macro_rules! recorded {
     ($file:literal) => {
@@ -26,31 +26,33 @@ fn read<T: DeserializeOwned>(answer: &str) -> T {
     decode("recorded", answer.to_owned()).unwrap()
 }
 
-fn numbered(id: u32) -> WorkspaceRef {
+/// A workspace whose shown name is its address, as long as nobody renamed
+/// it.
+fn unrenamed(address: WorkspaceAddress) -> WorkspaceRef {
     WorkspaceRef {
-        id: Some(WorkspaceId::try_from(id).unwrap()),
-        kind: WorkspaceKind::Normal,
-        address: id.to_string(),
-        name: id.to_string(),
+        name: address.to_string(),
+        address,
     }
+}
+
+fn numbered(id: u32) -> WorkspaceRef {
+    unrenamed(WorkspaceAddress::Numbered(
+        WorkspaceId::try_from(id).unwrap(),
+    ))
+}
+
+fn web() -> WorkspaceRef {
+    unrenamed(WorkspaceAddress::Named(
+        WorkspaceName::try_from("web").unwrap(),
+    ))
 }
 
 fn scratch() -> WorkspaceRef {
-    WorkspaceRef {
-        id: None,
-        kind: WorkspaceKind::Special,
-        address: "special:scratch".into(),
-        name: "special:scratch".into(),
-    }
+    unrenamed(WorkspaceAddress::Special("scratch".into()))
 }
 
 fn no_workspace() -> WorkspaceRef {
-    WorkspaceRef {
-        id: None,
-        kind: WorkspaceKind::None,
-        address: String::new(),
-        name: String::new(),
-    }
+    unrenamed(WorkspaceAddress::None)
 }
 
 #[test]
@@ -121,9 +123,7 @@ fn special_workspace_on_a_second_output() {
     let [first, second] = monitors.as_slice() else {
         panic!("{monitors:?}")
     };
-    assert_eq!(first.active_workspace.kind, WorkspaceKind::Normal);
-    assert_eq!(first.active_workspace.id, None);
-    assert_eq!(first.active_workspace.address, "web");
+    assert_eq!(first.active_workspace, web());
     assert_eq!(second.name, "HEADLESS-2");
     assert!(!second.flags.contains(MonitorFlag::Disabled));
     assert_eq!(second.active_workspace, numbered(2));
@@ -136,7 +136,7 @@ fn named_workspace_on_a_monitor_beside_a_disabled_one() {
     let [first, second] = monitors.as_slice() else {
         panic!("{monitors:?}")
     };
-    assert_eq!(first.active_workspace.address, "web");
+    assert_eq!(first.active_workspace, web());
     assert_eq!(first.special_workspace, scratch());
     assert!(second.flags.contains(MonitorFlag::Disabled));
     assert_eq!(second.active_workspace, no_workspace());
@@ -242,7 +242,7 @@ fn special_and_named_workspaces_have_no_id() {
     let workspaces: Vec<Workspace> = read(recorded!("workspaces-with-special.json"));
     let special: Vec<_> = workspaces
         .iter()
-        .filter(|w| w.workspace.id.is_none())
+        .filter(|w| w.workspace.address.id().is_none())
         .collect();
     assert_eq!(workspaces.len(), 10);
     assert_eq!(special.len(), 1);
@@ -259,12 +259,7 @@ fn special_and_named_workspaces_have_no_id() {
         recorded!("workspaces-named-special-and-disabled.json"),
     ] {
         let workspaces: Vec<Workspace> = read(answer);
-        let named = workspaces
-            .iter()
-            .find(|w| w.workspace.address == "web")
-            .unwrap();
-        assert_eq!(named.workspace.id, None);
-        assert_eq!(named.workspace.kind, WorkspaceKind::Normal);
+        assert!(workspaces.iter().any(|w| w.workspace == web()));
         assert!(workspaces.iter().any(|w| w.workspace == scratch()));
     }
 }

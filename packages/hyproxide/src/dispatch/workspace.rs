@@ -54,7 +54,8 @@ pub fn toggle_special(name: Option<&str>) -> Dispatcher {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dispatch::{WorkspaceName, lua};
+    use crate::dispatch::lua;
+    use crate::workspace::WorkspaceName;
 
     fn id(number: u32) -> WorkspaceId {
         WorkspaceId::try_from(number).unwrap()

@@ -192,21 +192,40 @@ fn modes_have_a_size_and_a_refresh_rate() {
 
 #[test]
 fn workspaces_by_kind() {
-    let read = |text| workspace(&mut json(text)).unwrap();
-    let numbered = read(r#"{"address": "6", "id": 6, "type": "normal", "name": "6"}"#);
-    assert_eq!(numbered.id, Some(WorkspaceId::try_from(6).unwrap()));
-    assert_eq!(numbered.kind, WorkspaceKind::Normal);
-    let special =
-        read(r#"{"address": "special:scratch", "type": "special", "name": "special:scratch"}"#);
-    assert_eq!(special.id, None);
-    assert_eq!(special.kind, WorkspaceKind::Special);
-    assert_eq!(special.name, "special:scratch");
-    let none = read(r#"{"address": "", "type": "", "name": ""}"#);
-    assert_eq!(none.kind, WorkspaceKind::None);
-    assert!(
-        workspace(&mut json(
-            r#"{"address": "0", "id": 0, "type": "normal", "name": "0"}"#
-        ))
-        .is_err()
+    let read = |text| workspace(&mut json(text)).unwrap().address;
+    assert_eq!(
+        read(r#"{"address": "6", "id": 6, "type": "normal", "name": "6"}"#),
+        WorkspaceAddress::Numbered(WorkspaceId::try_from(6).unwrap())
     );
+    assert_eq!(
+        read(r#"{"address": "web", "type": "normal", "name": "Web"}"#),
+        WorkspaceAddress::Named(WorkspaceName::try_from("web").unwrap())
+    );
+    assert_eq!(
+        read(r#"{"address": "special:scratch", "type": "special", "name": "special:scratch"}"#),
+        WorkspaceAddress::Special("scratch".into())
+    );
+    assert_eq!(
+        read(r#"{"address": "", "type": "", "name": ""}"#),
+        WorkspaceAddress::None
+    );
+    assert_eq!(
+        read(r#"{"address": "6", "type": "", "name": ""}"#),
+        WorkspaceAddress::None
+    );
+}
+
+#[test]
+fn workspaces_whose_fields_do_not_fit_together_fail() {
+    for text in [
+        r#"{"address": "0", "id": 0, "type": "normal", "name": "0"}"#,
+        r#"{"address": "7", "id": 6, "type": "normal", "name": "6"}"#,
+        r#"{"address": "7", "type": "normal", "name": "7"}"#,
+        r#"{"address": "", "type": "normal", "name": ""}"#,
+        r#"{"address": "scratch", "type": "special", "name": "scratch"}"#,
+        r#"{"address": "special:a", "id": 6, "type": "special", "name": "a"}"#,
+        r#"{"address": "", "id": 6, "type": "", "name": ""}"#,
+    ] {
+        assert!(workspace(&mut json(text)).is_err(), "{text}");
+    }
 }

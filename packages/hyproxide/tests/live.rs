@@ -18,11 +18,11 @@ use std::time::Duration;
 use hyproxide::dispatch::command::{self, Color, Command, Icon, Notification, OutputBackend};
 use hyproxide::dispatch::{
     self, Action, Direction, Dispatcher, Focus, KeyState, MonitorSelector, WindowSelector,
-    WorkspaceName, WorkspaceSelector, cursor, group, window, workspace,
+    WorkspaceSelector, cursor, group, window, workspace,
 };
 use hyproxide::keyboard::Modifier;
 use hyproxide::window::FullscreenState;
-use hyproxide::workspace::WorkspaceId;
+use hyproxide::workspace::{WorkspaceId, WorkspaceName};
 use hyproxide::{Error, Instance, Word, query};
 use tokio::net::UnixDatagram;
 use tokio::process::Child;
@@ -181,7 +181,7 @@ async fn every_query_reads_its_answer() {
 async fn dispatchers_are_answered_ok() {
     with_hyprland(|instance| async move {
         let start = query::active_workspace(&instance).await.unwrap().workspace;
-        let selector = || WorkspaceSelector::of(&start).unwrap().unwrap();
+        let selector = || WorkspaceSelector::of(&start.address).unwrap();
         let dispatchers: Vec<Dispatcher> = vec![
             Focus::Workspace {
                 workspace: id(4).into(),

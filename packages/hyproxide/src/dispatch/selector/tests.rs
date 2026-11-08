@@ -15,15 +15,6 @@ fn position(number: u32) -> NonZeroU32 {
     NonZeroU32::new(number).unwrap()
 }
 
-fn reference(id: Option<u32>, kind: WorkspaceKind, address: &str) -> WorkspaceRef {
-    WorkspaceRef {
-        id: id.map(self::id),
-        kind,
-        address: address.to_owned(),
-        name: address.to_owned(),
-    }
-}
-
 #[test]
 fn window_selectors() {
     let address = Address::new(0x55d0_c0ff_ee00.try_into().unwrap());
@@ -90,50 +81,24 @@ fn workspace_selectors() {
 }
 
 #[test]
-fn workspace_names_are_not_numbers() {
-    assert!(WorkspaceName::try_from("web 2").is_ok());
-    assert!(WorkspaceName::try_from("2web").is_ok());
-    for name in ["", "2", "0042"] {
-        assert_eq!(
-            WorkspaceName::try_from(name),
-            Err(NotAWorkspaceName(name.to_owned()))
-        );
-    }
-}
-
-#[test]
-fn workspaces_from_answers_are_selected_by_their_identity() {
-    let of = |workspace| WorkspaceSelector::of(&workspace).unwrap();
-    assert_eq!(
-        of(reference(Some(6), WorkspaceKind::Normal, "6")),
-        Some(WorkspaceSelector::Id(id(6)))
-    );
-    assert_eq!(
-        of(reference(None, WorkspaceKind::Special, "special:scratch")),
-        Some(WorkspaceSelector::Special("scratch".into()))
-    );
-    // A named workspace can be called `special:foo` and is a normal one.
-    assert_eq!(
-        of(reference(None, WorkspaceKind::Normal, "special:foo")),
-        Some(WorkspaceSelector::Named(
-            WorkspaceName::try_from("special:foo").unwrap()
-        ))
-    );
-    assert_eq!(of(reference(None, WorkspaceKind::None, "")), None);
-}
-
-#[test]
-fn a_workspace_whose_address_does_not_fit_its_kind_has_no_selector() {
-    for workspace in [
-        reference(None, WorkspaceKind::Special, "scratch"),
-        reference(None, WorkspaceKind::Normal, "7"),
+fn workspaces_from_answers_and_events_are_selected_by_their_address() {
+    let web = WorkspaceName::try_from("web").unwrap();
+    for (address, selector) in [
+        (
+            WorkspaceAddress::Numbered(id(6)),
+            Some(WorkspaceSelector::Id(id(6))),
+        ),
+        (
+            WorkspaceAddress::Named(web.clone()),
+            Some(WorkspaceSelector::Named(web)),
+        ),
+        (
+            WorkspaceAddress::Special("scratch".into()),
+            Some(WorkspaceSelector::Special("scratch".into())),
+        ),
+        (WorkspaceAddress::None, None),
     ] {
-        assert_eq!(
-            WorkspaceSelector::of(&workspace),
-            Err(MalformedWorkspace {
-                address: workspace.address.clone()
-            })
-        );
+        assert_eq!(WorkspaceSelector::of(&address), selector, "{address:?}");
     }
 }
 

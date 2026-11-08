@@ -14,7 +14,7 @@ use crate::geometry::{Position, Size};
 use crate::keyboard::Modifiers;
 use crate::monitor::MonitorId;
 use crate::window::{FullscreenState, StableId};
-use crate::workspace::{WorkspaceId, WorkspaceKind, WorkspaceRef};
+use crate::workspace::{SPECIAL, WorkspaceAddress, WorkspaceId, WorkspaceName, WorkspaceRef};
 
 /// A number where `-1` means none.
 pub(super) fn minus_one_as_none<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
@@ -251,35 +251,52 @@ pub(super) fn workspace<'de, D: Deserializer<'de>>(
         name: String,
     }
 
-    #[derive(Deserialize)]
-    enum Kind {
-        #[serde(rename = "normal")]
-        Normal,
-        #[serde(rename = "special")]
-        Special,
-        #[serde(rename = "")]
-        None,
-    }
-
     let Workspace {
         id,
         kind,
         address,
         name,
     } = Workspace::deserialize(deserializer)?;
+    let read = workspace_address(kind, id, &address).ok_or_else(|| {
+        de::Error::custom(format!(
+            "{address:?} is not the address of a {kind:?} workspace with id {id:?}"
+        ))
+    })?;
     Ok(WorkspaceRef {
-        id: id
-            .map(WorkspaceId::try_from)
-            .transpose()
-            .map_err(de::Error::custom)?,
-        kind: match kind {
-            Kind::Normal => WorkspaceKind::Normal,
-            Kind::Special => WorkspaceKind::Special,
-            Kind::None => WorkspaceKind::None,
-        },
-        address,
+        address: read,
         name,
     })
+}
+
+/// The address of a workspace from the fields Hyprland writes for it, `None`
+/// when they do not fit together.
+fn workspace_address(kind: Kind, id: Option<u32>, address: &str) -> Option<WorkspaceAddress> {
+    match (kind, id) {
+        (Kind::Normal, Some(id)) => {
+            let id = WorkspaceId::try_from(id).ok()?;
+            (id.to_string() == address).then_some(WorkspaceAddress::Numbered(id))
+        }
+        (Kind::Normal, None) => WorkspaceName::try_from(address)
+            .ok()
+            .map(WorkspaceAddress::Named),
+        (Kind::Special, None) => address
+            .strip_prefix(SPECIAL)
+            .map(|name| WorkspaceAddress::Special(name.to_owned())),
+        // A window without a workspace has the address of its last one.
+        (Kind::None, None) => Some(WorkspaceAddress::None),
+        (Kind::Special | Kind::None, Some(_)) => None,
+    }
+}
+
+/// The `type` of a workspace in an answer.
+#[derive(Debug, Clone, Copy, Deserialize)]
+enum Kind {
+    #[serde(rename = "normal")]
+    Normal,
+    #[serde(rename = "special")]
+    Special,
+    #[serde(rename = "")]
+    None,
 }
 
 #[cfg(test)]

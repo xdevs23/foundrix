@@ -24,8 +24,8 @@ pub struct Client {
     pub at: Position,
     #[serde(deserialize_with = "wire::size")]
     pub size: Size,
-    /// A window without a workspace has the address of its last one, with
-    /// [`WorkspaceKind::None`](crate::workspace::WorkspaceKind::None).
+    /// [`WorkspaceAddress::None`](crate::workspace::WorkspaceAddress::None)
+    /// for a window without a workspace.
     #[serde(deserialize_with = "wire::workspace")]
     pub workspace: WorkspaceRef,
     #[serde(deserialize_with = "wire::minus_one_as_no_monitor")]

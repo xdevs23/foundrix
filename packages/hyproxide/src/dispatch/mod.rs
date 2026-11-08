@@ -17,8 +17,7 @@ pub mod window;
 pub mod workspace;
 
 pub use selector::{
-    Action, Direction, MalformedWorkspace, MonitorScope, MonitorSelector, NotAWorkspaceName,
-    WindowSelector, WorkspaceName, WorkspaceSelector,
+    Action, Direction, MonitorScope, MonitorSelector, WindowSelector, WorkspaceSelector,
 };
 pub use toplevel::{
     Dpms, Focus, KeyState, SendKeyState, SendShortcut, dpms, event, exec_cmd, exec_raw, exit,

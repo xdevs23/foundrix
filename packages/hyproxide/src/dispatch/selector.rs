@@ -1,19 +1,13 @@
 //! The values dispatchers take to name windows, workspaces and monitors, and
 //! the small choices many dispatchers share.
 
-use std::fmt::{self, Display, Formatter};
 use std::num::NonZeroU32;
 
 use crate::address::Address;
-use crate::error::NextStep;
 use crate::lua::Value;
 use crate::monitor::MonitorId;
 use crate::window::StableId;
-use crate::workspace::{WorkspaceId, WorkspaceKind, WorkspaceRef};
-
-/// The prefix of the address of every special workspace, and of the selector
-/// of one.
-const SPECIAL: &str = "special:";
+use crate::workspace::{SPECIAL, WorkspaceAddress, WorkspaceId, WorkspaceName};
 
 /// A direction on screen.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -142,33 +136,16 @@ pub enum WorkspaceSelector {
 }
 
 impl WorkspaceSelector {
-    /// The selector of a workspace read from an answer, `None` when the
-    /// answer has no workspace.
-    ///
-    /// # Errors
-    ///
-    /// [`MalformedWorkspace`] when the address does not fit the kind: a
-    /// special workspace whose address does not start with `special:`, or a
-    /// named one whose address is a number.
-    pub fn of(workspace: &WorkspaceRef) -> Result<Option<Self>, MalformedWorkspace> {
-        let malformed = || MalformedWorkspace {
-            address: workspace.address.clone(),
-        };
-        let selector = match (workspace.kind, workspace.id) {
-            (WorkspaceKind::None, _) => return Ok(None),
-            (WorkspaceKind::Normal, Some(id)) => Self::Id(id),
-            (WorkspaceKind::Normal, None) => Self::Named(
-                WorkspaceName::try_from(workspace.address.clone()).map_err(|_| malformed())?,
-            ),
-            (WorkspaceKind::Special, _) => Self::Special(
-                workspace
-                    .address
-                    .strip_prefix(SPECIAL)
-                    .ok_or_else(malformed)?
-                    .to_owned(),
-            ),
-        };
-        Ok(Some(selector))
+    /// The selector of a workspace read from an answer or an event, `None`
+    /// when there is no workspace.
+    #[must_use]
+    pub fn of(workspace: &WorkspaceAddress) -> Option<Self> {
+        match workspace {
+            WorkspaceAddress::Numbered(id) => Some(Self::Id(*id)),
+            WorkspaceAddress::Named(name) => Some(Self::Named(name.clone())),
+            WorkspaceAddress::Special(name) => Some(Self::Special(name.clone())),
+            WorkspaceAddress::None => None,
+        }
     }
 }
 
@@ -223,52 +200,6 @@ impl MonitorScope {
             MonitorScope::All => 'e',
         }
     }
-}
-
-/// The name of a named workspace: not empty and not a number, which Hyprland
-/// would read as the id of a numbered workspace.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct WorkspaceName(String);
-
-impl TryFrom<String> for WorkspaceName {
-    type Error = NotAWorkspaceName;
-
-    fn try_from(name: String) -> Result<Self, Self::Error> {
-        if name.is_empty() || name.bytes().all(|byte| byte.is_ascii_digit()) {
-            Err(NotAWorkspaceName(name))
-        } else {
-            Ok(Self(name))
-        }
-    }
-}
-
-impl TryFrom<&str> for WorkspaceName {
-    type Error = NotAWorkspaceName;
-
-    fn try_from(name: &str) -> Result<Self, Self::Error> {
-        Self::try_from(name.to_owned())
-    }
-}
-
-impl Display for WorkspaceName {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.0)
-    }
-}
-
-/// Text that cannot name a named workspace.
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-#[error("{name:?} is not a workspace name. {next}", name = .0, next = NextStep::UseAWorkspaceName)]
-pub struct NotAWorkspaceName(pub String);
-
-/// A workspace from an answer whose address does not fit its kind.
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-#[error(
-    "the workspace address {address:?} does not fit the kind of the workspace. {}",
-    NextStep::CheckTheVersion
-)]
-pub struct MalformedWorkspace {
-    pub address: String,
 }
 
 /// Which monitor a dispatcher acts on.
