@@ -24,12 +24,7 @@ impl Address {
     /// Hyprland writes. Zero, the address Hyprland writes for no object,
     /// reads as `None`.
     pub(crate) fn from_hex(hex: &str) -> Result<Option<Self>, NotAHexAddress> {
-        let digits = !hex.is_empty()
-            && hex
-                .bytes()
-                .all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f'));
-        let address = digits.then(|| u64::from_str_radix(hex, 16).ok()).flatten();
-        address
+        crate::hex::read(hex)
             .map(|address| NonZeroU64::new(address).map(Self))
             .ok_or_else(|| NotAHexAddress(hex.to_owned()))
     }

@@ -143,9 +143,11 @@ pub(super) fn optional_bare_address<'de, D: Deserializer<'de>>(
 /// A stable id, written as hex alone.
 pub(super) fn stable_id<'de, D: Deserializer<'de>>(deserializer: D) -> Result<StableId, D::Error> {
     let text = String::deserialize(deserializer)?;
-    u64::from_str_radix(&text, 16)
-        .map(StableId)
-        .map_err(|_| de::Error::custom(format!("{text:?} is not a hex stable id")))
+    crate::hex::read(&text).map(StableId).ok_or_else(|| {
+        de::Error::custom(format!(
+            "{text:?} is not a stable id in lowercase hex digits"
+        ))
+    })
 }
 
 pub(super) fn fullscreen_state<'de, D: Deserializer<'de>>(

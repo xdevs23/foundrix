@@ -19,6 +19,7 @@ pub mod dispatch;
 mod error;
 pub mod event;
 pub mod geometry;
+mod hex;
 pub mod keyboard;
 pub mod lua;
 pub mod monitor;

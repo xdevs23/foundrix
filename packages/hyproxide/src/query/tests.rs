@@ -182,6 +182,15 @@ fn client() {
 }
 
 #[test]
+fn stable_ids_read_only_in_lowercase_hex() {
+    let stable_id = |text: &str| wire::stable_id(serde_json::Value::from(text));
+    assert_eq!(stable_id("18000001").unwrap(), StableId(0x1800_0001));
+    for text in ["", "+ff", "FF", "0x1"] {
+        assert!(stable_id(text).is_err(), "{text:?}");
+    }
+}
+
+#[test]
 fn window_on_a_special_workspace() {
     for answer in [
         recorded!("clients-on-special.json"),
