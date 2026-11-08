@@ -523,7 +523,11 @@ in
         wayland.windowManager.hyprland = {
           enable = true;
           package = config.programs.hyprland.package;
-          portalPackage = config.programs.hyprland.portalPackage;
+          # Home Manager 26.05 calls `override { hyprland = ...; }` on the portal,
+          # an argument dropped by xdg-desktop-portal-hyprland in 1.5.0. Home
+          # Manager master checks for it first (home-manager PR 10028), which
+          # release-26.05 does not include. The wrapper ignores the argument.
+          portalPackage = lib.makeOverridable (_: config.programs.hyprland.portalPackage) { };
           systemd.enable = false; # Conflicts with UWSM
           extraConfig = cfg.extraConfig;
           settings = {
