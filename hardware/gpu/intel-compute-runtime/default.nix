@@ -1,4 +1,5 @@
 {
+  srcOnly,
   symlinkJoin,
   binutils,
   patchelf,
@@ -30,14 +31,23 @@ symlinkJoin {
     ln -sfn $name $out/lib/libze_intel_gpu.so.1
 
     # The driver treats ray tracing as unavailable when it cannot open the library by this name or
-    # cannot find one of the entry points it looks up there, so either fails the build.
-    raytracing=${level-zero-raytracing-support}/lib/libze_intel_gpu_raytracing.so
-    names=$(strings $out/lib/$name)
-    if ! grep -qx libze_intel_gpu_raytracing.so <<< "$names"; then
-      echo "the Level Zero driver $name no longer opens libze_intel_gpu_raytracing.so" >&2
+    # cannot find one of the entry points it looks up there, so either fails the build. Both are
+    # read from the patched source code of the driver, because the compiler may split string
+    # literals in the binary.
+    library=libze_intel_gpu_raytracing.so
+    raytracing=${level-zero-raytracing-support}/lib/$library
+    sources=${srcOnly intel-compute-runtime}/level_zero/core/source/rtas
+    opened=$(grep -rhoE 'rtasLibraryName = "[^"]*"' $sources/linux | cut -d '"' -f 2) || [ $? -eq 1 ]
+    if [ -z "$opened" ]; then
+      echo "the Level Zero driver $name no longer defines rtasLibraryName in $sources/linux" >&2
       exit 1
     fi
-    wanted=$(grep -xE 'ze[A-Za-z]*RTAS[A-Za-z]*Ex[pt]Impl' <<< "$names" | sort -u || true)
+    if [ "$opened" != "$library" ]; then
+      echo "the Level Zero driver $name opens $opened instead of $library" >&2
+      exit 1
+    fi
+    wanted=$(grep -rhoE '"ze[A-Za-z]*RTAS[A-Za-z]*Ex[pt]Impl"' $sources) || [ $? -eq 1 ]
+    wanted=$(tr -d '"' <<< "$wanted" | sort -u)
     if [ -z "$wanted" ]; then
       echo "the Level Zero driver $name names no ray tracing entry points" >&2
       exit 1
